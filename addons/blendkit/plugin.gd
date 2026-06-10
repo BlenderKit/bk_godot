@@ -338,6 +338,8 @@ func on_timer_timeout():
 	var error = http_request.request(url, headers, HTTPClient.METHOD_POST, json)
 	if error != OK:
 		bk_log(LogLevel.ERROR, "Error sending request to %s, error=%s" % [url, error])
+		http_request.cancel_request()
+		request_failed()
 
 
 func on_request_completed(result, response_code, _headers, body):
