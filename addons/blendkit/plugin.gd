@@ -12,6 +12,11 @@ const WAIT_STARTING_SLOW: float = 3
 const STARTING_FAST_PROBES: int = 5
 const STARTING_TIMEOUT: int = 30000
 const REQUEST_TIMEOUT: int = 3000
+# minimum process frames before a request can be considered timed out
+# (guards against false timeouts when the main loop is suspended);
+# non-threaded HTTPRequest polls once per frame and a request needs
+# several polls to connect, send and read the response
+const REQUEST_TIMEOUT_MIN_FRAMES: int = 10
 
 
 enum LogLevel { ERROR, WARNING, INFO, VERBOSE, DEBUG, TRACE }
@@ -113,6 +118,7 @@ var port: String = CLIENT_PORTS[0]
 var failed_requests: int = 0
 var max_failed_requests: int = 3
 var request_start_time: int = 0
+var request_start_frame: int = 0
 var starting_since: int = 0
 var http_request: HTTPRequest
 var unsubscribe_http_request: HTTPRequest
@@ -311,11 +317,19 @@ func on_timer_timeout():
 		HTTPClient.STATUS_CONNECTED, HTTPClient.STATUS_BODY, HTTPClient.STATUS_REQUESTING:
 			# Waiting for response - check timeout
 			var elapsed := Time.get_ticks_msec() - request_start_time
+			var frames_elapsed := Engine.get_process_frames() - request_start_frame
 			if elapsed >= REQUEST_TIMEOUT:
-				bk_log(LogLevel.WARNING, "Request timeout in %s after %dms" % [http_status_name(http_client_status), elapsed])
+				if frames_elapsed < REQUEST_TIMEOUT_MIN_FRAMES:
+					# Wall-clock time passed but the request had (almost) no frames
+					# to make progress - the main loop was suspended, e.g. by the
+					# compositor hiding the window. Give it a frame to poll the
+					# response that most likely already arrived.
+					bk_log(LogLevel.DEBUG, "Main loop suspended for %d ms (%d frames) - postponing request timeout" % [elapsed, frames_elapsed])
+					return
+				bk_log(LogLevel.WARNING, "Request timeout in %s after %d ms (%d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
 				prev_request_failed = true
 			else:
-				bk_log(LogLevel.DEBUG, "Waiting in %s (%d ms)" % [http_status_name(http_client_status), elapsed])
+				bk_log(LogLevel.DEBUG, "Waiting in %s (%d ms, %d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
 				return
 		HTTPClient.STATUS_DISCONNECTED:
 			# Ready to request
@@ -349,6 +363,7 @@ func on_timer_timeout():
 	}
 	var json = JSON.stringify(data)
 	request_start_time = Time.get_ticks_msec()
+	request_start_frame = Engine.get_process_frames()
 	bk_log(LogLevel.TRACE, "POST %s  %s" % [url, json])
 	var error = http_request.request(url, headers, HTTPClient.METHOD_POST, json)
 	if error != OK:
