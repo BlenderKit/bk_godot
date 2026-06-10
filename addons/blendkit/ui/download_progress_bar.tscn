@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://8t50aghjcsc8"]
 
-[ext_resource type="Script" uid="uid://cub835i4i2uxq" path="res://addons/blenderkit/ui/download_progress_bar.gd" id="1_6pjij"]
+[ext_resource type="Script" uid="uid://cub835i4i2uxq" path="res://addons/blendkit/ui/download_progress_bar.gd" id="1_6pjij"]
 
 [node name="DownloadProgressBar" type="ProgressBar" unique_id=649660260]
 custom_minimum_size = Vector2(0, 40)

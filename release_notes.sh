@@ -8,7 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHANGELOG="$SCRIPT_DIR/CHANGELOG.md"
-PLUGIN_CFG="$SCRIPT_DIR/addons/blenderkit/plugin.cfg"
+PLUGIN_CFG="$SCRIPT_DIR/addons/blendkit/plugin.cfg"
 
 if [[ $# -ge 1 ]]; then
     VERSION="${1#v}"

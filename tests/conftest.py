@@ -1,4 +1,4 @@
-"""Pytest configuration and fixtures for BlenderKit Godot plugin tests."""
+"""Pytest configuration and fixtures for Blendkit Godot plugin tests."""
 
 import shutil
 import subprocess

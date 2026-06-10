@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://ijjjf42k124s"]
 
-[ext_resource type="Texture2D" uid="uid://5n2k0xbtnud2" path="res://addons/blenderkit/logo/blenderkit-logo-hexa_pure.svg" id="Texture2D_logo"]
+[ext_resource type="Texture2D" uid="uid://5n2k0xbtnud2" path="res://addons/blendkit/logo/blendkit-logo-hexa_pure.svg" id="Texture2D_logo"]
 
 [sub_resource type="SystemFont" id="SystemFont_bold"]
 subpixel_positioning = 0
@@ -8,7 +8,7 @@ subpixel_positioning = 0
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_m2h48"]
 bg_color = Color(0, 0, 0, 0.13725491)
 
-[node name="BlenderKit" type="VBoxContainer" unique_id=549544804]
+[node name="Blendkit" type="VBoxContainer" unique_id=549544804]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -20,7 +20,7 @@ grow_vertical = 2
 [node name="EnabledCheckBox" type="CheckBox" parent="." unique_id=1289507264]
 layout_mode = 2
 button_pressed = true
-text = "BlenderKit Client Enabled"
+text = "Blendkit Client Enabled"
 
 [node name="StatusRow" type="HBoxContainer" parent="." unique_id=1368938474]
 layout_mode = 2
@@ -51,7 +51,7 @@ size_flags_stretch_ratio = 0.02
 layout_mode = 2
 size_flags_vertical = 3
 size_flags_stretch_ratio = 0.31
-tooltip_text = "Open BlenderKit asset gallery in your browser. Choose the assets you like and download them directly and automatically into this Godot project."
+tooltip_text = "Open Blendkit asset gallery in your browser. Choose the assets you like and download them directly and automatically into this Godot project."
 
 [node name="LogoMargin" type="MarginContainer" parent="BrowseAssets" unique_id=1275440865]
 layout_mode = 1
@@ -97,12 +97,12 @@ size_flags_stretch_ratio = 0.03
 [node name="RichTextLabel" type="RichTextLabel" parent="." unique_id=206234063]
 visible = false
 layout_mode = 2
-text = "BlenderKit add-on for Godot.
-1. Make sure BlenderKit-Client is running.
+text = "Blendkit add-on for Godot.
+1. Make sure Blendkit Client is running.
 2. Wait until Client connection is confirmed in Status.
-3. Choose assets on www.blenderkit.com
+3. Choose assets on www.blendkit.com
 4. Click on Get Asset, choose Godot
-5. Asset is downloaded into res://blenderkit_assets
+5. Asset is downloaded into res://bk_assets
 "
 fit_content = true
 
@@ -257,7 +257,7 @@ size_flags_vertical = 10
 [node name="Version" type="Label" parent="DocsContainer" unique_id=1235482706]
 layout_mode = 2
 size_flags_vertical = 8
-text = "BlenderKit plugin"
+text = "Blendkit plugin"
 vertical_alignment = 1
 
 [node name="Links" type="HBoxContainer" parent="DocsContainer" unique_id=1368471897]
@@ -269,9 +269,9 @@ theme_override_constants/separation = 16
 [node name="OpenDocs" type="LinkButton" parent="DocsContainer/Links" unique_id=162828366]
 layout_mode = 2
 text = "Docs"
-uri = "https://github.com/BlenderKit/blenderkit-godot"
+uri = "https://github.com/BlenderKit/bk_godot"
 
 [node name="OpenIssues" type="LinkButton" parent="DocsContainer/Links" unique_id=872397358]
 layout_mode = 2
 text = "Report a Bug"
-uri = "https://github.com/BlenderKit/blenderkit-godot/issues"
+uri = "https://github.com/BlenderKit/bk_godot/issues"

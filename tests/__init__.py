@@ -1,1 +1,1 @@
-# BlenderKit Godot Plugin Tests
+# Blendkit Godot Plugin Tests

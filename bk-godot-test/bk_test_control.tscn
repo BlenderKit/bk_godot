@@ -16,7 +16,7 @@ theme_override_constants/separation = 20
 [node name="HeadingLabel" type="Label" parent="Rows"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
-text = "BlenderKit Godot Plugin Test Project"
+text = "Blendkit Godot Plugin Test Project"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -25,6 +25,6 @@ layout_mode = 2
 theme_override_font_sizes/normal_font_size = 24
 theme_override_font_sizes/bold_font_size = 24
 bbcode_enabled = true
-text = "See [b]BlenderKit[/b] tab in the right Godot Editor dock ->"
+text = "See [b]Blendkit[/b] tab in the right Godot Editor dock ->"
 fit_content = true
 horizontal_alignment = 1

@@ -10,19 +10,19 @@ config_version=5
 
 [application]
 
-config/name="BlenderKit Godot Test Project"
+config/name="Blendkit Godot Test Project"
 run/main_scene="uid://bf0vn6ptsssq1"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 #config/icon="res://icon.svg"
 
-[blenderkit]
+[blendkit]
 
 model_format="gltf_godot"
 resolution=""
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/blenderkit/plugin.cfg")
+enabled=PackedStringArray("res://addons/blendkit/plugin.cfg")
 
 [rendering]
 

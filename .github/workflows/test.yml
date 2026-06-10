@@ -37,7 +37,7 @@ jobs:
       - name: Install pytest
         run: pip install pytest
 
-      - name: Build BlenderKit Godot Plugin
+      - name: Build Blendkit Godot Plugin
         run: python dev.py build
 
       - name: Run tests

@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const SERVER = "https://www.blenderkit.com"
+const SERVER = "https://blendkit.com"
 const CLIENT_PORTS = ["62485", "65425", "55428"]
 #const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "5152", "1234"]
 const RESOLUTION_OPTIONS = ["", "ORIGINAL", "resolution_4K", "resolution_2K", "resolution_1K", "resolution_0_5K"]
@@ -27,7 +27,7 @@ var log_level: int = LogLevel.INFO
 func bk_log(level: LogLevel, msg: String) -> void:
 	if level > log_level:
 		return
-	var prefix = "BlenderKit: " if level == LogLevel.INFO else "BlenderKit %s: " % LOG_LEVEL_NAMES[level]
+	var prefix = "Blendkit: " if level == LogLevel.INFO else "Blendkit %s: " % LOG_LEVEL_NAMES[level]
 	var log_msg = prefix + msg
 	match level:
 		LogLevel.ERROR:
@@ -112,8 +112,8 @@ var client_bin_name: String
 var client_bin_path: String
 
 # GUI
-const menu_scene = preload("res://addons/blenderkit/menu.tscn")
-const download_progress_bar_scene = preload("res://addons/blenderkit/ui/download_progress_bar.tscn")
+const menu_scene = preload("res://addons/blendkit/menu.tscn")
+const download_progress_bar_scene = preload("res://addons/blendkit/ui/download_progress_bar.tscn")
 var docked_menu_scene: Control
 var enabled_check_box: CheckBox
 var status_icon: TextureRect
@@ -269,7 +269,7 @@ func start_client(port: String):
 		return
 
 	if client_pid == 0:
-		bk_log(LogLevel.ERROR, "Failed to start the BlenderKit Client.")
+		bk_log(LogLevel.ERROR, "Failed to start the Blendkit Client.")
 		bk_log(LogLevel.DEBUG, "Failed command: %s" % command_str)
 		fail("client start failed")
 		return
@@ -395,7 +395,7 @@ func request_failed():
 
 	elif state == State.CONNECTED:
 		if failed_requests >= max_failed_requests:
-			bk_log(LogLevel.WARNING, "Lost connection to BlenderKit Client on port %s." % port)
+			bk_log(LogLevel.WARNING, "Lost connection to Blendkit Client on port %s." % port)
 			enter_state(State.EXPLORING)
 			return
 		update_status()
@@ -446,12 +446,12 @@ func on_log_level_changed(index: int):
 
 func on_model_format_changed(index: int):
 	model_format = "gltf_godot" if index == 0 else "blend"
-	ProjectSettings.set_setting("blenderkit/model_format", model_format)
+	ProjectSettings.set_setting("blendkit/model_format", model_format)
 
 
 func on_resolution_changed(index: int):
 	resolution = RESOLUTION_OPTIONS[index]
-	ProjectSettings.set_setting("blenderkit/resolution", resolution)
+	ProjectSettings.set_setting("blendkit/resolution", resolution)
 
 
 func init_paths():
@@ -477,7 +477,7 @@ func init_ui():
 	status_label = docked_menu_scene.get_node("StatusRow/StatusLabel")
 	port_option_button = docked_menu_scene.get_node("Port/OptionButton")
 	version_label = docked_menu_scene.get_node("DocsContainer/Version")
-	version_label.text = "BlenderKit v%s" % get_addon_version()
+	version_label.text = "Blendkit v%s" % get_addon_version()
 	browse_assets_button = docked_menu_scene.get_node("BrowseAssets")
 	browse_assets_button.pressed.connect(on_browse_assets_pressed)
 	download_directory = docked_menu_scene.get_node("DownloadTo/LineEdit")
@@ -487,11 +487,11 @@ func init_ui():
 	log_level_option_button.selected = log_level
 	log_level_option_button.item_selected.connect(on_log_level_changed)
 	model_format_option_button = docked_menu_scene.get_node("ModelFormat/OptionButton")
-	model_format = ProjectSettings.get_setting("blenderkit/model_format", "gltf_godot")
+	model_format = ProjectSettings.get_setting("blendkit/model_format", "gltf_godot")
 	model_format_option_button.selected = 0 if model_format == "gltf_godot" else 1
 	model_format_option_button.item_selected.connect(on_model_format_changed)
 	resolution_option_button = docked_menu_scene.get_node("Resolution/OptionButton")
-	resolution = ProjectSettings.get_setting("blenderkit/resolution", "")
+	resolution = ProjectSettings.get_setting("blendkit/resolution", "")
 	resolution_option_button.selected = max(0, RESOLUTION_OPTIONS.find(resolution))
 	resolution_option_button.item_selected.connect(on_resolution_changed)
 	downloads_container = docked_menu_scene.get_node("DownloadsContainer")
@@ -530,7 +530,7 @@ func handle_tasks(tasks: Array) -> void:
 
 func get_addon_version():
 	var config = ConfigFile.new()
-	var err = config.load("res://addons/blenderkit/plugin.cfg")
+	var err = config.load("res://addons/blendkit/plugin.cfg")
 	if err != OK:
 		return "unknown"
 	return config.get_value("plugin", "version", "unknown")

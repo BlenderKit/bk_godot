@@ -1,7 +1,7 @@
 # client repo (cloned on-demand)
 /BlenderKit
 # client binaries (built on-demand)
-/addons/blenderkit/client
+/addons/blendkit/client
 # downloaded assets
 /bk_assets
 /out

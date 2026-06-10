@@ -1,4 +1,4 @@
-"""Integration tests for BlenderKit Godot plugin."""
+"""Integration tests for Blendkit Godot plugin."""
 
 import re
 
@@ -18,7 +18,7 @@ class TestPluginLoads:
         """Plugin should enable and log its initialization."""
         r = run_godot_editor()
 
-        assert_output(r, r"BlenderKit: Plugin enabled")
-        assert_output(r, r"BlenderKit: Searching for running Client\.\.\.")
-        assert_output(r, r"BlenderKit: Connected to Client v[.0-9]+ on port \d+")
-        assert_output(r, r"BlenderKit: Plugin exited")
+        assert_output(r, r"Blendkit: Plugin enabled")
+        assert_output(r, r"Blendkit: Searching for running Client\.\.\.")
+        assert_output(r, r"Blendkit: Connected to Client v[.0-9]+ on port \d+")
+        assert_output(r, r"Blendkit: Plugin exited")

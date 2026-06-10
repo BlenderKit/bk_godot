@@ -10,12 +10,12 @@ import sys
 
 
 PLUGIN_SRC_DIR = "addons"
-PLUGIN_DIR = "blenderkit"
+PLUGIN_DIR = "blendkit"
 CLIENT_DIR = "BlenderKit"
 CLIENT_REPO_URL = "https://github.com/BlenderKit/BlenderKit.git"
 CLIENT_REPO_REF = "godot"
 RESULT_DIR = "out"
-ARCHIVE_BASE_NAME = "blenderkit-godot"
+ARCHIVE_BASE_NAME = "blendkit-godot"
 PLUGIN_CLIENT_DIR = os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR, "client")
 
 ARCHIVE_EXCLUDE = []
@@ -33,15 +33,15 @@ def ensure_godot_ignore(ignore_dir: str):
 
 
 def build(client_dir=CLIENT_DIR, result_dir=RESULT_DIR):
-    """Build BlenderKit Client and Plugin, then create archive."""
+    """Build Blendkit Client and Plugin, then create archive."""
     build_client(client_dir=client_dir)
     build_plugin(client_dir=client_dir)
     build_archive(result_dir=result_dir)
 
 
 def get_client_src():
-    """Clone BlenderKit Client repository if it doesn't exist."""
-    print("# Getting BlenderKit Client sources")
+    """Clone Blendkit Client repository if it doesn't exist."""
+    print("# Getting Blendkit Client sources")
     if os.path.exists(CLIENT_DIR):
         print(f"Client Repo already exists at {CLIENT_DIR}, skipping.")
     else:
@@ -58,10 +58,10 @@ def get_client_src():
 
 
 def build_client(client_dir=CLIENT_DIR):
-    """Build BlenderKit Client using its dev.py build script."""
+    """Build Blendkit Client using its dev.py build script."""
     if client_dir == CLIENT_DIR:
         get_client_src()
-    print("# Building BlenderKit Client with GO")
+    print("# Building Blendkit Client with GO")
     subprocess.run(
         ["python3", "dev.py", "build"],
         cwd=client_dir,
@@ -96,7 +96,7 @@ def copy_client_binaries(binaries_path: str, result_dir=RESULT_DIR):
         print(f"Copied: {target_file}")
 
     print(
-        f"{len(client_files)} BlenderKit-Client {client_version} binaries copied: {binaries_path} -> {target_dir}"
+        f"{len(client_files)} Blendkit Client {client_version} binaries copied: {binaries_path} -> {target_dir}"
     )
 
 
@@ -146,7 +146,7 @@ def get_archive_base_name(version: str) -> str:
 
 def get_plugin_version() -> str:
     """Read plugin version from plugin.cfg."""
-    config_path = os.path.join(PLUGIN_SRC_DIR, "blenderkit", "plugin.cfg")
+    config_path = os.path.join(PLUGIN_SRC_DIR, "blendkit", "plugin.cfg")
     config = configparser.ConfigParser()
     config.read(config_path)
     return config.get("plugin", "version").strip('"')
@@ -154,7 +154,7 @@ def get_plugin_version() -> str:
 
 def set_plugin_version(version: str):
     """Update plugin version in plugin.cfg."""
-    config_path = os.path.join(PLUGIN_SRC_DIR, "blenderkit", "plugin.cfg")
+    config_path = os.path.join(PLUGIN_SRC_DIR, "blendkit", "plugin.cfg")
     version = version.lstrip("v")
     print(f"# Setting version to {version} in {config_path}")
 
@@ -256,7 +256,7 @@ def build_archive(result_dir=RESULT_DIR):
         )
 
     archive_size = human_readable_size(os.path.getsize(archive_path))
-    print(f"✓ BlenderKit Godot plugin archive DONE \\o/")
+    print(f"✓ Blendkit Godot plugin archive DONE \\o/")
     print(f"ZIP archive: {archive_path} ({archive_size})")
 
 
@@ -323,7 +323,7 @@ parser_build.add_argument(
     type=str,
     default=CLIENT_DIR,
     dest="client_dir",
-    help="Path to BlenderKit Client sources.",
+    help="Path to Blendkit Client sources.",
 )
 parser_build.add_argument(
     "-o",
@@ -337,8 +337,8 @@ parser_build.add_argument(
 # COMMAND: get-client-src
 parser_get_client_src = subparsers.add_parser(
     "get-client-src",
-    help="Get BlenderKit Client sources.",
-    description="Get BlenderKit Client sources.",
+    help="Get Blendkit Client sources.",
+    description="Get Blendkit Client sources.",
     formatter_class=NiceHelpFormatter,
 )
 parser_get_client_src.set_defaults(func=get_client_src)
@@ -346,8 +346,8 @@ parser_get_client_src.set_defaults(func=get_client_src)
 # COMMAND: build-client
 parser_build_client = subparsers.add_parser(
     "build-client",
-    help="Build BlenderKit Client with GO.",
-    description="Build BlenderKit Client with GO in-place.",
+    help="Build Blendkit Client with GO.",
+    description="Build Blendkit Client with GO in-place.",
     formatter_class=NiceHelpFormatter,
 )
 parser_build_client.set_defaults(func=build_client)
@@ -357,14 +357,14 @@ parser_build_client.add_argument(
     type=str,
     default=CLIENT_DIR,
     dest="client_dir",
-    help="Path to BlenderKit Client sources.",
+    help="Path to Blendkit Client sources.",
 )
 
 # COMMAND: build-plugin
 parser_build_plugin = subparsers.add_parser(
     "build-plugin",
     help="Copy client binaries into plugin directory.",
-    description="Copy client binaries into addons/blenderkit/client/ (in-place).",
+    description="Copy client binaries into addons/blendkit/client/ (in-place).",
     formatter_class=NiceHelpFormatter,
 )
 parser_build_plugin.set_defaults(func=build_plugin)
@@ -374,7 +374,7 @@ parser_build_plugin.add_argument(
     type=str,
     default=CLIENT_DIR,
     dest="client_dir",
-    help="Path to BlenderKit Client sources.",
+    help="Path to Blendkit Client sources.",
 )
 
 # COMMAND: build-archive
