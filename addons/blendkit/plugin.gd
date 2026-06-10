@@ -111,6 +111,7 @@ var timer: Timer
 var bk_plugin_dir: String
 var client_data_dir: String
 var client_version: String
+var connected_client_version: String = ""
 var client_base_dir: String
 var client_bin_name: String
 var client_bin_path: String
@@ -202,7 +203,10 @@ func enter_state(new_state: State):
 		State.CONNECTED:
 			timer.wait_time = WAIT_OK
 			timer.start()
-			bk_log(LogLevel.INFO, "Connected to Client v%s on port %s" % [client_version, port])
+			if connected_client_version:
+				bk_log(LogLevel.INFO, "Connected to Client v%s on port %s" % [connected_client_version, port])
+			else:
+				bk_log(LogLevel.INFO, "Connected to Client on port %s" % port)
 		_:
 			fail("invalid state %s" % state_name(new_state))
 
@@ -358,6 +362,7 @@ func on_request_completed(result, response_code, _headers, body):
 		var data = JSON.parse_string(body_text)
 		if typeof(data) == TYPE_DICTIONARY:
 			if state != State.CONNECTED:
+				connected_client_version = str(data.get("client_version", ""))
 				enter_state(State.CONNECTED)
 			elif failed_requests > 0:
 				failed_requests = 0
