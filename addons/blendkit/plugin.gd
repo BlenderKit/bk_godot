@@ -8,6 +8,9 @@ const RESOLUTION_OPTIONS = ["", "ORIGINAL", "resolution_4K", "resolution_2K", "r
 const WAIT_OK: float = 0.8
 const WAIT_EXPLORING: float = 0.2
 const WAIT_STARTING: float = 1
+const WAIT_STARTING_SLOW: float = 3
+const STARTING_FAST_PROBES: int = 5
+const STARTING_TIMEOUT: int = 30000
 const REQUEST_TIMEOUT: int = 3000
 
 
@@ -99,6 +102,7 @@ var port: String = CLIENT_PORTS[0]
 var failed_requests: int = 0
 var max_failed_requests: int = 3
 var request_start_time: int = 0
+var starting_since: int = 0
 var http_request: HTTPRequest
 var unsubscribe_http_request: HTTPRequest
 var timer: Timer
@@ -191,6 +195,7 @@ func enter_state(new_state: State):
 			timer.start()
 			bk_log(LogLevel.INFO, "Searching for running Client...")
 		State.STARTING:
+			starting_since = Time.get_ticks_msec()
 			timer.wait_time = WAIT_STARTING
 			timer.start()
 			start_client(port)
@@ -211,10 +216,8 @@ func update_status():
 		State.EXPLORING:
 			status_label.text = "Exploring..."
 		State.STARTING:
-			if failed_requests > 0:
-				status_label.text = "Starting (#%s)..." % failed_requests
-			else:
-				status_label.text = "Starting..."
+			var starting_elapsed := (Time.get_ticks_msec() - starting_since) / 1000
+			status_label.text = "Starting (%d / %d s)..." % [starting_elapsed, STARTING_TIMEOUT / 1000]
 		State.CONNECTED:
 			if failed_requests > 0:
 				status_label.text = "Reconnecting (#%s)..." % failed_requests
@@ -390,10 +393,15 @@ func request_failed():
 			enter_state(State.STARTING)
 
 	elif state == State.STARTING:
-		if failed_requests > max_failed_requests:
-			bk_log(LogLevel.ERROR, "Failed to connect to Client on port %s after %s tries." % [port, failed_requests])
+		var starting_elapsed := Time.get_ticks_msec() - starting_since
+		if starting_elapsed >= STARTING_TIMEOUT:
+			bk_log(LogLevel.ERROR, "Failed to connect to Client on port %s after %s tries in %d ms." % [port, failed_requests, starting_elapsed])
 			fail("connection timeout")
 			return
+		if failed_requests == STARTING_FAST_PROBES:
+			bk_log(LogLevel.VERBOSE, "Client not up after %d fast probes, slowing probes to %ss" % [STARTING_FAST_PROBES, WAIT_STARTING_SLOW])
+			timer.wait_time = WAIT_STARTING_SLOW
+			timer.start()
 		update_status()
 
 	elif state == State.CONNECTED:
