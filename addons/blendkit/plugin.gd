@@ -27,6 +27,17 @@ const LOG_LEVEL_NAMES = {
 
 var log_level: int = LogLevel.INFO
 
+# The Client reports message_level in Python logging values:
+# 0=Debug, 10=Info, 20=Warning, 30=Error, 40=Fatal
+static func client_message_log_level(message_level: int) -> LogLevel:
+	if message_level >= 30:
+		return LogLevel.ERROR
+	if message_level >= 20:
+		return LogLevel.WARNING
+	if message_level >= 10:
+		return LogLevel.INFO
+	return LogLevel.DEBUG
+
 func bk_log(level: LogLevel, msg: String) -> void:
 	if level > log_level:
 		return
@@ -369,8 +380,8 @@ func on_request_completed(result, response_code, _headers, body):
 				update_status()
 
 			var msg = data.get("message", "")
-			var level: int = int(data.get("message_level", LogLevel.INFO))
-			if msg and level <= log_level:
+			if msg:
+				var level := client_message_log_level(int(data.get("message_level", 10)))
 				bk_log(level, "Client: %s" % msg)
 			var tasks = data.get("tasks", [])
 			if tasks:
