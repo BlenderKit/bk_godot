@@ -344,8 +344,9 @@ func on_request_completed(result, response_code, _headers, body):
 	var elapsed := Time.get_ticks_msec() - request_start_time
 	if result != OK:
 		bk_log(LogLevel.DEBUG, "Request %s, response_code=%d, state=%s, port=%s" % [http_result_name(result), response_code, state_name(state), port])
-	if state == State.FAILED:
-		bk_log(LogLevel.WARNING, "Request completed in failed state - strange")
+	if state in [State.DISABLED, State.FAILED]:
+		bk_log(LogLevel.WARNING, "Ignoring stale request completion in %s state" % state_name(state))
+		return
 
 	var body_text: String = body.get_string_from_utf8()
 	bk_log(LogLevel.TRACE, "HTTP response (%d ms): %s" % [elapsed, body_text])
