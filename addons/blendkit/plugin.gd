@@ -351,6 +351,9 @@ func on_request_completed(result, response_code, _headers, body):
 	if response_code == 200:
 		if state != State.CONNECTED:
 			enter_state(State.CONNECTED)
+		elif failed_requests > 0:
+			failed_requests = 0
+			update_status()
 
 		var data = JSON.parse_string(body_text)
 		var msg = data.get("message", "")
