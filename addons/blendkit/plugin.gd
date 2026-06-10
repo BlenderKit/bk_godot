@@ -350,27 +350,29 @@ func on_request_completed(result, response_code, _headers, body):
 	var body_text: String = body.get_string_from_utf8()
 	bk_log(LogLevel.TRACE, "HTTP response (%d ms): %s" % [elapsed, body_text])
 
-	# Success - connected to client
+	# Success - only a 200 with a valid JSON body counts as the Client
 	if response_code == 200:
-		if state != State.CONNECTED:
-			enter_state(State.CONNECTED)
-		elif failed_requests > 0:
-			failed_requests = 0
-			update_status()
-
 		var data = JSON.parse_string(body_text)
-		var msg = data.get("message", "")
-		var level: int = int(data.get("message_level", LogLevel.INFO))
-		if msg and level <= log_level:
-			bk_log(level, "Client: %s" % msg)
-		var tasks = data.get("tasks", [])
-		if tasks:
-			handle_tasks(tasks)
-		return
+		if typeof(data) == TYPE_DICTIONARY:
+			if state != State.CONNECTED:
+				enter_state(State.CONNECTED)
+			elif failed_requests > 0:
+				failed_requests = 0
+				update_status()
+
+			var msg = data.get("message", "")
+			var level: int = int(data.get("message_level", LogLevel.INFO))
+			if msg and level <= log_level:
+				bk_log(level, "Client: %s" % msg)
+			var tasks = data.get("tasks", [])
+			if tasks:
+				handle_tasks(tasks)
+			return
+		bk_log(LogLevel.WARNING, "Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
 
 	if state == State.EXPLORING:
 		bk_log(LogLevel.VERBOSE, "Client not found on port %s" % port)
-	else:
+	elif response_code != 200:
 		bk_log(LogLevel.WARNING, "Request on port %s failed (response_code=%d)" % [port, response_code])
 	if body_text != "":
 		bk_log(LogLevel.TRACE, "Response body: %s" % body_text)
