@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 - 2026-06-11
+
+Renamed to **Blendkit** and improved Client connection stability.
+
+### Changed
+
+- New plugin name: **Blendkit**
+  - New plugin directory: `addons/blendkit/`
+  - On upgrade just delete old dir: `addons/blenderkit/`
+- Improved Client discovery, connection stability, and state flow.
+- Properly display reported Client's version.
+- Suppress occasional harmless warning when Godot window got suspended.
+
 ## 0.4.2 - 2026-03-04
 
 Tiny bugfix release to remove harmless Warning on startup.

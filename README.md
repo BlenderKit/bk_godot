@@ -53,6 +53,7 @@ Blendkit Godot Plugin requires:
 
 - Godot Engine: **4.X**
 - OS: **Linux**, **Windows**, **MacOS** (each comes with different problems)
+    - **MacOS** is probably broken until Client binaries get signed (in progress)
 - Architectures: **x86_64**, **arm64**
 - Web browser: **permission to access local network** (to connect to Blendkit Client)
 
