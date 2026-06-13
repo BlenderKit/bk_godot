@@ -290,6 +290,25 @@ def test(verbose=False, filter=None):
     sys.exit(result.returncode)
 
 
+def test_e2e(verbose=False, filter=None, headed=False):
+    """Run the Playwright end-to-end test against the live BlenderKit site."""
+    print("# Running end-to-end tests (live site, needs network + Playwright)")
+
+    cmd = [sys.executable, "-m", "pytest", "-m", "e2e"]
+
+    if verbose:
+        cmd.append("-v")
+    if filter:
+        cmd.extend(["-k", filter])
+
+    env = os.environ.copy()
+    if headed:
+        env["HEADED"] = "1"
+
+    result = subprocess.run(cmd, env=env)
+    sys.exit(result.returncode)
+
+
 ### Command-Line Interface
 
 
@@ -437,6 +456,38 @@ parser_test.add_argument(
     type=str,
     dest="filter",
     help="Only run tests matching this expression.",
+)
+
+# COMMAND: test-e2e
+parser_test_e2e = subparsers.add_parser(
+    "test-e2e",
+    help="Run the Playwright end-to-end test (live site, needs network).",
+    description=(
+        "Run the browser end-to-end test against blenderkit.com.\n"
+        "Requires Playwright (pip install -r requirements-dev.txt && "
+        "playwright install chromium) and network access.\n"
+        "Set BLENDERKIT_API_KEY to download gated assets."
+    ),
+    formatter_class=NiceHelpFormatter,
+)
+parser_test_e2e.set_defaults(func=test_e2e)
+parser_test_e2e.add_argument(
+    "-v",
+    "--verbose",
+    action="store_true",
+    help="Verbose output.",
+)
+parser_test_e2e.add_argument(
+    "-k",
+    "--filter",
+    type=str,
+    dest="filter",
+    help="Only run tests matching this expression.",
+)
+parser_test_e2e.add_argument(
+    "--headed",
+    action="store_true",
+    help="Run the browser visibly instead of headless.",
 )
 
 

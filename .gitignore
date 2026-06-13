@@ -8,3 +8,5 @@
 .godot
 *.uid
 __pycache__
+# e2e test failure screenshot
+/tests/e2e_failure.png

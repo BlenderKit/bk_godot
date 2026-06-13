@@ -1,0 +1,11 @@
+# Dev/test dependencies for the Blendkit Godot plugin.
+#
+#   pip install -r requirements-dev.txt
+#
+# For the end-to-end browser test (./dev.py test-e2e) you also need a browser:
+#
+#   playwright install chromium
+#
+pytest>=8
+requests>=2.31
+playwright>=1.40
