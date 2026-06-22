@@ -1,8 +1,16 @@
-# Blendkit in Godot
+<div align="center">
+  <img src="addons/blendkit/logo/blendkit-logo-hexa_pure.svg" alt="Blendkit Logo" width="100"/>
+  <h1 align="center">Blendkit for Godot</h3>
 
-A simple yet effective add-on that lets you import models
-from the [Blendkit](https://blendkit.com) library
-to [Godot Engine](https://godotengine.org/).
+  A simple yet effective add-on that lets you import models
+  from the [Blendkit](https://blendkit.com) library
+  to [Godot Engine](https://godotengine.org/).
+
+  [![GitHub Release](https://img.shields.io/github/v/release/BlenderKit/bk_godot?color=green)](https://github.com/BlenderKit/bk_godot/releases/latest)
+  [![Project license](https://img.shields.io/github/license/BlenderKit/bk_godot.svg?color=orange)](LICENSE)
+</div>
+
+# About
 
 Browse the [Blendkit.com](https://blendkit.com) gallery, click **Send to Godot**
 on any asset, and let it land directly in your Godot
