@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.1 - 2026-06-22
+
+Bugfix release for the `blenderkit.com` -> `blendkit.com` migration.
+
+Older Clients (<= 1.9.0) will get CORS errors in the browser from `blendkit.com`
+leading to the **Send to Godot** button not showing.
+
+**Please upgrade** by removing old `addons/blendkit` directory and
+unpacking the latest version.
+
+### Changed
+
+- Patched Client to send correct CORS for `blendkit.com`.
+
+### Added
+
+- New End-to-End (E2E) CI using Playwright which ensures the elusive **Send to Godot**
+  button shows in a browser and triggers asset download in Godot. This is quite
+  a comprehensive test of the entire stack which should hopefully bring
+  more stability to the addon and detect breakages in production automatically.
+
 ## 0.5.0 - 2026-06-11
 
 Renamed to **Blendkit** and improved Client connection stability.
