@@ -5,6 +5,9 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Daily at 06:00 UTC - catch production/site regressions automatically.
+    - cron: "0 6 * * *"
 
 jobs:
   test:
@@ -42,3 +45,52 @@ jobs:
 
       - name: Run tests
         run: python dev.py test -v
+
+  test-e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - name: Set up Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.5.0
+          use-dotnet: false
+          include-templates: false
+
+      - name: Verify Godot installation
+        run: godot --version
+
+      - name: Install dev/test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Install Playwright browser
+        run: playwright install --with-deps chromium
+
+      - name: Build Blendkit Godot Plugin
+        run: python dev.py build
+
+      - name: Run end-to-end tests
+        run: python dev.py test-e2e -v
+        env:
+          BLENDERKIT_API_KEY: ${{ secrets.BLENDERKIT_API_KEY }}
+
+      - name: Upload failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-screenshot
+          path: tests/e2e_failure.png
+          if-no-files-found: ignore
