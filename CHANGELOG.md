@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2 - 2026-06-24
+
+Utility release which adds `addons/blendkit/LICENSE` to comply with
+Godot Asset Store requirements.
+
+No functional changes.
+
+### Added
+
+- Include `LICENSE` in the `addons/blendkit/` directory so it ships with the
+  addon. The root `LICENSE` remains the source of truth and is synced into the
+  addon directory on build.
+
 ## 0.5.1 - 2026-06-22
 
 Bugfix release for the `blenderkit.com` -> `blendkit.com` migration.
