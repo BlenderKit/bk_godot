@@ -100,9 +100,18 @@ def copy_client_binaries(binaries_path: str, result_dir=RESULT_DIR):
     )
 
 
+def sync_license():
+    """Copy the authoritative root LICENSE into the plugin directory."""
+    plugin_license = os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR, "LICENSE")
+    shutil.copy2("LICENSE", plugin_license)
+    print(f"✓ LICENSE synced to {plugin_license}")
+
+
 def build_plugin(client_dir=CLIENT_DIR):
     """Copy client binaries into the plugin directory (in-place)."""
     print("# Copying Client binaries into Plugin")
+
+    sync_license()
 
     try:
         client_bin_dir = find_client_bin_dir(client_dir)
