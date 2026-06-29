@@ -11,7 +11,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout repository
@@ -44,7 +48,11 @@ jobs:
         run: python dev.py test -v
 
   test-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout repository
@@ -68,8 +76,13 @@ jobs:
       - name: Install dev/test dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Install Playwright browser
+      - name: Install Playwright browser (Linux)
+        if: runner.os == 'Linux'
         run: playwright install --with-deps chromium
+
+      - name: Install Playwright browser (macOS/Windows)
+        if: runner.os != 'Linux'
+        run: playwright install chromium
 
       - name: Build Blendkit Godot Plugin
         run: python dev.py build
@@ -85,6 +98,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-failure-screenshot
+          name: e2e-failure-screenshot-${{ matrix.os }}
           path: tests/e2e_failure.png
           if-no-files-found: ignore
