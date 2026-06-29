@@ -22,11 +22,6 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "stable"
-
       - name: Set up Godot
         uses: chickensoft-games/setup-godot@v2
         with:
@@ -57,11 +52,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "stable"
 
       - name: Set up Godot
         uses: chickensoft-games/setup-godot@v2

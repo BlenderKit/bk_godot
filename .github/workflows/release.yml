@@ -25,11 +25,6 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "stable"
-
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: python dev.py set-version ${{ github.ref_name }}
