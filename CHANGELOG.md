@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Client discovery now skips a running Client that is older than the Client
+  bundled with the addon, falling back to other ports and finally to starting
+  the bundled Client. This prevents the plugin from attaching to an outdated
+  Client left running by another integration.
+- When starting a Client, the port selected in the plugin UI is treated as the
+  desired port: if discovery found an older Client already running on it, the
+  plugin now starts its Client on another known port instead of failing to bind.
+
 ## 0.5.2 - 2026-06-24
 
 Utility release which adds `addons/blendkit/LICENSE` to comply with

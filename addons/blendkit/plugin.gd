@@ -115,6 +115,7 @@ var absolute_download_path: String
 var model_format: String = "gltf_godot"
 var resolution: String = ""
 var port: String = CLIENT_PORTS[0]
+var taken_ports: Array[String] = []
 var failed_requests: int = 0
 var max_failed_requests: int = 3
 var request_start_time: int = 0
@@ -209,6 +210,7 @@ func enter_state(new_state: State):
 			http_request.cancel_request()
 		State.EXPLORING:
 			port = CLIENT_PORTS[0]
+			taken_ports.clear()
 			timer.wait_time = WAIT_EXPLORING
 			timer.start()
 			bk_log(LogLevel.INFO, "Searching for running Client...")
@@ -388,7 +390,18 @@ func on_request_completed(result, response_code, _headers, body):
 		var data = JSON.parse_string(body_text)
 		if typeof(data) == TYPE_DICTIONARY:
 			if state != State.CONNECTED:
-				connected_client_version = str(data.get("client_version", ""))
+				var found_version := str(data.get("client_version", ""))
+				# Skip a discovered Client that is older than the one we bundle.
+				# Only while exploring - a Client we started ourselves matches the
+				# bundled version and must never be rejected here.
+				if state == State.EXPLORING and version_lt(found_version, client_version):
+					var found_label := found_version if found_version else "(unknown)"
+					bk_log(LogLevel.INFO, "Skipping Client v%s on port %s: older than required v%s" % [found_label, port, client_version])
+					if not taken_ports.has(port):
+						taken_ports.append(port)
+					request_failed()
+					return
+				connected_client_version = found_version
 				enter_state(State.CONNECTED)
 			elif failed_requests > 0:
 				failed_requests = 0
@@ -423,8 +436,7 @@ func request_failed():
 		if port_index < CLIENT_PORTS.size():
 			port = CLIENT_PORTS[port_index]
 		else:
-			var selected_index = port_option_button.get_selected()
-			port = port_option_button.get_item_text(selected_index)
+			port = choose_start_port()
 			bk_log(LogLevel.VERBOSE, "No running Client found")
 			enter_state(State.STARTING)
 
@@ -450,6 +462,26 @@ func request_failed():
 	else:
 		bk_log(LogLevel.ERROR, "Unexpected state: %s" % state_name(state))
 		fail("unexpected state")
+
+
+func choose_start_port() -> String:
+	# The UI-selected port is the desired port, but discovery may have found an
+	# unusable Client already running on it. In that case start on another known
+	# port that we did not find occupied.
+	var selected_index := port_option_button.get_selected()
+	var desired := port_option_button.get_item_text(selected_index)
+	if not taken_ports.has(desired):
+		return desired
+
+	bk_log(LogLevel.INFO, "Desired port %s is occupied by an older Client, choosing another port..." % desired)
+	for i in port_option_button.item_count:
+		var candidate := port_option_button.get_item_text(i)
+		if not taken_ports.has(candidate):
+			bk_log(LogLevel.INFO, "Selected port %s for the Client" % candidate)
+			return candidate
+
+	bk_log(LogLevel.WARNING, "All known ports are occupied, falling back to %s" % desired)
+	return desired
 
 
 func send_unsubscribe():
@@ -635,6 +667,31 @@ static func get_version_from_dir(base_dir: String) -> String:
 
 	dir.list_dir_end()
 	return ""
+
+
+static func parse_version_parts(version: String) -> Array:
+	# Extract the numeric components of a version string, e.g.
+	# "1.9.1-260127" -> [1, 9, 1, 260127]. Mirrors the Client's
+	# tolerant comparator (BlenderKit/version_compare.py).
+	var parts: Array[int] = []
+	var regex := RegEx.new()
+	regex.compile("\\d+")
+	for m in regex.search_all(version):
+		parts.append(int(m.get_string()))
+	return parts
+
+
+static func version_lt(a: String, b: String) -> bool:
+	# True if version `a` is strictly older than version `b`, comparing
+	# numeric parts left to right. A missing/shorter prefix sorts lower,
+	# so an empty/unparseable version counts as older than any real one.
+	var pa := parse_version_parts(a)
+	var pb := parse_version_parts(b)
+	var n := mini(pa.size(), pb.size())
+	for i in n:
+		if pa[i] != pb[i]:
+			return pa[i] < pb[i]
+	return pa.size() < pb.size()
 
 
 func ensure_dir_structure():
