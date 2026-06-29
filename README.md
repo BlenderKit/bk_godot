@@ -168,9 +168,7 @@ auto-import.
 
 You need the following requirements:
 
-- **Go** for building the Blendkit Client
 - **Python 3** for running the `dev.py` build script
-- **git** for cloning the sources
 
 Clone the repo and do a full build:
 
@@ -180,15 +178,29 @@ cd bk_godot
 python dev.py build
 ```
 
-This does the following:
+By default this builds from a **published client release**:
 
-- fetches [Blendkit Client](https://github.com/BlenderKit/BlenderKit)
-sources into `BlenderKit/` (`./dev.py get-client-src`)
-- builds the Blendkit Client using Go (`./dev.py build-client`)
-- copies client binaries into the plugin directory (`./dev.py build-plugin`)
+- downloads the latest stable [Blendkit Client](https://github.com/BlenderKit/BlenderKit)
+release (the signed binaries) into `client-dist/` and verifies its sha256
+(`./dev.py get-client-release`)
+- copies the client binaries into the plugin directory
 - creates a distributable ZIP archive (`./dev.py build-archive`)
 
+Pin a specific release with `./dev.py build --tag vX.Y.Z`.
+
 The distributable ZIP will be at `out/blendkit-godot_vX.Y.Z.zip`.
+
+### Building the client from source
+
+To compile the client yourself instead of using a release (requires **Go** and
+**git**):
+
+```sh
+./dev.py build --from-source
+```
+
+This clones [Blendkit Client](https://github.com/BlenderKit/BlenderKit) into
+`BlenderKit/`, builds it with Go, and assembles the plugin.
 
 
 ## Development
@@ -197,7 +209,7 @@ This repository is set up as a Godot project, so you can open it directly in
 Godot Editor for development and testing.
 
 1. Clone this repository
-2. Build (fetches client sources and builds everything):
+2. Build (downloads the client release and assembles the plugin):
    ```sh
    ./dev.py build
    ```
@@ -209,7 +221,8 @@ Run `python dev.py` for a list of all available commands.
 
 | Command | Description |
 |---------|-------------|
-| `build` | Full build: client + plugin + archive |
+| `build` | Full build from a published client release: download + plugin + archive |
+| `get-client-release` | Download a published client release and install its binaries |
 | `get-client-src` | Clone/update Blendkit Client repository |
 | `build-client` | Build only the Go client |
 | `build-plugin` | Copy client binaries into plugin directory |

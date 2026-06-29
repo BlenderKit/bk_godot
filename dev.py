@@ -2,11 +2,15 @@
 import argparse
 import configparser
 import fnmatch
+import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import urllib.request
+import zipfile
 
 
 PLUGIN_SRC_DIR = "addons"
@@ -14,6 +18,10 @@ PLUGIN_DIR = "blendkit"
 CLIENT_DIR = "BlenderKit"
 CLIENT_REPO_URL = "https://github.com/BlenderKit/BlenderKit.git"
 CLIENT_REPO_REF = "main"
+CLIENT_REPO = "BlenderKit/BlenderKit"
+GITHUB_API = "https://api.github.com"
+CLIENT_DIST_DIR = "client-dist"
+USER_AGENT = "blendkit-godot-build"
 RESULT_DIR = "out"
 ARCHIVE_BASE_NAME = "blendkit-godot"
 PLUGIN_CLIENT_DIR = os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR, "client")
@@ -32,10 +40,23 @@ def ensure_godot_ignore(ignore_dir: str):
     print(f"Created {gdignore_path}")
 
 
-def build(client_dir=CLIENT_DIR, result_dir=RESULT_DIR):
-    """Build Blendkit Client and Plugin, then create archive."""
-    build_client(client_dir=client_dir)
-    build_plugin(client_dir=client_dir)
+def build(
+    from_source=False,
+    tag=None,
+    client_dir=CLIENT_DIR,
+    result_dir=RESULT_DIR,
+    dist_dir=CLIENT_DIST_DIR,
+):
+    """Build the Plugin and create archive.
+
+    By default downloads signed client binaries from a published GitHub release.
+    With --from-source, clones and compiles the client from source instead.
+    """
+    if from_source:
+        build_client(client_dir=client_dir)
+        build_plugin(client_dir=client_dir)
+    else:
+        get_client_release(tag=tag, dist_dir=dist_dir)
     build_archive(result_dir=result_dir)
 
 
@@ -55,6 +76,98 @@ def get_client_src():
             check=True,
         )
     ensure_godot_ignore(CLIENT_DIR)
+
+
+def github_request(url):
+    """Open an authenticated GitHub request (uses GITHUB_TOKEN if set)."""
+    headers = {"User-Agent": USER_AGENT}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return urllib.request.Request(url, headers=headers)
+
+
+def fetch_release_meta(tag=None):
+    """Fetch release metadata from the GitHub API (latest stable if no tag)."""
+    if tag:
+        url = f"{GITHUB_API}/repos/{CLIENT_REPO}/releases/tags/{tag}"
+    else:
+        url = f"{GITHUB_API}/repos/{CLIENT_REPO}/releases/latest"
+    print(f"Fetching release metadata: {url}")
+    with urllib.request.urlopen(github_request(url)) as resp:
+        return json.load(resp)
+
+
+def download_file(url, dest):
+    """Download a URL to a local file."""
+    print(f"Downloading {url}")
+    with urllib.request.urlopen(github_request(url)) as resp, open(dest, "wb") as f:
+        shutil.copyfileobj(resp, f)
+    print(f"Saved: {dest}")
+
+
+def verify_sha256(file_path, sha256_url):
+    """Verify a file against a sha256sum-format checksum asset."""
+    print("Verifying sha256 checksum...")
+    with urllib.request.urlopen(github_request(sha256_url)) as resp:
+        expected = resp.read().decode().split()[0].strip()
+
+    digest = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    actual = digest.hexdigest()
+
+    if actual != expected:
+        print("sha256 mismatch, exiting!")
+        print(f"  expected: {expected}")
+        print(f"  actual:   {actual}")
+        sys.exit(1)
+    print(f"✓ sha256 verified: {actual}")
+
+
+def find_release_client_bin_dir(extract_dir):
+    """Find the client binaries directory inside an extracted release."""
+    return latest_version_dir(os.path.join(extract_dir, "blenderkit", "client"))
+
+
+def get_client_release(tag=None, dist_dir=CLIENT_DIST_DIR):
+    """Download a Blendkit Client release and install its binaries into the Plugin."""
+    print("# Getting Blendkit Client release")
+    meta = fetch_release_meta(tag)
+    release_tag = meta["tag_name"]
+    print(f"Release: {release_tag}")
+
+    assets = {a["name"]: a["browser_download_url"] for a in meta.get("assets", [])}
+    zip_names = [n for n in assets if n.endswith(".zip")]
+    if not zip_names:
+        print(f"No .zip asset found in release {release_tag}, exiting.")
+        sys.exit(1)
+    zip_name = zip_names[0]
+
+    os.makedirs(dist_dir, exist_ok=True)
+    ensure_godot_ignore(dist_dir)
+    zip_path = os.path.join(dist_dir, zip_name)
+
+    if os.path.exists(zip_path):
+        print(f"Release archive already downloaded: {zip_path}")
+    else:
+        download_file(assets[zip_name], zip_path)
+
+    if "sha256" in assets:
+        verify_sha256(zip_path, assets["sha256"])
+    else:
+        print("Warning: no sha256 asset in release, skipping verification.")
+
+    extract_dir = os.path.join(dist_dir, release_tag)
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
+    print(f"Extracting {zip_name} -> {extract_dir}")
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(extract_dir)
+
+    client_bin_dir = find_release_client_bin_dir(extract_dir)
+    install_client_binaries(client_bin_dir)
 
 
 def build_client(client_dir=CLIENT_DIR):
@@ -93,6 +206,10 @@ def copy_client_binaries(binaries_path: str, result_dir=RESULT_DIR):
         source_file = os.path.join(binaries_path, file_name)
         target_file = os.path.join(target_dir, file_name)
         shutil.copy2(source_file, target_file)
+        # zip extraction drops the executable bit; restore it for the binaries
+        # (harmless for the Windows .exe files)
+        mode = os.stat(target_file).st_mode
+        os.chmod(target_file, mode | 0o111)
         print(f"Copied: {target_file}")
 
     print(
@@ -107,19 +224,8 @@ def sync_license():
     print(f"✓ LICENSE synced to {plugin_license}")
 
 
-def build_plugin(client_dir=CLIENT_DIR):
-    """Copy client binaries into the plugin directory (in-place)."""
-    print("# Copying Client binaries into Plugin")
-
-    sync_license()
-
-    try:
-        client_bin_dir = find_client_bin_dir(client_dir)
-    except (FileNotFoundError, OSError):
-        print(f"Error: Client binaries not found in {client_dir}")
-        print("Run './dev.py build' or './dev.py build-client' first.")
-        sys.exit(1)
-
+def install_client_binaries(client_bin_dir):
+    """Copy a located set of client binaries into the plugin directory (in-place)."""
     client_version = os.path.basename(os.path.normpath(client_bin_dir))
     plugin_dir = os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR)
 
@@ -128,14 +234,32 @@ def build_plugin(client_dir=CLIENT_DIR):
     print(f"Target dir: {PLUGIN_CLIENT_DIR}/{client_version}")
     print()
 
+    # Drop any previously installed client version so exactly one ships
+    if os.path.exists(PLUGIN_CLIENT_DIR):
+        shutil.rmtree(PLUGIN_CLIENT_DIR)
+
+    sync_license()
     copy_client_binaries(client_bin_dir, plugin_dir)
 
     print(f"✓ Client binaries copied to {PLUGIN_CLIENT_DIR}")
 
 
-def find_client_bin_dir(client_dir=CLIENT_DIR):
-    """Find the latest client binaries directory in the client build output."""
-    base_dir = os.path.join(client_dir, "out", "blenderkit", "client")
+def build_plugin(client_dir=CLIENT_DIR):
+    """Copy locally built client binaries into the plugin directory (in-place)."""
+    print("# Copying Client binaries into Plugin")
+
+    try:
+        client_bin_dir = find_client_bin_dir(client_dir)
+    except (FileNotFoundError, OSError):
+        print(f"Error: Client binaries not found in {client_dir}")
+        print("Run './dev.py build-client' first.")
+        sys.exit(1)
+
+    install_client_binaries(client_bin_dir)
+
+
+def latest_version_dir(base_dir):
+    """Return the highest 'vX.Y.Z' subdirectory of base_dir."""
     dirs = [
         d
         for d in os.listdir(base_dir)
@@ -146,6 +270,11 @@ def find_client_bin_dir(client_dir=CLIENT_DIR):
     # sort desc in unlikely case there are multiple versions
     dirs.sort(reverse=True)
     return os.path.join(base_dir, dirs[0])
+
+
+def find_client_bin_dir(client_dir=CLIENT_DIR):
+    """Find the latest client binaries directory in the client build output."""
+    return latest_version_dir(os.path.join(client_dir, "out", "blenderkit", "client"))
 
 
 def get_archive_base_name(version: str) -> str:
@@ -277,6 +406,10 @@ def clean():
         print(f"Removing: {RESULT_DIR}")
         shutil.rmtree(RESULT_DIR)
 
+    if os.path.exists(CLIENT_DIST_DIR):
+        print(f"Removing: {CLIENT_DIST_DIR}")
+        shutil.rmtree(CLIENT_DIST_DIR)
+
     if os.path.exists(PLUGIN_CLIENT_DIR):
         print(f"Removing: {PLUGIN_CLIENT_DIR}")
         shutil.rmtree(PLUGIN_CLIENT_DIR)
@@ -340,18 +473,47 @@ subparsers = parser.add_subparsers(
 # COMMAND: build
 parser_build = subparsers.add_parser(
     "build",
-    help="Full build: client, plugin, and archive.",
-    description="Full build: build client, copy binaries to plugin, create archive.",
+    help="Full build from a published client release: download + plugin + archive.",
+    description=(
+        "Full build from a published Blendkit Client release:\n"
+        "download signed client binaries, copy them into the plugin, "
+        "create archive.\n"
+        "To build the client from source instead, use the 'build-client', "
+        "'build-plugin' and 'build-archive' commands."
+    ),
     formatter_class=NiceHelpFormatter,
 )
 parser_build.set_defaults(func=build)
+parser_build.add_argument(
+    "-s",
+    "--from-source",
+    action="store_true",
+    dest="from_source",
+    help="Compile the client from source instead of using a published release.",
+)
+parser_build.add_argument(
+    "-t",
+    "--tag",
+    type=str,
+    default=None,
+    dest="tag",
+    help="Release tag to use (e.g. v3.19.2.260411). Defaults to latest stable.",
+)
+parser_build.add_argument(
+    "-d",
+    "--dist-dir",
+    type=str,
+    default=CLIENT_DIST_DIR,
+    dest="dist_dir",
+    help="Directory for downloaded/extracted client releases.",
+)
 parser_build.add_argument(
     "-c",
     "--client-dir",
     type=str,
     default=CLIENT_DIR,
     dest="client_dir",
-    help="Path to Blendkit Client sources.",
+    help="Path to Blendkit Client sources (with --from-source).",
 )
 parser_build.add_argument(
     "-o",
@@ -360,6 +522,34 @@ parser_build.add_argument(
     default=RESULT_DIR,
     dest="result_dir",
     help="Output directory for the archive.",
+)
+
+# COMMAND: get-client-release
+parser_get_client_release = subparsers.add_parser(
+    "get-client-release",
+    help="Download a published client release and install its binaries.",
+    description=(
+        "Download a published Blendkit Client release and copy its signed "
+        "binaries into the plugin directory."
+    ),
+    formatter_class=NiceHelpFormatter,
+)
+parser_get_client_release.set_defaults(func=get_client_release)
+parser_get_client_release.add_argument(
+    "-t",
+    "--tag",
+    type=str,
+    default=None,
+    dest="tag",
+    help="Release tag to use (e.g. v3.19.2.260411). Defaults to latest stable.",
+)
+parser_get_client_release.add_argument(
+    "-d",
+    "--dist-dir",
+    type=str,
+    default=CLIENT_DIST_DIR,
+    dest="dist_dir",
+    help="Directory for downloaded/extracted client releases.",
 )
 
 # COMMAND: get-client-src

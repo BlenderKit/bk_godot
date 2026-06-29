@@ -11,6 +11,9 @@
 - When starting a Client, the port selected in the plugin UI is treated as the
   desired port: if discovery found an older Client already running on it, the
   plugin now starts its Client on another known port instead of failing to bind.
+- `./dev.py build` now uses signed Client binaries from a GitHub release
+  (sha256-verified) instead of building from source. Pin with `--tag`; build
+  from source with `--from-source`.
 
 ## 0.5.2 - 2026-06-24
 
