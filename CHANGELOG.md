@@ -1,19 +1,31 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-07-01
+
+Major bugfix release ensuring compatibility with the new `blendkit.com` domain
+and improving Client handling.
+
+**Please upgrade** by removing the old `addons/blendkit/` directory and
+unpacking the latest version.
+
+You can now use the **Godot Asset Store** tab in Godot 4.7+ to install the plugin.
 
 ### Changed
 
-- Client discovery now skips a running Client that is older than the Client
-  bundled with the addon, falling back to other ports and finally to starting
-  the bundled Client. This prevents the plugin from attaching to an outdated
-  Client left running by another integration.
-- When starting a Client, the port selected in the plugin UI is treated as the
-  desired port: if discovery found an older Client already running on it, the
-  plugin now starts its Client on another known port instead of failing to bind.
-- `./dev.py build` now uses signed Client binaries from a GitHub release
-  (sha256-verified) instead of building from source. Pin with `--tag`; build
-  from source with `--from-source`.
+- Use official signed Client binaries (v1.9.2) which include
+  upstream fixes needed to work with new `blendkit.com` domain.
+- Skip outdated Clients left running by other integrations and start the
+  bundled Client instead, picking another known port if needed.
+
+### Added
+
+- The plugin is now available from the new **Godot Asset Store** included in
+  Godot 4.7 and newer.
+- Always use the highest-version Client binary, and warn if multiple versions
+  are present — usually a sign the plugin was unpacked over an old copy instead
+  of a clean reinstall.
+- CI now tests the **Send to Godot** button on Linux and Windows to ensure
+  better long-term stability.
 
 ## 0.5.2 - 2026-06-24
 
