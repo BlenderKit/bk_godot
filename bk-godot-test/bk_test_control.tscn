@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bf0vn6ptsssq1"]
 
-[node name="BKTestControl" type="CenterContainer"]
+[node name="BKTestControl" type="CenterContainer" unique_id=499148199]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -9,18 +9,18 @@ grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="Rows" type="VBoxContainer" parent="."]
+[node name="Rows" type="VBoxContainer" parent="." unique_id=670388681]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="HeadingLabel" type="Label" parent="Rows"]
+[node name="HeadingLabel" type="Label" parent="Rows" unique_id=1996474018]
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "Blendkit Godot Plugin Test Project"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="RichTextLabel" type="RichTextLabel" parent="Rows"]
+[node name="RichTextLabel" type="RichTextLabel" parent="Rows" unique_id=820031435]
 layout_mode = 2
 theme_override_font_sizes/normal_font_size = 24
 theme_override_font_sizes/bold_font_size = 24
