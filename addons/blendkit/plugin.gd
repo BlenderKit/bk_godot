@@ -287,7 +287,8 @@ func start_client(port: String):
 		command_str = 'start /B "" "%s" -port %s -server %s -software Godot -pid %s > "%s" 2>&1' % [client_bin_path, port, SERVER, godot_pid, win_log_path]
 		client_pid = OS.create_process("cmd.exe", ["/C", command_str])
 	elif OS.has_feature("macos") or OS.has_feature("linux"):
-		command_str = '%s -port %s -server %s -software Godot -pid %s > "%s" 2>&1 &' % [client_bin_path, port, SERVER, godot_pid, log_path]
+		# The executable bit may be lost on extraction (e.g. when installed via the Godot Asset Store), so ensure it is set before launching
+		command_str = 'chmod u+x "%s" && %s -port %s -server %s -software Godot -pid %s > "%s" 2>&1 &' % [client_bin_path, client_bin_path, port, SERVER, godot_pid, log_path]
 		client_pid = OS.create_process("/bin/sh", ["-c", command_str])
 	else:
 		bk_log(LogLevel.ERROR, "Could not start client: Unsupported OS. Only Windows, MacOS and Linux are supported.")
