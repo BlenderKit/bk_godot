@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import threading
+import urllib.request
 from dataclasses import dataclass, field
 
 import pytest
@@ -17,6 +18,23 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT_CONNECTED_RE = re.compile(
     r"Connected to Client(?: v(?P<version>[\d.]+))? on port (?P<port>\d+)"
 )
+
+
+def shutdown_client(port: str) -> None:
+    """Ask the Blendkit Client on ``port`` to exit, gracefully.
+
+    Each test spawns its own Client. When Godot is killed it cannot always
+    unsubscribe, so the Client would otherwise linger ~60s (until its heartbeat
+    timeout) before shutting down. Its /shutdown endpoint exits it immediately.
+    """
+    if not port:
+        return
+    try:
+        urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/shutdown", data=b"", timeout=5
+        )
+    except OSError:
+        pass  # Client already gone or unreachable - nothing to clean up.
 
 
 def find_godot_executable() -> str:
@@ -55,7 +73,11 @@ def run_godot_editor(godot_executable):
             "--quit-after", str(quit_after),
             *extra_args,
         ]
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        m = CLIENT_CONNECTED_RE.search(result.stdout)
+        if m:
+            shutdown_client(m.group("port"))
+        return result
 
     return _run
 
@@ -133,3 +155,6 @@ def running_godot(godot_executable):
             proc.kill()
             proc.wait(timeout=10)
         reader.join(timeout=5)
+        # Godot is gone now, so shutting down its Client won't trigger a
+        # reconnect that spawns a new one.
+        shutdown_client(info.get("port"))
