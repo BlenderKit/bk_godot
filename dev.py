@@ -13,6 +13,14 @@ import urllib.request
 import zipfile
 
 
+# Ensure UTF-8 output so Unicode (e.g. ✓) prints on Windows, where stdout
+# defaults to a legacy code page (cp1252) that can't encode it.
+for _stream in (sys.stdout, sys.stderr):
+    reconfigure = getattr(_stream, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8")
+
+
 PLUGIN_SRC_DIR = "addons"
 PLUGIN_DIR = "blendkit"
 CLIENT_DIR = "BlenderKit"
