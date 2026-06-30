@@ -35,6 +35,8 @@ jobs:
 
       - name: Build Plugin
         run: python dev.py build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract changelog section
         run: ./release_notes.sh > release_notes.md
