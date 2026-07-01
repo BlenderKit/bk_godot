@@ -71,15 +71,31 @@ Blendkit Godot Plugin requires:
 See [User Guide](https://blendkit.com/godot) for a visual overview
 of installation and usage.
 
-The Plugin needs to be installed for each Godot project:
+The Plugin needs to be installed for each Godot project.
 
-1. **Download** `blendkit-godot_vX.Y.Z.zip` from [GitHub Releases](https://github.com/BlenderKit/bk_godot/releases)
-    - or [build](#building) your own from sources.
-2. **Extract** the ZIP into your Godot project root directory (where `project.godot` is located)
+### From the Godot Asset Store (recommended)
+
+In **Godot 4.7** and newer, use the built-in **Asset Store** tab:
+
+1. Search for **Blendkit**, click the plugin and press **Download**.
+2. Go to **Project → Project Settings... → Plugins** tab.
+3. Check **Enabled** for **Blendkit**.
+
+You can also browse the plugin on the
+[Godot Asset Store](https://store.godotengine.org/asset/blendkit/blendkit/) website.
+
+### From a ZIP archive
+
+Download the `blendkit-godot_vX.Y.Z.zip` archive from the
+[Godot Asset Store](https://store.godotengine.org/asset/blendkit/blendkit/)
+or [GitHub Releases](https://github.com/BlenderKit/bk_godot/releases)
+(or [build](#building) your own from sources), then:
+
+1. **Extract** the ZIP into your Godot project root directory (where `project.godot` is located)
     - **DO NOT** copy `addons/` or `addons/blendkit/` from this repo without
     [building](#building) Client binaries first.
-3. Open your project in **Godot Editor**, go to **Project → Project Settings... → Plugins** tab
-4. Check **Enabled** for **Blendkit**
+2. Open your project in **Godot Editor**, go to **Project → Project Settings... → Plugins** tab
+3. Check **Enabled** for **Blendkit**
 
 If installation succeeded, you should see a new **Blendkit** tab in the right
 panel dock (next to **Inspector**) as well as `Blendkit:` messages in editor
