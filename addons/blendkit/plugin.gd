@@ -544,7 +544,13 @@ func init_paths():
 
 
 func find_packed_client():
-	client_version = get_version_from_dir(client_base_dir)
+	var versions := list_client_versions(client_base_dir)
+	client_version = pick_highest_version(versions)
+	if versions.size() > 1:
+		var labeled := PackedStringArray()
+		for v in versions:
+			labeled.append("v" + v)
+		bk_log(LogLevel.WARNING, "Multiple Client binary folders found in %s (%s). There should be only one - using the highest version (v%s). Please consider a clean reinstall of the plugin: delete the addons/blendkit/ directory and unpack the latest version." % [client_base_dir, ", ".join(labeled), client_version])
 	client_bin_path = get_packed_client_binary_path()
 
 
@@ -652,22 +658,31 @@ static func get_client_binary_name() -> String:
 	return ""
 
 
-static func get_version_from_dir(base_dir: String) -> String:
+static func list_client_versions(base_dir: String) -> Array:
+	# Collect the version string of every "vX.Y.Z" client folder in base_dir.
+	var versions: Array[String] = []
 	var dir = DirAccess.open(base_dir)
 	if not dir:
-		return ""
+		return versions
 
 	dir.list_dir_begin()
 	var file_name = dir.get_next()
 	while file_name != "":
 		if dir.current_is_dir() and file_name.begins_with("v"):
-			var version = file_name.substr(1) # Remove 'v'
-			dir.list_dir_end()
-			return version
+			versions.append(file_name.substr(1)) # Remove 'v'
 		file_name = dir.get_next()
 
 	dir.list_dir_end()
-	return ""
+	return versions
+
+
+static func pick_highest_version(versions: Array) -> String:
+	# Return the highest version using the tolerant comparator, or "" if none.
+	var highest := ""
+	for v in versions:
+		if highest == "" or version_lt(highest, v):
+			highest = v
+	return highest
 
 
 static func parse_version_parts(version: String) -> Array:
