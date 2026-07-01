@@ -38,15 +38,23 @@ def shutdown_client(port: str) -> None:
 
 
 def find_godot_executable() -> str:
-    """Find the Godot executable in PATH."""
+    """Find the Godot executable."""
+    # Prefer explicit env vars (e.g. set by chickensoft-games/setup-godot).
+    # On Windows the action symlinks the binary without a `.exe` extension,
+    # so shutil.which() can't find it - but it exports these paths.
+    for env in ["GODOT4", "GODOT"]:
+        path = os.environ.get(env)
+        if path and os.path.isfile(path):
+            return path
     # Try common names for Godot 4.x
     for name in ["godot", "godot4", "Godot", "Godot4"]:
         path = shutil.which(name)
         if path:
             return path
     raise RuntimeError(
-        "Godot executable not found in PATH. "
-        "Install Godot 4.x and ensure it's available as 'godot' or 'godot4'."
+        "Godot executable not found. "
+        "Install Godot 4.x and ensure it's available as 'godot' or 'godot4' "
+        "(or set the GODOT/GODOT4 environment variable)."
     )
 
 
