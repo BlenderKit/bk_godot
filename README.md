@@ -101,6 +101,15 @@ If installation succeeded, you should see a new **Blendkit** tab in the right
 panel dock (next to **Inspector**) as well as `Blendkit:` messages in editor
 Output.
 
+### Upgrading
+
+Always do a **clean install** when upgrading to a new version:
+
+1. Delete the `addons/blendkit/` directory from your Godot project.
+2. Install the new version as usual (see above).
+
+This avoids stale files left over from the previous version.
+
 
 ## Usage
 
