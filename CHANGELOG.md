@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 - 2026-07-01
+
+Tiny bugfix release to remove harmless Warning on startup for good.
+
+### Changed
+
+- No more `invalid UID` warning when the plugin loads: the resource `.uid`
+  files were missing from the release archive, so Godot couldn't resolve
+  UIDs and fell back to text paths. They are now shipped with the plugin.
+
 ## 0.6.0 - 2026-07-01
 
 Major bugfix release ensuring compatibility with the new `blendkit.com` domain
