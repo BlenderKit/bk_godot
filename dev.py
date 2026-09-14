@@ -444,7 +444,7 @@ def test_e2e(verbose=False, filter=None, headed=False):
     """Run the Playwright end-to-end test against the live BlenderKit site."""
     print("# Running end-to-end tests (live site, needs network + Playwright)")
 
-    cmd = [sys.executable, "-m", "pytest", "-m", "e2e"]
+    cmd = [sys.executable, "-m", "pytest", "-m", "e2e", "-rs"]
 
     if verbose:
         cmd.append("-v")

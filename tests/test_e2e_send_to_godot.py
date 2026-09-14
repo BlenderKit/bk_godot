@@ -114,15 +114,8 @@ def _assert_expected_asset_page(page, response) -> None:
         or "performing security verification" in challenge_text
         or "verify you are human" in challenge_text
     )
-    reason = (
-        "Cloudflare served a bot challenge instead of the asset page."
-        if cloudflare_challenge
-        else "The response was not the expected Blendkit asset page."
-    )
-
     page.screenshot(path=FAILURE_SCREENSHOT, full_page=True)
-    pytest.fail(
-        f"{reason}\n"
+    diagnostics = (
         f"Navigation: HTTP {response.status if response is not None else 'unknown'} "
         f"-> {page.url}\n"
         f"Title: {page.title()!r}\n"
@@ -130,7 +123,16 @@ def _assert_expected_asset_page(page, response) -> None:
         f"cf-ray={headers.get('cf-ray')!r}\n"
         f"Expected #asset-base-id={ASSET_BASE_ID!r}; got {actual_asset_id!r}\n"
         f"Body excerpt: {body_excerpt!r}\n"
-        f"Screenshot: {FAILURE_SCREENSHOT}",
+        f"Screenshot: {FAILURE_SCREENSHOT}"
+    )
+    if cloudflare_challenge:
+        pytest.skip(
+            "Cloudflare served a bot challenge instead of the asset page.\n"
+            f"{diagnostics}"
+        )
+
+    pytest.fail(
+        f"The response was not the expected Blendkit asset page.\n{diagnostics}",
         pytrace=False,
     )
 
