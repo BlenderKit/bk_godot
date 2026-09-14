@@ -43,7 +43,7 @@ def ensure_godot_ignore(ignore_dir: str):
     if os.path.exists(gdignore_path):
         return
     os.makedirs(ignore_dir, exist_ok=True)
-    with open(gdignore_path, "w") as f:
+    with open(gdignore_path, "w"):
         pass  # empty file is sufficient
     print(f"Created {gdignore_path}")
 
@@ -392,7 +392,7 @@ def build_archive(result_dir=RESULT_DIR):
     print(f"Copying Plugin (filtered): {plugin_src} -> {plugin_dst}")
     shutil.copytree(plugin_src, plugin_dst, ignore=copytree_ignore)
 
-    print(f"Creating ZIP archive...")
+    print("Creating ZIP archive...")
     real_archive_path = shutil.make_archive(
         archive_base_path, "zip", result_dir, PLUGIN_SRC_DIR
     )
@@ -402,7 +402,7 @@ def build_archive(result_dir=RESULT_DIR):
         )
 
     archive_size = human_readable_size(os.path.getsize(archive_path))
-    print(f"✓ Blendkit Godot plugin archive DONE \\o/")
+    print("✓ Blendkit Godot plugin archive DONE \\o/")
     print(f"ZIP archive: {archive_path} ({archive_size})")
 
 
