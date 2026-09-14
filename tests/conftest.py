@@ -30,9 +30,7 @@ def shutdown_client(port: str) -> None:
     if not port:
         return
     try:
-        urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/shutdown", data=b"", timeout=5
-        )
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/shutdown", data=b"", timeout=5)
     except OSError:
         pass  # Client already gone or unreachable - nothing to clean up.
 
@@ -78,7 +76,8 @@ def run_godot_editor(godot_executable):
             godot_executable,
             "--headless",
             "--editor",
-            "--quit-after", str(quit_after),
+            "--quit-after",
+            str(quit_after),
             *extra_args,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -118,7 +117,8 @@ def running_godot(godot_executable):
             godot_executable,
             "--headless",
             "--editor",
-            "--path", PROJECT_DIR,
+            "--path",
+            PROJECT_DIR,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

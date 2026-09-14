@@ -49,15 +49,15 @@ CHROMIUM_ARGS = [
     "--allow-running-insecure-content",
     "--disable-features="
     "LocalNetworkAccessChecks,"  # Chrome 138+ "Access other apps and services"
-    "LocalNetworkAccess,"        # alternate name across builds (ignored if unknown)
+    "LocalNetworkAccess,"  # alternate name across builds (ignored if unknown)
     "BlockInsecurePrivateNetworkRequests,"
     "PrivateNetworkAccessSendPreflights,"
     "PrivateNetworkAccessRespectPreflightResults",
 ]
 
-BUTTON_TIMEOUT_MS = 60_000   # button appears after a bkclientjs poll (5s interval)
+BUTTON_TIMEOUT_MS = 60_000  # button appears after a bkclientjs poll (5s interval)
 GET_ASSET_TIMEOUT_MS = 30_000
-DOWNLOAD_TIMEOUT_S = 180      # Client downloads the asset bytes from the CDN
+DOWNLOAD_TIMEOUT_S = 180  # Client downloads the asset bytes from the CDN
 FAILURE_SCREENSHOT = os.path.join(os.path.dirname(__file__), "e2e_failure.png")
 
 
@@ -165,19 +165,21 @@ def test_send_to_godot_downloads_asset(running_godot, assets_dir):
             # Diagnostics: the Browser<->Client hop is the fragile part, so capture
             # console output and any traffic to the local Client to explain failures.
             console_msgs: list = []
-            page.on(
-                "console", lambda m: console_msgs.append(f"[{m.type}] {m.text}")
-            )
+            page.on("console", lambda m: console_msgs.append(f"[{m.type}] {m.text}"))
             local_net: list = []
             page.on(
                 "requestfailed",
-                lambda r: _is_local(r.url)
-                and local_net.append(f"FAILED {r.method} {r.url} :: {r.failure}"),
+                lambda r: (
+                    _is_local(r.url)
+                    and local_net.append(f"FAILED {r.method} {r.url} :: {r.failure}")
+                ),
             )
             page.on(
                 "response",
-                lambda r: _is_local(r.url)
-                and local_net.append(f"{r.status} {r.request.method} {r.url}"),
+                lambda r: (
+                    _is_local(r.url)
+                    and local_net.append(f"{r.status} {r.request.method} {r.url}")
+                ),
             )
 
             response = page.goto(ASSET_URL, wait_until="domcontentloaded")
@@ -212,14 +214,18 @@ def test_send_to_godot_downloads_asset(running_godot, assets_dir):
                     "could not reach the local Client.\n"
                     f"Screenshot: {FAILURE_SCREENSHOT}\n"
                     f"Local Client traffic ({len(local_net)} events):\n  "
-                    + ("\n  ".join(local_net) or "(none - the browser made no "
-                       "request to the Client at all)")
+                    + (
+                        "\n  ".join(local_net)
+                        or "(none - the browser made no request to the Client at all)"
+                    )
                     + "\nConsole (bkclientjs/widget/security):\n  "
                     + "\n  ".join(
-                        m for m in console_msgs
+                        m
+                        for m in console_msgs
                         if re.search(
                             r"client|software|widget|insecure|mixed|private|cors|blocked",
-                            m, re.I,
+                            m,
+                            re.I,
                         )
                     )
                 )
@@ -260,9 +266,7 @@ def _wait_for_download(assets_dir: str, before: set, timeout_s: int):
         if new:
             sizes = {f: os.path.getsize(f) for f in new}
             time.sleep(2)  # let an in-progress download settle
-            if all(
-                os.path.exists(f) and os.path.getsize(f) == sizes[f] for f in new
-            ):
+            if all(os.path.exists(f) and os.path.getsize(f) == sizes[f] for f in new):
                 return new
         time.sleep(2)
     return None
