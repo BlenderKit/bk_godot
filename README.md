@@ -255,20 +255,68 @@ Run `python dev.py` for a list of all available commands.
 | `clean` | Remove build artifacts (`out/` and client binaries) |
 | `set-version` | Set plugin version in `plugin.cfg` |
 | `test` | Run pytest tests |
+| `test-e2e` | Run the live browser-to-Godot end-to-end test |
 
 Run `./dev.py <command> --help` for command-specific options.
 
 
 ## Testing
 
-Run the test suite with:
+Install the development dependencies, build the plugin with its Client binaries,
+and make sure Godot 4 is available as `godot` or `godot4` (or through the
+`GODOT`/`GODOT4` environment variable):
+
+```sh
+pip install -r requirements-dev.txt
+./dev.py build
+```
+
+### Normal tests
+
+Run the default test suite with:
 
 ```sh
 ./dev.py test
 ```
 
-Tests use pytest with fixtures for running Godot in headless editor mode.
-Use `-v` for verbose output or `-k <pattern>` to filter tests.
+These tests use pytest and run Godot in headless editor mode. They do not access
+the live Blendkit website, and the live E2E test is excluded by default. Use
+`-v` for verbose output or `-k <pattern>` to select tests:
+
+```sh
+./dev.py test -v
+./dev.py test -k plugin_enables
+```
+
+### Live E2E test
+
+Install Playwright's Chromium browser once, then run the E2E suite:
+
+```sh
+playwright install chromium
+./dev.py test-e2e -v
+```
+
+On a fresh Linux system, `playwright install --with-deps chromium` also installs
+the required system packages.
+
+The E2E test starts Godot and the bundled Client, opens a real asset page on
+Blendkit.com in Chromium, clicks **Send to Godot**, and waits for the downloaded
+asset to appear in `bk_assets/`. It therefore requires internet access. Use
+`--headed` to watch the browser, or `-k <pattern>` to select E2E tests:
+
+```sh
+./dev.py test-e2e --headed
+```
+
+`BLENDERKIT_API_KEY` is optional and only needed when overriding the default
+free asset with one that requires authentication. `BLENDERKIT_E2E_SITE` and
+`BLENDERKIT_E2E_ASSET` can point the test at another deployment or asset.
+
+If Cloudflare serves its human-verification page to an automated runner, the
+test is reported as skipped and saves `tests/e2e_failure.png` for diagnostics.
+Other unexpected pages and failures in the browser-to-Client download flow
+still fail the test.
 
 
 ## Releasing
