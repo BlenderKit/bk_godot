@@ -35,7 +35,7 @@ SITE = os.environ.get("BLENDERKIT_E2E_SITE", "https://www.blenderkit.com")
 ASSET_BASE_ID = os.environ.get(
     "BLENDERKIT_E2E_ASSET", "ea0e17ae-f7c7-4768-bd6c-1255c67b17c6"
 )
-ASSET_URL = f"{SITE}/get-blenderkit/{ASSET_BASE_ID}/"
+ASSET_URL = f"{SITE}/get-blendkit/{ASSET_BASE_ID}/"
 
 # An HTTPS page (blenderkit.com) fetching the Client on http://127.0.0.1 is the
 # documented Browser<->Client "weak point": it trips browser mixed-content and
@@ -58,6 +58,7 @@ CHROMIUM_ARGS = [
 BUTTON_TIMEOUT_MS = 60_000   # button appears after a bkclientjs poll (5s interval)
 GET_ASSET_TIMEOUT_MS = 30_000
 DOWNLOAD_TIMEOUT_S = 180      # Client downloads the asset bytes from the CDN
+FAILURE_SCREENSHOT = os.path.join(os.path.dirname(__file__), "e2e_failure.png")
 
 
 def _is_local(url: str) -> bool:
@@ -91,6 +92,47 @@ def _dismiss_cookie_banner(page) -> None:
             # Wait for the dialog to go away so it can't intercept later clicks.
             dialog.wait_for(state="hidden", timeout=5_000)
             return
+
+
+def _assert_expected_asset_page(page, response) -> None:
+    """Fail early when navigation did not reach the requested asset page."""
+    asset_marker = page.locator("#asset-base-id").first
+    actual_asset_id = (
+        asset_marker.get_attribute("data-asset-base-id")
+        if asset_marker.count()
+        else None
+    )
+    if actual_asset_id == ASSET_BASE_ID:
+        return
+
+    headers = response.headers if response is not None else {}
+    body_text = " ".join(page.locator("body").inner_text().split())
+    body_excerpt = body_text[:500]
+    challenge_text = body_text.lower()
+    cloudflare_challenge = (
+        headers.get("cf-mitigated", "").lower() == "challenge"
+        or "performing security verification" in challenge_text
+        or "verify you are human" in challenge_text
+    )
+    reason = (
+        "Cloudflare served a bot challenge instead of the asset page."
+        if cloudflare_challenge
+        else "The response was not the expected Blendkit asset page."
+    )
+
+    page.screenshot(path=FAILURE_SCREENSHOT, full_page=True)
+    pytest.fail(
+        f"{reason}\n"
+        f"Navigation: HTTP {response.status if response is not None else 'unknown'} "
+        f"-> {page.url}\n"
+        f"Title: {page.title()!r}\n"
+        f"Cloudflare: cf-mitigated={headers.get('cf-mitigated')!r}, "
+        f"cf-ray={headers.get('cf-ray')!r}\n"
+        f"Expected #asset-base-id={ASSET_BASE_ID!r}; got {actual_asset_id!r}\n"
+        f"Body excerpt: {body_excerpt!r}\n"
+        f"Screenshot: {FAILURE_SCREENSHOT}",
+        pytrace=False,
+    )
 
 
 def _all_files(root: str) -> set:
@@ -138,7 +180,8 @@ def test_send_to_godot_downloads_asset(running_godot, assets_dir):
                 and local_net.append(f"{r.status} {r.request.method} {r.url}"),
             )
 
-            page.goto(ASSET_URL, wait_until="domcontentloaded")
+            response = page.goto(ASSET_URL, wait_until="domcontentloaded")
+            _assert_expected_asset_page(page, response)
             _dismiss_cookie_banner(page)
 
             # Expose the API key the way a logged-in page would, so the button's
@@ -163,12 +206,11 @@ def test_send_to_godot_downloads_asset(running_godot, assets_dir):
             try:
                 button.wait_for(state="visible", timeout=BUTTON_TIMEOUT_MS)
             except sync_api.TimeoutError:
-                shot = os.path.join(os.path.dirname(__file__), "e2e_failure.png")
-                page.screenshot(path=shot, full_page=True)
+                page.screenshot(path=FAILURE_SCREENSHOT, full_page=True)
                 pytest.fail(
                     "'Send to Godot' button never appeared - bkclientjs likely "
                     "could not reach the local Client.\n"
-                    f"Screenshot: {shot}\n"
+                    f"Screenshot: {FAILURE_SCREENSHOT}\n"
                     f"Local Client traffic ({len(local_net)} events):\n  "
                     + ("\n  ".join(local_net) or "(none - the browser made no "
                        "request to the Client at all)")
