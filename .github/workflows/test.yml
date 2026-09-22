@@ -39,7 +39,10 @@ jobs:
       - name: Install pytest
         run: pip install pytest
 
-      - name: Build Blendkit Godot Plugin
+      - name: Test standalone client packaging
+        run: python -m pytest tests/test_build.py -q
+
+      - name: Build Blendkit Godot Plugin (signed standalone release)
         run: python dev.py build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,7 +87,10 @@ jobs:
         if: runner.os != 'Linux'
         run: playwright install chromium
 
-      - name: Build Blendkit Godot Plugin
+      - name: Test standalone client packaging
+        run: python -m pytest tests/test_build.py -q
+
+      - name: Build Blendkit Godot Plugin (signed standalone release)
         run: python dev.py build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

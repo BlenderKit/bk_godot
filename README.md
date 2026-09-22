@@ -205,13 +205,22 @@ python dev.py build
 
 By default this builds from a **published client release**:
 
-- downloads the latest stable [Blendkit Client](https://github.com/BlenderKit/BlenderKit)
-release (the signed binaries) into `client-dist/` and verifies its sha256
+- downloads the latest stable patch in the supported
+[Blendkit Client](https://github.com/BlenderKit/bk_client) series as `bk_client.zip` into
+`client-dist/vX.Y.Z/` and verifies its version and manifest binary hashes
 (`./dev.py get-client-release`)
-- copies the client binaries into the plugin directory
+- stages all six platform binaries before replacing the installed client, and records
+the exact version in `addons/blendkit/client/RESOLVED_VERSION`
 - creates a distributable ZIP archive (`./dev.py build-archive`)
 
-Pin a specific release with `./dev.py build --tag vX.Y.Z`.
+Pin an exact supported client release with `./dev.py build --tag vX.Y.Z`.
+The API series is defined once in `plugin.gd` as `CLIENT_API_VERSION`.
+
+Use an already downloaded bundle with
+`./dev.py build --client-bundle /path/to/bk_client.zip`. Published Windows binaries
+are signed; macOS binaries are signed and notarized; Linux binaries are unsigned.
+Local builds and draft/testing workflow artifacts are unsigned. Manifest hashes
+check integrity; they do not independently authenticate the publisher.
 
 The distributable ZIP will be at `out/blendkit-godot_vX.Y.Z.zip`.
 
@@ -224,8 +233,28 @@ To compile the client yourself instead of using a release (requires **Go** and
 ./dev.py build --from-source
 ```
 
-This clones [Blendkit Client](https://github.com/BlenderKit/BlenderKit) into
-`BlenderKit/`, builds it with Go, and assembles the plugin.
+This clones [Blendkit Client](https://github.com/BlenderKit/bk_client) into
+`bk_client/`, builds an unsigned host-platform `out/vX.Y.Z/bk_client.zip`, and assembles a
+`_local-<os>-<arch>.zip` development archive. Current client sources use CGO and
+require a native C toolchain plus the platform libraries required by bk_client.
+The source version must belong to the supported API series.
+
+Use an existing sibling checkout with:
+
+```sh
+./dev.py build --from-source --client-dir ../bk_client
+```
+
+To install its previously built bundle without recompiling:
+`./dev.py build-plugin --client-dir ../bk_client`. Follow with
+`./dev.py build-archive --allow-partial-client` for a local archive.
+The default archive command requires all six platforms for distribution.
+
+At runtime Godot uses the resolved version and `bk_client-<os>-<arch>` executable.
+It normally copies that executable into `~/blenderkit_data/client/bin/vX.Y.Z/`,
+falling back to the bundled copy if the shared directory is unavailable. Discovery
+requires the supported API series and at least the bundled patch. Godot keeps its
+versioned `/godot/report` contract and unsubscribes without terminating a shared client.
 
 
 ## Development

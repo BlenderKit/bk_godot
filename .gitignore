@@ -1,5 +1,6 @@
 # client repo (cloned on-demand)
 /BlenderKit
+/bk_client
 # client releases (downloaded + extracted on-demand)
 /client-dist
 # client binaries (built on-demand)

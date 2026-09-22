@@ -5,10 +5,12 @@ import fnmatch
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 import zipfile
 
@@ -23,10 +25,16 @@ for _stream in (sys.stdout, sys.stderr):
 
 PLUGIN_SRC_DIR = "addons"
 PLUGIN_DIR = "blendkit"
-CLIENT_DIR = "BlenderKit"
-CLIENT_REPO_URL = "https://github.com/BlenderKit/BlenderKit.git"
+CLIENT_DIR = "bk_client"
+CLIENT_REPO_URL = "https://github.com/BlenderKit/bk_client.git"
 CLIENT_REPO_REF = "main"
-CLIENT_REPO = "BlenderKit/BlenderKit"
+CLIENT_REPO = "BlenderKit/bk_client"
+CLIENT_ASSET = "bk_client.zip"
+CLIENT_BINARIES = {
+    f"bk_client-{platform}-{arch}{suffix}"
+    for platform, suffix in (("windows", ".exe"), ("macos", ""), ("linux", ""))
+    for arch in ("x86_64", "arm64")
+}
 GITHUB_API = "https://api.github.com"
 CLIENT_DIST_DIR = "client-dist"
 USER_AGENT = "blendkit-godot-build"
@@ -50,6 +58,7 @@ def ensure_godot_ignore(ignore_dir: str):
 
 def build(
     from_source=False,
+    client_bundle=None,
     tag=None,
     client_dir=CLIENT_DIR,
     result_dir=RESULT_DIR,
@@ -60,12 +69,20 @@ def build(
     By default downloads signed client binaries from a published GitHub release.
     With --from-source, clones and compiles the client from source instead.
     """
-    if from_source:
+    if client_bundle and (from_source or tag):
+        raise ValueError(
+            "--client-bundle cannot be combined with --from-source or --tag"
+        )
+    if from_source and tag:
+        raise ValueError("--tag applies only to downloaded releases")
+    if client_bundle:
+        install_client_bundle(client_bundle)
+    elif from_source:
         build_client(client_dir=client_dir)
         build_plugin(client_dir=client_dir)
     else:
         get_client_release(tag=tag, dist_dir=dist_dir)
-    build_archive(result_dir=result_dir)
+    build_archive(result_dir=result_dir, allow_partial_client=from_source)
 
 
 def get_client_src():
@@ -95,194 +112,224 @@ def github_request(url):
     return urllib.request.Request(url, headers=headers)
 
 
+def client_api_version():
+    """Use the runtime's supported API series as the build pin."""
+    with open(os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR, "plugin.gd")) as f:
+        match = re.search(
+            r'^const CLIENT_API_VERSION = "(v\d+\.\d+)"', f.read(), re.MULTILINE
+        )
+    if not match:
+        raise ValueError("Missing CLIENT_API_VERSION in plugin.gd")
+    return match[1]
+
+
+def validate_client_version(tag):
+    if not isinstance(tag, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+        raise ValueError(f"Invalid client version: {tag!r}")
+    if tag.rsplit(".", 1)[0] != client_api_version():
+        raise ValueError(f"Client {tag} is incompatible with {client_api_version()}")
+    return tag
+
+
 def fetch_release_meta(tag=None):
-    """Fetch release metadata from the GitHub API (latest stable if no tag)."""
+    """Resolve the newest stable patch in the supported series, or an exact tag."""
+    base = f"{GITHUB_API}/repos/{CLIENT_REPO}/releases"
     if tag:
-        url = f"{GITHUB_API}/repos/{CLIENT_REPO}/releases/tags/{tag}"
-    else:
-        url = f"{GITHUB_API}/repos/{CLIENT_REPO}/releases/latest"
-    print(f"Fetching release metadata: {url}")
-    with urllib.request.urlopen(github_request(url)) as resp:
-        return json.load(resp)
+        validate_client_version(tag)
+        with urllib.request.urlopen(
+            github_request(f"{base}/tags/{tag}"), timeout=60
+        ) as resp:
+            release = json.load(resp)
+        if (
+            release.get("draft")
+            or release.get("prerelease")
+            or release["tag_name"] != tag
+        ):
+            raise ValueError(f"Not a stable release: {tag}")
+        return release
+    candidates = []
+    page = 1
+    while True:
+        with urllib.request.urlopen(
+            github_request(f"{base}?per_page=100&page={page}"), timeout=60
+        ) as resp:
+            releases = json.load(resp)
+        for release in releases:
+            if release.get("draft") or release.get("prerelease"):
+                continue
+            try:
+                validate_client_version(release.get("tag_name"))
+            except ValueError:
+                continue
+            candidates.append(release)
+        if len(releases) < 100:
+            break
+        page += 1
+    if not candidates:
+        raise ValueError(f"No stable {client_api_version()} release found")
+    return max(candidates, key=lambda r: tuple(map(int, r["tag_name"][1:].split("."))))
 
 
 def download_file(url, dest):
-    """Download a URL to a local file."""
+    """Only publish a cache entry after its download completes."""
     print(f"Downloading {url}")
-    with urllib.request.urlopen(github_request(url)) as resp, open(dest, "wb") as f:
-        shutil.copyfileobj(resp, f)
-    print(f"Saved: {dest}")
-
-
-def verify_sha256(file_path, sha256_url):
-    """Verify a file against a sha256sum-format checksum asset."""
-    print("Verifying sha256 checksum...")
-    with urllib.request.urlopen(github_request(sha256_url)) as resp:
-        expected = resp.read().decode().split()[0].strip()
-
-    digest = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    actual = digest.hexdigest()
-
-    if actual != expected:
-        print("sha256 mismatch, exiting!")
-        print(f"  expected: {expected}")
-        print(f"  actual:   {actual}")
-        sys.exit(1)
-    print(f"✓ sha256 verified: {actual}")
-
-
-def find_release_client_bin_dir(extract_dir):
-    """Find the client binaries directory inside an extracted release."""
-    return latest_version_dir(os.path.join(extract_dir, "blenderkit", "client"))
+    partial = dest + ".part"
+    try:
+        with urllib.request.urlopen(github_request(url), timeout=60) as resp, open(
+            partial, "wb"
+        ) as f:
+            shutil.copyfileobj(resp, f)
+        os.replace(partial, dest)
+    finally:
+        if os.path.exists(partial):
+            os.remove(partial)
 
 
 def get_client_release(tag=None, dist_dir=CLIENT_DIST_DIR):
-    """Download a Blendkit Client release and install its binaries into the Plugin."""
-    print("# Getting Blendkit Client release")
     meta = fetch_release_meta(tag)
-    release_tag = meta["tag_name"]
-    print(f"Release: {release_tag}")
-
+    release_tag = validate_client_version(meta["tag_name"])
     assets = {a["name"]: a["browser_download_url"] for a in meta.get("assets", [])}
-    zip_names = [n for n in assets if n.endswith(".zip")]
-    if not zip_names:
-        print(f"No .zip asset found in release {release_tag}, exiting.")
-        sys.exit(1)
-    zip_name = zip_names[0]
-
-    os.makedirs(dist_dir, exist_ok=True)
+    if CLIENT_ASSET not in assets:
+        raise ValueError(f"Release {release_tag} has no {CLIENT_ASSET}")
     ensure_godot_ignore(dist_dir)
-    zip_path = os.path.join(dist_dir, zip_name)
-
-    if os.path.exists(zip_path):
-        print(f"Release archive already downloaded: {zip_path}")
-    else:
-        download_file(assets[zip_name], zip_path)
-
-    if "sha256" in assets:
-        verify_sha256(zip_path, assets["sha256"])
-    else:
-        print("Warning: no sha256 asset in release, skipping verification.")
-
-    extract_dir = os.path.join(dist_dir, release_tag)
-    if os.path.exists(extract_dir):
-        shutil.rmtree(extract_dir)
-    print(f"Extracting {zip_name} -> {extract_dir}")
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(extract_dir)
-
-    client_bin_dir = find_release_client_bin_dir(extract_dir)
-    install_client_binaries(client_bin_dir)
+    cache_dir = os.path.join(dist_dir, release_tag)
+    os.makedirs(cache_dir, exist_ok=True)
+    zip_path = os.path.join(cache_dir, CLIENT_ASSET)
+    if not os.path.isfile(zip_path):
+        download_file(assets[CLIENT_ASSET], zip_path)
+    print(f"Installing Client {release_tag} from {zip_path}")
+    install_client_bundle(zip_path, expected_version=release_tag)
 
 
-def build_client(client_dir=CLIENT_DIR):
-    """Build Blendkit Client using its dev.py build script."""
-    if client_dir == CLIENT_DIR:
-        get_client_src()
-    print("# Building Blendkit Client with GO")
-    subprocess.run(
-        ["python3", "dev.py", "build"],
-        cwd=client_dir,
-        check=True,
+def validate_client_directory(directory, expected_version=None, require_all=True):
+    """Check metadata and every manifest binary before installation or shipping."""
+    with open(os.path.join(directory, "VERSION")) as f:
+        version = validate_client_version("v" + f.read().strip())
+    if expected_version is not None and version != expected_version:
+        raise ValueError(f"Client VERSION {version} does not match {expected_version}")
+    with open(os.path.join(directory, "manifest.json")) as f:
+        manifest = json.load(f)
+    if manifest.get("name") != "bk_client" or manifest.get("version") != version[1:]:
+        raise ValueError("Client manifest name/version mismatch")
+    seen = set()
+    for entry in manifest.get("binaries", []):
+        name = entry["filename"]
+        if (
+            name not in CLIENT_BINARIES | {"bk_client-windows7-x86_64.exe"}
+            or name in seen
+        ):
+            raise ValueError(f"Unexpected or duplicate binary: {name}")
+        seen.add(name)
+        with open(os.path.join(directory, name), "rb") as f:
+            digest = hashlib.sha256()
+            size = 0
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        if size != entry["size"] or digest.hexdigest() != entry["sha256"]:
+            raise ValueError(f"Client checksum/size mismatch: {name}")
+    present = {name for name in os.listdir(directory) if name.startswith("bk_client-")}
+    if present != seen:
+        raise ValueError("Client binaries do not match manifest entries")
+    required = CLIENT_BINARIES if require_all else {host_client_binary()}
+    if not required <= seen:
+        raise ValueError(f"Missing client binaries: {sorted(required - seen)}")
+    return version, seen
+
+
+def host_client_binary():
+    os_name = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}.get(
+        platform.system()
     )
+    arch = platform.machine().lower()
+    arch = {"amd64": "x86_64", "aarch64": "arm64"}.get(arch, arch)
+    suffix = ".exe" if os_name == "windows" else ""
+    name = f"bk_client-{os_name}-{arch}{suffix}"
+    if name not in CLIENT_BINARIES:
+        raise ValueError(f"Unsupported host platform: {name}")
+    return name
 
 
-def copy_client_binaries(binaries_path: str, result_dir=RESULT_DIR):
-    """Copy client binaries from source path to result directory."""
-    print(f"Copying Client binaries: {binaries_path} -> {result_dir}")
-    if not os.path.exists(binaries_path):
-        print(f"Client binaries path {binaries_path} does not exist, exiting.")
-        sys.exit(1)
-    if not os.path.isdir(binaries_path):
-        print(f"Client binaries path {binaries_path} is not a directory, exiting.")
-        sys.exit(1)
-
-    client_version = os.path.basename(os.path.normpath(binaries_path))
-    target_dir = os.path.join(result_dir, "client", client_version)
-    os.makedirs(target_dir, exist_ok=True)
-
-    files = os.listdir(binaries_path)
-    if not files:
-        print(f"No Client binaries found in {binaries_path}, exiting.")
-        sys.exit(1)
-
-    client_files = [f for f in files if f.startswith("blenderkit-client")]
-    for file_name in client_files:
-        source_file = os.path.join(binaries_path, file_name)
-        target_file = os.path.join(target_dir, file_name)
-        shutil.copy2(source_file, target_file)
-        # zip extraction drops the executable bit; restore it for the binaries
-        # (harmless for the Windows .exe files)
-        mode = os.stat(target_file).st_mode
-        os.chmod(target_file, mode | 0o111)
-        print(f"Copied: {target_file}")
-
-    print(
-        f"{len(client_files)} Blendkit Client {client_version} binaries copied: {binaries_path} -> {target_dir}"
-    )
+def install_client_bundle(bundle, expected_version=None, require_all=True):
+    """Stage an allowlisted bundle; keep the previous installation on failure."""
+    parent = os.path.dirname(PLUGIN_CLIENT_DIR)
+    os.makedirs(parent, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".client-stage-", dir=parent) as stage:
+        unpacked = os.path.join(stage, "unpacked")
+        os.mkdir(unpacked)
+        allowed = CLIENT_BINARIES | {
+            "bk_client-windows7-x86_64.exe",
+            "VERSION",
+            "manifest.json",
+        }
+        with zipfile.ZipFile(bundle) as zf:
+            seen = set()
+            for member in zf.infolist():
+                if member.filename not in allowed:
+                    continue
+                if member.filename in seen or member.is_dir():
+                    raise ValueError(
+                        f"Duplicate/invalid bundle member: {member.filename}"
+                    )
+                seen.add(member.filename)
+                with zf.open(member) as src, open(
+                    os.path.join(unpacked, member.filename), "wb"
+                ) as dst:
+                    shutil.copyfileobj(src, dst)
+        version, binaries = validate_client_directory(
+            unpacked, expected_version, require_all
+        )
+        for name in binaries:
+            os.chmod(os.path.join(unpacked, name), 0o755)
+        staged_client = os.path.join(stage, "client")
+        os.mkdir(staged_client)
+        os.replace(unpacked, os.path.join(staged_client, version))
+        with open(os.path.join(staged_client, "RESOLVED_VERSION"), "w") as f:
+            f.write(version + "\n")
+        sync_license()
+        backup = os.path.join(stage, "previous")
+        had_previous = os.path.exists(PLUGIN_CLIENT_DIR)
+        if had_previous:
+            os.replace(PLUGIN_CLIENT_DIR, backup)
+        try:
+            os.replace(staged_client, PLUGIN_CLIENT_DIR)
+        except OSError:
+            if had_previous:
+                os.replace(backup, PLUGIN_CLIENT_DIR)
+            raise
+    print(f"✓ Installed {len(binaries)} Client {version} binaries")
+    if not require_all:
+        print("Local development bundle: unsigned; may support only this platform.")
 
 
 def sync_license():
-    """Copy the authoritative root LICENSE into the plugin directory."""
     plugin_license = os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR, "LICENSE")
     shutil.copy2("LICENSE", plugin_license)
-    print(f"✓ LICENSE synced to {plugin_license}")
 
 
-def install_client_binaries(client_bin_dir):
-    """Copy a located set of client binaries into the plugin directory (in-place)."""
-    client_version = os.path.basename(os.path.normpath(client_bin_dir))
-    plugin_dir = os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR)
-
-    print(f"Client binaries dir: {client_bin_dir}")
-    print(f"Client version: {client_version[1:]}")
-    print(f"Target dir: {PLUGIN_CLIENT_DIR}/{client_version}")
-    print()
-
-    # Drop any previously installed client version so exactly one ships
-    if os.path.exists(PLUGIN_CLIENT_DIR):
-        shutil.rmtree(PLUGIN_CLIENT_DIR)
-
-    sync_license()
-    copy_client_binaries(client_bin_dir, plugin_dir)
-
-    print(f"✓ Client binaries copied to {PLUGIN_CLIENT_DIR}")
-
-
-def build_plugin(client_dir=CLIENT_DIR):
-    """Copy locally built client binaries into the plugin directory (in-place)."""
-    print("# Copying Client binaries into Plugin")
-
+def build_client(client_dir=CLIENT_DIR):
+    """Build an unsigned, host-platform bundle from standalone client sources."""
+    if client_dir == CLIENT_DIR:
+        get_client_src()
+    print("# Building local Client (unsigned)")
     try:
-        client_bin_dir = find_client_bin_dir(client_dir)
-    except (FileNotFoundError, OSError):
-        print(f"Error: Client binaries not found in {client_dir}")
-        print("Run './dev.py build-client' first.")
-        sys.exit(1)
-
-    install_client_binaries(client_bin_dir)
-
-
-def latest_version_dir(base_dir):
-    """Return the highest 'vX.Y.Z' subdirectory of base_dir."""
-    dirs = [
-        d
-        for d in os.listdir(base_dir)
-        if d.startswith("v") and os.path.isdir(os.path.join(base_dir, d))
-    ]
-    if not dirs:
-        raise FileNotFoundError(f"No client binaries found in {base_dir}")
-    # sort desc in unlikely case there are multiple versions
-    dirs.sort(reverse=True)
-    return os.path.join(base_dir, dirs[0])
+        subprocess.run([sys.executable, "dev.py", "build"], cwd=client_dir, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Client source build failed in {client_dir}; see the upstream error above. "
+            "Use the default published-release build until the source build is fixed."
+        ) from exc
 
 
-def find_client_bin_dir(client_dir=CLIENT_DIR):
-    """Find the latest client binaries directory in the client build output."""
-    return latest_version_dir(os.path.join(client_dir, "out", "blenderkit", "client"))
+def build_plugin(client_dir=CLIENT_DIR, client_bundle=None):
+    """Install a local bundle, or the exact version built by the source checkout."""
+    if client_bundle:
+        install_client_bundle(client_bundle)
+        return
+    with open(os.path.join(client_dir, "client", "VERSION")) as f:
+        version = validate_client_version("v" + f.read().strip())
+    bundle = os.path.join(client_dir, "out", version, CLIENT_ASSET)
+    install_client_bundle(bundle, expected_version=version, require_all=False)
 
 
 def get_archive_base_name(version: str) -> str:
@@ -337,42 +384,29 @@ def copytree_ignore(directory, files):
     return ignored
 
 
-def find_plugin_client_bin_dir():
-    """Find the client binaries directory within the plugin."""
-    if not os.path.exists(PLUGIN_CLIENT_DIR):
-        return None
-    dirs = [
-        d
-        for d in os.listdir(PLUGIN_CLIENT_DIR)
-        if d.startswith("v") and os.path.isdir(os.path.join(PLUGIN_CLIENT_DIR, d))
-    ]
-    if not dirs:
-        return None
-    dirs.sort(reverse=True)
-    return os.path.join(PLUGIN_CLIENT_DIR, dirs[0])
+def find_plugin_client_bin_dir(require_all=True):
+    with open(os.path.join(PLUGIN_CLIENT_DIR, "RESOLVED_VERSION")) as f:
+        version = validate_client_version(f.read().strip())
+    versions = [name for name in os.listdir(PLUGIN_CLIENT_DIR) if name.startswith("v")]
+    if versions != [version]:
+        raise ValueError("Expected exactly one installed client version")
+    directory = os.path.join(PLUGIN_CLIENT_DIR, version)
+    validate_client_directory(directory, version, require_all)
+    return directory
 
 
-def build_archive(result_dir=RESULT_DIR):
+def build_archive(result_dir=RESULT_DIR, allow_partial_client=False):
     """Create a filtered ZIP archive of the plugin."""
     print("# Creating Plugin archive")
 
-    # Check that client binaries exist
-    client_bin_dir = find_plugin_client_bin_dir()
-    if not client_bin_dir:
-        print(f"Error: Client binaries not found at {PLUGIN_CLIENT_DIR}")
-        print("Run './dev.py build' or './dev.py build-plugin' first.")
-        sys.exit(1)
-
-    client_files = [
-        f for f in os.listdir(client_bin_dir) if f.startswith("blenderkit-client")
-    ]
-    if not client_files:
-        print(f"Error: No client binaries found in {client_bin_dir}")
-        print("Run './dev.py build' or './dev.py build-plugin' first.")
-        sys.exit(1)
+    find_plugin_client_bin_dir(require_all=not allow_partial_client)
 
     plugin_version = get_plugin_version()
     archive_base_name = get_archive_base_name(plugin_version)
+    if allow_partial_client:
+        archive_base_name += "_local-" + host_client_binary().removeprefix(
+            "bk_client-"
+        ).removesuffix(".exe")
     plugin_out_dir = os.path.join(result_dir, PLUGIN_SRC_DIR)
     archive_base_path = os.path.join(result_dir, archive_base_name)
     archive_path = archive_base_path + ".zip"
@@ -505,7 +539,7 @@ parser_build.add_argument(
     type=str,
     default=None,
     dest="tag",
-    help="Release tag to use (e.g. v3.19.2.260411). Defaults to latest stable.",
+    help="Exact client tag (e.g. v1.12.13). Defaults to latest stable supported patch.",
 )
 parser_build.add_argument(
     "-d",
@@ -532,6 +566,11 @@ parser_build.add_argument(
     help="Output directory for the archive.",
 )
 
+parser_build.add_argument(
+    "--client-bundle",
+    help="Install a predownloaded bk_client.zip instead of downloading.",
+)
+
 # COMMAND: get-client-release
 parser_get_client_release = subparsers.add_parser(
     "get-client-release",
@@ -549,7 +588,7 @@ parser_get_client_release.add_argument(
     type=str,
     default=None,
     dest="tag",
-    help="Release tag to use (e.g. v3.19.2.260411). Defaults to latest stable.",
+    help="Exact client tag (e.g. v1.12.13). Defaults to latest stable supported patch.",
 )
 parser_get_client_release.add_argument(
     "-d",
@@ -603,6 +642,10 @@ parser_build_plugin.add_argument(
     help="Path to Blendkit Client sources.",
 )
 
+parser_build_plugin.add_argument(
+    "--client-bundle", help="Path to a prebuilt bk_client.zip."
+)
+
 # COMMAND: build-archive
 parser_build_archive = subparsers.add_parser(
     "build-archive",
@@ -618,6 +661,12 @@ parser_build_archive.add_argument(
     default=RESULT_DIR,
     dest="result_dir",
     help="Output directory for the archive.",
+)
+
+parser_build_archive.add_argument(
+    "--allow-partial-client",
+    action="store_true",
+    help="Create a local development archive requiring only this host platform.",
 )
 
 # COMMAND: clean
@@ -708,7 +757,17 @@ def main():
 
     # Extract kwargs for command function, excluding parser internals
     kwargs = {k: v for k, v in vars(args).items() if k not in ("command", "func")}
-    args.func(**kwargs)
+    try:
+        args.func(**kwargs)
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        RuntimeError,
+        subprocess.CalledProcessError,
+        zipfile.BadZipFile,
+    ) as exc:
+        parser.exit(1, f"Error: {exc}\n")
 
 
 if __name__ == "__main__":

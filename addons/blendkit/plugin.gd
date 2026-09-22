@@ -2,8 +2,8 @@
 extends EditorPlugin
 
 const SERVER = "https://blendkit.com"
-const CLIENT_PORTS = ["62485", "65425", "55428"]
-#const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "5152", "1234"]
+const CLIENT_API_VERSION = "v1.12"
+const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "5152", "1234"]
 const RESOLUTION_OPTIONS = ["", "ORIGINAL", "resolution_4K", "resolution_2K", "resolution_1K", "resolution_0_5K"]
 const WAIT_OK: float = 0.8
 const WAIT_EXPLORING: float = 0.2
@@ -274,6 +274,7 @@ func start_client(port: String):
 		return
 
 	ensure_dir_structure() # so log's directory exists
+	install_shared_client()
 	var log_path = get_client_log_path(port)
 	var godot_pid = str(OS.get_process_id())
 	var client_pid: int = 0
@@ -288,14 +289,15 @@ func start_client(port: String):
 		client_pid = OS.create_process("cmd.exe", ["/C", command_str])
 	elif OS.has_feature("macos") or OS.has_feature("linux"):
 		# The executable bit may be lost on extraction (e.g. when installed via the Godot Asset Store), so ensure it is set before launching
-		command_str = 'chmod u+x "%s" && %s -port %s -server %s -software Godot -pid %s > "%s" 2>&1 &' % [client_bin_path, client_bin_path, port, SERVER, godot_pid, log_path]
-		client_pid = OS.create_process("/bin/sh", ["-c", command_str])
+		command_str = 'chmod u+x "$1" && exec "$1" -port "$2" -server "$3" -software Godot -pid "$4" > "$5" 2>&1'
+		# Positional arguments keep spaces and shell metacharacters literal.
+		client_pid = OS.create_process("/bin/sh", ["-c", command_str, "bk_client", client_bin_path, port, SERVER, godot_pid, log_path])
 	else:
 		bk_log(LogLevel.ERROR, "Could not start client: Unsupported OS. Only Windows, MacOS and Linux are supported.")
 		fail("unsupported OS")
 		return
 
-	if client_pid == 0:
+	if client_pid <= 0:
 		bk_log(LogLevel.ERROR, "Failed to start the Blendkit Client.")
 		bk_log(LogLevel.DEBUG, "Failed command: %s" % command_str)
 		fail("client start failed")
@@ -352,7 +354,7 @@ func on_timer_timeout():
 	if state == State.EXPLORING:
 		bk_log(LogLevel.VERBOSE, "Exploring port %s..." % port)
 
-	var url = "http://127.0.0.1:" + port + "/godot/report"
+	var url = "http://127.0.0.1:" + port + "/" + CLIENT_API_VERSION + "/godot/report"
 	var headers = ["Content-Type: application/json"]
 	var data = {
 		"name": "Godot",
@@ -392,12 +394,10 @@ func on_request_completed(result, response_code, _headers, body):
 		if typeof(data) == TYPE_DICTIONARY:
 			if state != State.CONNECTED:
 				var found_version := str(data.get("client_version", ""))
-				# Skip a discovered Client that is older than the one we bundle.
-				# Only while exploring - a Client we started ourselves matches the
-				# bundled version and must never be rejected here.
-				if state == State.EXPLORING and version_lt(found_version, client_version):
+				# Require the supported API series and at least the bundled patch.
+				if not is_compatible_client(found_version, client_version):
 					var found_label := found_version if found_version else "(unknown)"
-					bk_log(LogLevel.INFO, "Skipping Client v%s on port %s: older than required v%s" % [found_label, port, client_version])
+					bk_log(LogLevel.INFO, "Skipping Client v%s on port %s: incompatible with required v%s" % [found_label, port, client_version])
 					if not taken_ports.has(port):
 						taken_ports.append(port)
 					request_failed()
@@ -419,6 +419,9 @@ func on_request_completed(result, response_code, _headers, body):
 		bk_log(LogLevel.WARNING, "Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
 
 	if state == State.EXPLORING:
+		# Any HTTP response means the port is occupied, including a different API series.
+		if response_code > 0 and not taken_ports.has(port):
+			taken_ports.append(port)
 		bk_log(LogLevel.VERBOSE, "Client not found on port %s" % port)
 	elif response_code != 200:
 		bk_log(LogLevel.WARNING, "Request on port %s failed (response_code=%d)" % [port, response_code])
@@ -474,7 +477,7 @@ func choose_start_port() -> String:
 	if not taken_ports.has(desired):
 		return desired
 
-	bk_log(LogLevel.INFO, "Desired port %s is occupied by an older Client, choosing another port..." % desired)
+	bk_log(LogLevel.INFO, "Desired port %s is occupied by an incompatible Client, choosing another port..." % desired)
 	for i in port_option_button.item_count:
 		var candidate := port_option_button.get_item_text(i)
 		if not taken_ports.has(candidate):
@@ -486,7 +489,7 @@ func choose_start_port() -> String:
 
 
 func send_unsubscribe():
-	var url = "http://127.0.0.1:" + port + "/godot/unsubscribe_addon"
+	var url = "http://127.0.0.1:" + port + "/" + CLIENT_API_VERSION + "/addons/unsubscribe"
 	var headers = ["Content-Type: application/json"]
 	var data = JSON.stringify({"app_id": OS.get_process_id()})
 	bk_log(LogLevel.INFO, "Disconnecting from Client on port %s" % port)
@@ -544,14 +547,46 @@ func init_paths():
 
 
 func find_packed_client():
-	var versions := list_client_versions(client_base_dir)
-	client_version = pick_highest_version(versions)
-	if versions.size() > 1:
-		var labeled := PackedStringArray()
-		for v in versions:
-			labeled.append("v" + v)
-		bk_log(LogLevel.WARNING, "Multiple Client binary folders found in %s (%s). There should be only one - using the highest version (v%s). Please consider a clean reinstall of the plugin: delete the addons/blendkit/ directory and unpack the latest version." % [client_base_dir, ", ".join(labeled), client_version])
+	client_version = ""
+	var marker := client_base_dir.path_join("RESOLVED_VERSION")
+	if FileAccess.file_exists(marker):
+		var resolved := FileAccess.get_file_as_string(marker).strip_edges()
+		if resolved.begins_with("v") and is_valid_client_version(resolved.substr(1)):
+			client_version = resolved.substr(1)
+		else:
+			bk_log(LogLevel.ERROR, "Invalid Client RESOLVED_VERSION: %s" % resolved)
+	else:
+		client_version = pick_highest_version(list_client_versions(client_base_dir))
 	client_bin_path = get_packed_client_binary_path()
+
+
+func install_shared_client():
+	# Run outside the project so a running executable does not block plugin updates.
+	var target_dir := client_data_dir.path_join("bin").path_join("v" + client_version)
+	var target := target_dir.path_join(client_bin_name)
+	if FileAccess.file_exists(target) and FileAccess.get_sha256(target) == FileAccess.get_sha256(client_bin_path):
+		client_bin_path = target
+		return
+	if DirAccess.make_dir_recursive_absolute(target_dir) == OK:
+		# Stage per process before replacing an outdated shared copy.
+		var temporary := target + "." + str(OS.get_process_id()) + ".tmp"
+		if DirAccess.copy_absolute(client_bin_path, temporary) == OK:
+			if DirAccess.rename_absolute(temporary, target) == OK:
+				client_bin_path = target
+				return
+			DirAccess.remove_absolute(temporary)
+	bk_log(LogLevel.WARNING, "Shared Client installation unavailable; running bundled executable")
+
+
+static func is_valid_client_version(version: String) -> bool:
+	var regex := RegEx.new()
+	regex.compile("^" + CLIENT_API_VERSION.substr(1).replace(".", "\\.") + "\\.[0-9]+$")
+	return regex.search(version) != null
+
+
+static func is_compatible_client(found: String, required: String) -> bool:
+	# Require the supported API series and at least the bundled patch.
+	return is_valid_client_version(found) and not version_lt(found, required)
 
 
 func init_ui():
@@ -562,6 +597,9 @@ func init_ui():
 	status_icon = docked_menu_scene.get_node("StatusRow/StatusIcon")
 	status_label = docked_menu_scene.get_node("StatusRow/StatusLabel")
 	port_option_button = docked_menu_scene.get_node("Port/OptionButton")
+	port_option_button.clear()
+	for client_port in CLIENT_PORTS:
+		port_option_button.add_item(client_port)
 	version_label = docked_menu_scene.get_node("DocsContainer/Version")
 	version_label.text = "Blendkit v%s" % get_addon_version()
 	browse_assets_button = docked_menu_scene.get_node("BrowseAssets")
@@ -650,11 +688,11 @@ static func get_client_data_dir():
 static func get_client_binary_name() -> String:
 	var arch = Engine.get_architecture_name()
 	if OS.has_feature("windows"):
-		return "blenderkit-client-windows-" + arch + ".exe"
+		return "bk_client-windows-" + arch + ".exe"
 	if OS.has_feature("macos"):
-		return "blenderkit-client-macos-" + arch
+		return "bk_client-macos-" + arch
 	if OS.has_feature("linux"):
-		return "blenderkit-client-linux-" + arch
+		return "bk_client-linux-" + arch
 	return ""
 
 
@@ -668,7 +706,7 @@ static func list_client_versions(base_dir: String) -> Array:
 	dir.list_dir_begin()
 	var file_name = dir.get_next()
 	while file_name != "":
-		if dir.current_is_dir() and file_name.begins_with("v"):
+		if dir.current_is_dir() and file_name.begins_with("v") and is_valid_client_version(file_name.substr(1)) and FileAccess.file_exists(base_dir.path_join(file_name).path_join(get_client_binary_name())):
 			versions.append(file_name.substr(1)) # Remove 'v'
 		file_name = dir.get_next()
 

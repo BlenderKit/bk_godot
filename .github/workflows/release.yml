@@ -33,7 +33,13 @@ jobs:
         if: github.event.inputs.version != ''
         run: python dev.py set-version ${{ github.event.inputs.version }}
 
-      - name: Build Plugin
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Test standalone client packaging
+        run: python -m pytest tests/test_build.py -q
+
+      - name: Build Plugin (signed standalone release)
         run: python dev.py build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures for Blendkit Godot plugin tests."""
 
+import json
 import os
 import re
 import shutil
@@ -20,19 +21,18 @@ CLIENT_CONNECTED_RE = re.compile(
 )
 
 
-def shutdown_client(port: str) -> None:
-    """Ask the Blendkit Client on ``port`` to exit, gracefully.
-
-    Each test spawns its own Client. When Godot is killed it cannot always
-    unsubscribe, so the Client would otherwise linger ~60s (until its heartbeat
-    timeout) before shutting down. Its /shutdown endpoint exits it immediately.
-    """
+def unsubscribe_client(port: str, app_id: int) -> None:
+    """Remove only the test editor's subscription; other plugins may share it."""
     if not port:
         return
     try:
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/shutdown", data=b"", timeout=5)
+        urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/addons/unsubscribe",
+            data=json.dumps({"app_id": app_id}).encode(),
+            timeout=5,
+        ).close()
     except OSError:
-        pass  # Client already gone or unreachable - nothing to clean up.
+        pass
 
 
 def find_godot_executable() -> str:
@@ -80,10 +80,19 @@ def run_godot_editor(godot_executable):
             str(quit_after),
             *extra_args,
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        with subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        ) as proc:
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                raise
+            result = subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
         m = CLIENT_CONNECTED_RE.search(result.stdout)
         if m:
-            shutdown_client(m.group("port"))
+            unsubscribe_client(m.group("port"), proc.pid)
         return result
 
     return _run
@@ -163,6 +172,5 @@ def running_godot(godot_executable):
             proc.kill()
             proc.wait(timeout=10)
         reader.join(timeout=5)
-        # Godot is gone now, so shutting down its Client won't trigger a
-        # reconnect that spawns a new one.
-        shutdown_client(info.get("port"))
+        # Remove this editor without terminating a shared Client.
+        unsubscribe_client(info.get("port"), proc.pid)
