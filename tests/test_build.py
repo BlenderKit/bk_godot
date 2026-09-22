@@ -173,7 +173,10 @@ def test_release_selection_numeric_stable_series(workspace, monkeypatch):
     assert dev.fetch_release_meta()["tag_name"] == "v1.12.13"
 
 
-def test_local_source_uses_exact_version_bundle(workspace, tmp_path, monkeypatch):
+@pytest.mark.parametrize("from_source", [False, True])
+def test_local_source_uses_exact_version_bundle(
+    workspace, tmp_path, monkeypatch, from_source
+):
     source = tmp_path / "source checkout"
     (source / "client").mkdir(parents=True)
     (source / "client/VERSION").write_text("1.12.13")
@@ -188,11 +191,44 @@ def test_local_source_uses_exact_version_bundle(workspace, tmp_path, monkeypatch
         )
 
     monkeypatch.setattr(dev.subprocess, "run", compile_client)
-    dev.build(from_source=True, client_dir=str(source))
+    args = dev.parser.parse_args(
+        ["build", "--client-dir", str(source)]
+        + (["--from-source"] if from_source else [])
+    )
+    dev.build(from_source=args.from_source, client_dir=args.client_dir)
     assert (workspace / "client/RESOLVED_VERSION").read_text() == "v1.12.13\n"
     assert list(Path("out").glob("*_local-*.zip"))
     with pytest.raises(ValueError, match="Missing client binaries"):
         dev.build_archive()
+
+
+def test_default_build_uses_release(workspace, tmp_path, monkeypatch):
+    Path(dev.CLIENT_DIR).mkdir()
+    bundle = write_bundle(tmp_path)
+    calls = []
+
+    def get_release(tag, dist_dir):
+        calls.append((tag, dist_dir))
+        dev.install_client_bundle(bundle)
+
+    monkeypatch.setattr(dev, "get_client_release", get_release)
+    args = vars(dev.parser.parse_args(["build"]))
+    args.pop("command")
+    args.pop("func")(**args)
+    assert calls == [(None, dev.CLIENT_DIST_DIR)]
+    assert Path("out/blendkit-godot_v1.0.0.zip").is_file()
+
+
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"tag": "v1.12.13"}, "--tag applies only"),
+        ({"client_bundle": "bundle.zip"}, "--client-bundle cannot be combined"),
+    ],
+)
+def test_client_dir_rejects_release_options(options, message):
+    with pytest.raises(ValueError, match=message):
+        dev.build(client_dir=dev.CLIENT_DIR, **options)
 
 
 def test_failed_replace_rolls_back(workspace, tmp_path, monkeypatch):

@@ -60,18 +60,21 @@ def build(
     from_source=False,
     client_bundle=None,
     tag=None,
-    client_dir=CLIENT_DIR,
+    client_dir=None,
     result_dir=RESULT_DIR,
     dist_dir=CLIENT_DIST_DIR,
 ):
     """Build the Plugin and create archive.
 
     By default downloads signed client binaries from a published GitHub release.
-    With --from-source, clones and compiles the client from source instead.
+    With --from-source or --client-dir, compiles the client from source instead.
     """
+    from_source = from_source or client_dir is not None
+    if client_dir is None:
+        client_dir = CLIENT_DIR
     if client_bundle and (from_source or tag):
         raise ValueError(
-            "--client-bundle cannot be combined with --from-source or --tag"
+            "--client-bundle cannot be combined with --from-source, --client-dir or --tag"
         )
     if from_source and tag:
         raise ValueError("--tag applies only to downloaded releases")
@@ -520,8 +523,7 @@ parser_build = subparsers.add_parser(
         "Full build from a published Blendkit Client release:\n"
         "download signed client binaries, copy them into the plugin, "
         "create archive.\n"
-        "To build the client from source instead, use the 'build-client', "
-        "'build-plugin' and 'build-archive' commands."
+        "To build the client from source instead, use --from-source or --client-dir."
     ),
     formatter_class=NiceHelpFormatter,
 )
@@ -553,9 +555,9 @@ parser_build.add_argument(
     "-c",
     "--client-dir",
     type=str,
-    default=CLIENT_DIR,
+    default=None,
     dest="client_dir",
-    help="Path to Blendkit Client sources (with --from-source).",
+    help="Path to Blendkit Client sources (implies --from-source).",
 )
 parser_build.add_argument(
     "-o",

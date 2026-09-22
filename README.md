@@ -242,8 +242,12 @@ The source version must belong to the supported API series.
 Use an existing sibling checkout with:
 
 ```sh
-./dev.py build --from-source --client-dir ../bk_client
+./dev.py build --client-dir ../bk_client
 ```
+
+An explicit `--client-dir` implies `--from-source`. Existing checkouts are reused
+without pulling or changing branches, including local uncommitted changes.
+Without either option, `build` continues to use published client binaries.
 
 To install its previously built bundle without recompiling:
 `./dev.py build-plugin --client-dir ../bk_client`. Follow with
