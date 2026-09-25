@@ -11,10 +11,31 @@ var task_id: String = ""
 var status: Status = Status.IDLE
 var message: String = ""
 var _revealing := false
+var _restyling := false
 
 func _ready() -> void:
 	resized.connect(_update_label)
 	_update_label()
+
+func _notification(what: int) -> void:
+	# Overriding styles below emits THEME_CHANGED again, hence the guard.
+	if what == NOTIFICATION_THEME_CHANGED and not _restyling:
+		_restyling = true
+		_remove_style_overhang()
+		_restyling = false
+
+
+## The editor theme draws progress bars past their rect vertically, which eats
+## the container separation and squishes stacked bars together. Keep the
+## editor look, but draw within the rect so bars space like other controls.
+func _remove_style_overhang() -> void:
+	var editor_theme := EditorInterface.get_editor_theme()
+	for style_name in ["background", "fill"]:
+		var style = editor_theme.get_stylebox(style_name, "ProgressBar").duplicate()
+		if style is StyleBoxFlat or style is StyleBoxTexture:
+			style.expand_margin_top = 0
+			style.expand_margin_bottom = 0
+		add_theme_stylebox_override(style_name, style)
 
 func _on_value_changed(_new_value: float) -> void:
 	_update_label()
