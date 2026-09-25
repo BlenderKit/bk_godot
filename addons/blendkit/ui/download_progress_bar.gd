@@ -2,17 +2,15 @@
 extends ProgressBar
 
 enum Status { IDLE, CREATED, PROGRESS, FINISHED, ERROR }
-const COPY_FEEDBACK_TEXT := "Path copied to clipboard 📋"
-const COPY_FEEDBACK_DURATION_SEC := 1.0
 
 @onready var label : Label = $Label
 
-@export var file_path := '/path/to/file_name.blend'
+@export var file_path := ""
 
 var task_id: String = ""
 var status: Status = Status.IDLE
 var message: String = ""
-var _copy_feedback_count: int = 0
+var _revealing := false
 
 func _ready() -> void:
 	resized.connect(_update_label)
@@ -26,43 +24,54 @@ func _gui_input(event: InputEvent) -> void:
 		event is InputEventMouseButton
 		and event.button_index == MOUSE_BUTTON_LEFT
 		and event.pressed
+		and status == Status.FINISHED
 		and not file_path.is_empty()
-		and DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD)
 	):
-		DisplayServer.clipboard_set(file_path)
-		_show_copy_feedback()
 		accept_event()
+		if not _revealing:
+			_revealing = true
+			await _reveal_file()
+			_revealing = false
+
+
+## Select the file in the FileSystem dock, or show it in the OS file manager
+## when it's outside the project or of a type the dock doesn't list.
+func _reveal_file() -> void:
+	var resource_path := ProjectSettings.localize_path(file_path)
+	if resource_path.begins_with("res://"):
+		var efs := EditorInterface.get_resource_filesystem()
+		if not _is_indexed(efs, resource_path):
+			# Freshly downloaded files may not be scanned yet.
+			efs.scan_sources()
+			await efs.sources_changed
+		if _is_indexed(efs, resource_path):
+			EditorInterface.get_file_system_dock().navigate_to_path(resource_path)
+			return
+	OS.shell_show_in_file_manager(ProjectSettings.globalize_path(file_path))
+
+
+static func _is_indexed(efs: EditorFileSystem, resource_path: String) -> bool:
+	var dir := efs.get_filesystem_path(resource_path.get_base_dir())
+	return dir != null and dir.find_file_index(resource_path.get_file()) >= 0
+
 
 func _update_label() -> void:
-	var next_text := ""
+	var clickable := status == Status.FINISHED and not file_path.is_empty()
+	mouse_default_cursor_shape = CURSOR_POINTING_HAND if clickable else CURSOR_ARROW
+	tooltip_text = "%s\n\nClick to show file." % file_path if clickable else ""
+
 	match status:
 		Status.ERROR:
 			modulate = Color(1, 0.4, 0.4)
-			next_text = "ERROR: " + message
+			label.text = "ERROR: " + message
 		Status.FINISHED:
 			modulate = Color(1, 1, 1)
-			next_text = "DONE " + shorten_path(file_path, get_char_limit() - 5)
+			label.text = "DONE " + shorten_path(file_path, get_char_limit() - 5)
 		_:
 			modulate = Color(1, 1, 1)
-			var prefix := "%d %% " % int(value)
-			next_text = prefix + shorten_path(file_path, get_char_limit() - prefix.length())
-
-	label.text = COPY_FEEDBACK_TEXT if _is_copy_feedback_active() else next_text
-
-
-func _show_copy_feedback() -> void:
-	_copy_feedback_count += 1
-	_update_label()
-	get_tree().create_timer(COPY_FEEDBACK_DURATION_SEC).timeout.connect(_end_copy_feedback)
-
-
-func _end_copy_feedback() -> void:
-	_copy_feedback_count -= 1
-	_update_label()
-
-
-func _is_copy_feedback_active() -> bool:
-	return _copy_feedback_count > 0
+			# The client reports only progress and a message (e.g.
+			# "Downloading 12.3MB (45%)") until the download finishes.
+			label.text = message if not message.is_empty() else "Downloading %d %%" % int(value)
 
 
 func get_char_limit() -> int:

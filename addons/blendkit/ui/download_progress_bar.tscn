@@ -23,6 +23,6 @@ offset_right = 20.0
 offset_bottom = 11.5
 grow_horizontal = 2
 grow_vertical = 2
-text = "0 % file_name.blend"
+text = "Starting download"
 
 [connection signal="value_changed" from="." to="." method="_on_value_changed"]
