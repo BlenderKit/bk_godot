@@ -2,7 +2,7 @@
 extends EditorPlugin
 
 const SERVER = "https://blendkit.com"
-const CLIENT_API_VERSION = "v1.12"
+const CLIENT_API_VERSION = "v1.13"
 const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "5152", "1234"]
 const RESOLUTION_OPTIONS = ["", "ORIGINAL", "resolution_4K", "resolution_2K", "resolution_1K", "resolution_0_5K"]
 const WAIT_OK: float = 0.8

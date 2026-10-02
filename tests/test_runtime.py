@@ -13,26 +13,26 @@ def test_client_compatibility_and_discovery(godot_executable, tmp_path):
 
 func _initialize():
     var plugin = load("res://addons/blendkit/plugin.gd")
-    assert(plugin.is_compatible_client("1.12.13", "1.12.13"))
-    assert(plugin.is_compatible_client("1.12.23", "1.12.13"))
-    assert(not plugin.is_compatible_client("1.12.9", "1.12.13"))
-    assert(not plugin.is_compatible_client("1.13.0", "1.12.13"))
-    assert(not plugin.is_compatible_client("2.12.0", "1.12.13"))
-    assert(not plugin.is_compatible_client("", "1.12.13"))
-    assert(not plugin.is_valid_client_version("1.12.13/../bad"))
+    assert(plugin.is_compatible_client("1.13.13", "1.13.13"))
+    assert(plugin.is_compatible_client("1.13.23", "1.13.13"))
+    assert(not plugin.is_compatible_client("1.13.9", "1.13.13"))
+    assert(not plugin.is_compatible_client("1.14.0", "1.13.13"))
+    assert(not plugin.is_compatible_client("2.13.0", "1.13.13"))
+    assert(not plugin.is_compatible_client("", "1.13.13"))
+    assert(not plugin.is_valid_client_version("1.13.13/../bad"))
     var base = %s
     var binary = plugin.get_client_binary_name()
     assert(binary.begins_with("bk_client-"))
-    for version in ["v1.12.9", "v1.12.13", "v1.13.0", "v1.12.999", "vgarbage"]:
+    for version in ["v1.13.9", "v1.13.13", "v1.14.0", "v1.13.999", "vgarbage"]:
         var directory = base.path_join(version)
         DirAccess.make_dir_recursive_absolute(directory)
-        if version != "v1.12.999":
+        if version != "v1.13.999":
             var file = FileAccess.open(directory.path_join(binary), FileAccess.WRITE)
             file.store_string("test")
             file.close()
     var versions = plugin.list_client_versions(base)
     assert(versions.size() == 2)
-    assert(plugin.pick_highest_version(versions) == "1.12.13")
+    assert(plugin.pick_highest_version(versions) == "1.13.13")
     print("CLIENT_RUNTIME_CHECKS_PASSED")
     quit()
 """
