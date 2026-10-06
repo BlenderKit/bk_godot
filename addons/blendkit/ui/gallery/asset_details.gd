@@ -1,14 +1,15 @@
 @tool
 extends ConfirmationDialog
 ## Asset details with a preview, description, key parameters, tags and a
-## file chooser. OK downloads, or opens the asset web page when an anonymous
-## user can't download it.
+## file chooser. OK downloads, or opens the asset web page (or the plans for
+## a Free plan account) when the user can't download it.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
 signal tag_selected(tag: String)
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const Auth = preload("res://addons/blendkit/auth.gd")
 const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
 const PREVIEW_TYPES := ["full", "photo_full", "wire_full"]
 const PREVIEW_LABELS := {"full": "Render", "photo_full": "Photo", "wire_full": "Wireframe"}
@@ -32,6 +33,7 @@ var _textures: Dictionary = {}
 var _preview_type := ""
 var _web_button: Button
 var _cancel_download_button: Button
+var _login_button: Button
 
 
 func _ready() -> void:
@@ -41,6 +43,8 @@ func _ready() -> void:
 	_web_button = add_button("View on blendkit.com", true, "web")
 	_cancel_download_button = add_button("Cancel Download", true, "cancel_download")
 	_cancel_download_button.hide()
+	_login_button = add_button("Log In…", true, "login")
+	_login_button.hide()
 	confirmed.connect(_on_ok)
 	custom_action.connect(_on_custom_action)
 	file_option.item_selected.connect(func(_i): refresh_download())
@@ -188,15 +192,29 @@ func refresh_download() -> void:
 	var ok := get_ok_button()
 	ok.disabled = false
 	_cancel_download_button.hide()
+	_login_button.hide()
 	note_label.text = ""
 	note_label.remove_theme_color_override("font_color")
 
 	if asset.get("canDownload") != true:
+		var auth = gallery.plugin.auth
 		ok.text = "Get on blendkit.com"
+		if not auth.is_logged_in():
+			_login_button.show()
+			_login_button.disabled = auth.login_pending or gallery.plugin.state != gallery.plugin.State.CONNECTED
+			if asset.get("isFree") == true:
+				note_label.text = "Log in to download this asset here, or use Send to Godot on blendkit.com."
+			else:
+				note_label.text = "Full Plan asset. Log in with Full Plan to download it here, or use Send to Godot on blendkit.com."
+			return
 		var reason := GalleryApi.cant_download_message(asset).strip_edges()
 		if reason and not reason.ends_with("."):
 			reason += "."
-		note_label.text = "%sLog in on blendkit.com and use Send to Godot to get this asset." % (reason + " " if reason else "")
+		if _needs_full_plan():
+			ok.text = "Get Full Plan"
+			note_label.text = reason if reason else "This asset needs Full Plan."
+		else:
+			note_label.text = reason if reason else "This asset can't be downloaded here. Try Send to Godot on blendkit.com."
 		return
 	if file_option.item_count == 0:
 		ok.text = "Download"
@@ -224,9 +242,18 @@ func refresh_download() -> void:
 			note_label.text = "Already in the project; downloading again reuses the files on disk."
 
 
+## A Full Plan asset and a logged-in account on the Free plan.
+func _needs_full_plan() -> bool:
+	var auth = gallery.plugin.auth
+	return asset.get("isFree") != true and auth.is_logged_in() and Auth.plan_label(auth.profile) == "Free"
+
+
 func _on_ok() -> void:
 	if asset.get("canDownload") != true:
-		OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset))
+		if _needs_full_plan():
+			OS.shell_open(gallery.plugin.SERVER + "/plans/pricing")
+		else:
+			OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset))
 		return
 	var dl: Dictionary = gallery.get_download(str(asset.get("assetBaseId", "")))
 	if dl.get("status") == "finished" and dl.get("file_type", "") == selected_file_type() and dl.get("file_path"):
@@ -242,6 +269,9 @@ func _on_custom_action(action: StringName) -> void:
 	match action:
 		"web":
 			OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset))
+		"login":
+			gallery.plugin.auth.login()
+			refresh_download()
 		"cancel_download":
 			var dl: Dictionary = gallery.get_download(str(asset.get("assetBaseId", "")))
 			if dl.get("task_id"):

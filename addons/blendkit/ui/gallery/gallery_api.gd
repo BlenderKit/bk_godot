@@ -304,13 +304,13 @@ static func task_id_from(response: Dictionary) -> Array:
 	return ["", "unexpected Client response"]
 
 
-static func search(parent: Node, port: String, api_version: String, url_query: String, asset_type: String, tempdir: String, page_size: int, addon_version: String) -> Array:
+static func search(parent: Node, port: String, api_version: String, url_query: String, asset_type: String, tempdir: String, page_size: int, addon_version: String, api_key: String) -> Array:
 	DirAccess.make_dir_recursive_absolute(tempdir)
 	var body := {
 		"app_id": OS.get_process_id(),
 		"addon_version": addon_version,
 		"platform_version": OS.get_name(),
-		"api_key": "",
+		"api_key": api_key,
 		"asset_type": asset_type,
 		"urlquery": url_query,
 		"tempdir": tempdir,
@@ -320,7 +320,7 @@ static func search(parent: Node, port: String, api_version: String, url_query: S
 	return task_id_from(await post_json(parent, client_url(port, api_version, "assets/search"), body))
 
 
-static func download(parent: Node, port: String, api_version: String, asset: Dictionary, file_type: String, abs_download_path: String, addon_version: String) -> Array:
+static func download(parent: Node, port: String, api_version: String, asset: Dictionary, file_type: String, abs_download_path: String, addon_version: String, api_key: String) -> Array:
 	var body := {
 		"app_id": OS.get_process_id(),
 		"addon_version": addon_version,
@@ -336,7 +336,7 @@ static func download(parent: Node, port: String, api_version: String, asset: Dic
 		},
 		"PREFS": {
 			"scene_id": project_scene_uuid(),
-			"api_key": "",
+			"api_key": api_key,
 			"unpack_files": false,
 			"create_asset_library": false,
 		},

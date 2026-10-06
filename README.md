@@ -146,8 +146,17 @@ You can also search and download assets without leaving Godot: open the
 - Click an asset to see its details. Choose a file and click **Download** to
   get it into `bk_assets/`, with the same layout as **Send to Godot**. The file
   defaults to the dock's **Model Format** and **Resolution** settings.
-- Full Plan assets need a logged-in account, which the plugin doesn't have.
-  For those, click **Get on blendkit.com** and use **Send to Godot** there.
+- Logging in is optional. Free assets download without an account. To
+  download Full Plan assets here, click **Log in** next to the search bar and
+  log in with a Full Plan account in the browser that opens. Without logging
+  in, click **Get on blendkit.com** and use **Send to Godot** there.
+
+The account button next to the search bar shows **Log in**, or your avatar
+and plan once you're logged in. Click it for your profile, the plan, a link to
+blendkit.com and **Log Out**. The login is shared through the Blendkit Client,
+so logging in or out in another Blendkit add-on (e.g. Blender's) does the
+same here while both run. The login is stored in the editor's data directory,
+outside your projects.
 
 The **Client** switch next to the search bar turns the Blendkit Client on and
 off, like the checkbox in the dock. Its icon shows the connection status, and

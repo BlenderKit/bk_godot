@@ -138,6 +138,7 @@ var client_bin_path: String
 const menu_scene = preload("res://addons/blendkit/menu.tscn")
 const download_progress_bar_scene = preload("res://addons/blendkit/ui/download_progress_bar.tscn")
 const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")
+const Auth = preload("res://addons/blendkit/auth.gd")
 # Editor tab icon: true for a monochrome icon matching the built-in editor
 # icons, false for the colored Blendkit logo.
 const MONOCHROME_ICON = true
@@ -157,6 +158,7 @@ var resolution_option_button: OptionButton
 var downloads_container: VBoxContainer
 var download_bars: Dictionary = {}
 var gallery: Control
+var auth: Auth
 var plugin_icon: Texture2D
 var plugin_icon_key: String
 # Category tree from the Client's categories_update task, used by the gallery
@@ -183,6 +185,10 @@ func _enter_tree():
 	add_child(timer)
 	timer.timeout.connect(on_timer_timeout)
 
+	auth = Auth.new()
+	auth.plugin = self
+	add_child(auth)
+
 	init_ui()
 	init_gallery()
 	if enabled_check_box.is_pressed():
@@ -196,6 +202,7 @@ func _exit_tree():
 	if gallery:
 		gallery.queue_free()
 		gallery = null
+	auth.queue_free()
 	cleanup_ui()
 	bk_log(LogLevel.INFO, "Plugin exited")
 
@@ -297,6 +304,7 @@ func enter_state(new_state: State):
 				bk_log(LogLevel.INFO, "Connected to Client v%s on port %s" % [connected_client_version, port])
 			else:
 				bk_log(LogLevel.INFO, "Connected to Client on port %s" % port)
+			auth.on_connected()
 		_:
 			fail("invalid state %s" % state_name(new_state))
 
@@ -736,6 +744,8 @@ func handle_tasks(tasks: Array) -> void:
 			"search", "thumbnail_download":
 				if gallery:
 					gallery.handle_task(task)
+			"login", "oauth2/logout", "profiles/get_user_profile", "profiles/fetch_gravatar_image":
+				auth.handle_task(task)
 			"categories_update":
 				if task.get("status") == "finished" and task.get("result") is Array:
 					categories = task["result"]

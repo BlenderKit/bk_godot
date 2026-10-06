@@ -19,7 +19,7 @@ const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
 @onready var main: VBoxContainer = %Main
 @onready var search_edit: LineEdit = %SearchEdit
 @onready var client_toggle: CheckButton = %ClientToggle
-@onready var site_button: Button = %SiteButton
+@onready var account_button: Button = %AccountButton
 @onready var sort_option: OptionButton = %SortOption
 @onready var type_option: OptionButton = %TypeOption
 @onready var category_option: OptionButton = %CategoryOption
@@ -119,7 +119,11 @@ func _ready() -> void:
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
 	godot_ready_check.toggled.connect(_on_filter_toggled.bind("gallery_godot_ready"))
 	client_toggle.toggled.connect(_on_client_toggled)
-	site_button.pressed.connect(func(): OS.shell_open(plugin.SERVER))
+	account_button.setup(plugin)
+	plugin.auth.account_changed.connect(_on_account_changed)
+	plugin.auth.changed.connect(func():
+		if details.visible:
+			details.refresh_download())
 	message_button.pressed.connect(_on_message_button_pressed)
 	categories_timer.timeout.connect(_fetch_categories)
 	scroll.resized.connect(_update_columns)
@@ -154,7 +158,6 @@ func _update_theme() -> void:
 	add_theme_stylebox_override("panel", get_theme_stylebox("bg", "AssetLib"))
 	scroll.add_theme_stylebox_override("panel", get_theme_stylebox("panel", "Tree"))
 	search_edit.right_icon = get_theme_icon("Search", "EditorIcons")
-	site_button.icon = get_theme_icon("ExternalLink", "EditorIcons")
 	_update_client_toggle()
 
 
@@ -164,6 +167,7 @@ func on_connection_changed() -> void:
 	if not is_node_ready():
 		return
 	_update_client_toggle()
+	account_button.refresh()
 	var connected := _is_connected()
 	if connected == _was_connected:
 		if not connected and _pending_search:
@@ -259,7 +263,7 @@ func _run_search(force: bool = true) -> void:
 
 	var tempdir := GalleryApi.search_temp_dir(plugin.client_data_dir, asset_type)
 	var response: Array = await GalleryApi.search(self, plugin.port, plugin.CLIENT_API_VERSION,
-		url, asset_type, tempdir, PAGE_SIZE, plugin.get_addon_version())
+		url, asset_type, tempdir, PAGE_SIZE, plugin.get_addon_version(), plugin.auth.api_key())
 	if seq != _search_seq:
 		return
 	if response[0].is_empty():
@@ -344,6 +348,13 @@ func _show_results() -> void:
 			_thumbs_missing += 1
 	_thumbs_deadline = Time.get_ticks_msec() + THUMBS_WAIT_MS
 	_update_columns()
+	# canDownload depends on the account, e.g. after logging in from the dialog.
+	if details.visible:
+		var open_id := str(details.asset.get("assetBaseId", ""))
+		for asset in results:
+			if asset is Dictionary and str(asset.get("assetBaseId", "")) == open_id:
+				details.asset = asset
+				details.refresh_download()
 	scroll.scroll_vertical = 0
 
 
@@ -545,6 +556,12 @@ func _on_filter_toggled(pressed: bool, meta_key: String) -> void:
 	request_search()
 
 
+## Results depend on the account (canDownload), so search again.
+func _on_account_changed() -> void:
+	if _search_started:
+		request_search(page, true)
+
+
 func _on_tag_selected(tag: String) -> void:
 	details.hide()
 	search_edit.text = tag
@@ -614,7 +631,7 @@ func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 	_download_posts += 1
 	plugin.update_poll_rate()
 	var response: Array = await GalleryApi.download(self, plugin.port, plugin.CLIENT_API_VERSION,
-		asset, file_type, plugin.absolute_download_path, plugin.get_addon_version())
+		asset, file_type, plugin.absolute_download_path, plugin.get_addon_version(), plugin.auth.api_key())
 	_download_posts -= 1
 	if not is_same(downloads.get(base_id), dl) or dl.status != "posting":
 		return # reset by a disconnect meanwhile
