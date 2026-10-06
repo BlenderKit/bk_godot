@@ -135,6 +135,26 @@ bk_assets
         └── wooden-lamp_e6458d96-fe9f-4b4d-a164-c7d61974be86.blend
 ```
 
+### Blendkit tab
+
+You can also search and download assets without leaving Godot: open the
+**Blendkit** tab in the editor's top bar (next to **Asset Store**).
+
+- Search by text, sort the results, and filter by type (Models, Materials,
+  HDRs, Scenes, Printables), category, **Godot-ready (GLB)** models, and
+  **Free only**.
+- Click an asset to see its details. Choose a file and click **Download** to
+  get it into `bk_assets/`, with the same layout as **Send to Godot**. The file
+  defaults to the dock's **Model Format** and **Resolution** settings.
+- Full Plan assets need a logged-in account, which the plugin doesn't have.
+  For those, click **Get on blendkit.com** and use **Send to Godot** there.
+
+The **Client** switch next to the search bar turns the Blendkit Client on and
+off, like the checkbox in the dock. Its icon shows the connection status, and
+hovering over it shows details. Downloads also show in the dock's
+**Downloads** list. Thumbnails are cached in
+`~/blenderkit_data/godot_temp/`, outside your project.
+
 You don't need a credit card to get free assets, but you can access paid assets
 should you decide to support artists with a
 [Blendkit.com](https://blendkit.com) Full Plan.

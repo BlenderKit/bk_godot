@@ -1,0 +1,92 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/blendkit/ui/gallery/asset_details.gd" id="1_details"]
+
+[node name="AssetDetails" type="ConfirmationDialog"]
+title = "Asset"
+size = Vector2i(960, 600)
+ok_button_text = "Download"
+dialog_hide_on_ok = false
+script = ExtResource("1_details")
+
+[node name="Content" type="HBoxContainer" parent="."]
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 952.0
+offset_bottom = 551.0
+theme_override_constants/separation = 16
+
+[node name="Left" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Preview" type="TextureRect" parent="Content/Left"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 400)
+layout_mode = 2
+size_flags_vertical = 3
+expand_mode = 1
+stretch_mode = 5
+
+[node name="PreviewStrip" type="HBoxContainer" parent="Content/Left"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 1
+
+[node name="Right" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Title" type="Label" parent="Content/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HeaderMedium"
+text = "Asset"
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="Author" type="Label" parent="Content/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "by"
+
+[node name="Info" type="Label" parent="Content/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Free"
+
+[node name="Description" type="RichTextLabel" parent="Content/Right"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+size_flags_vertical = 3
+selection_enabled = true
+
+[node name="Params" type="GridContainer" parent="Content/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 16
+columns = 4
+
+[node name="Tags" type="HFlowContainer" parent="Content/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="FileRow" type="HBoxContainer" parent="Content/Right"]
+layout_mode = 2
+tooltip_text = "File to download. The default follows the Model Format and Resolution settings in the Blendkit dock."
+
+[node name="Label" type="Label" parent="Content/Right/FileRow"]
+layout_mode = 2
+text = "File"
+
+[node name="FileOption" type="OptionButton" parent="Content/Right/FileRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Note" type="Label" parent="Content/Right"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+autowrap_mode = 3

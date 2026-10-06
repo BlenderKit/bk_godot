@@ -1,0 +1,87 @@
+@tool
+extends VBoxContainer
+## One search result: thumbnail button, title, author and a footer with the
+## plan badge and quality rating.
+
+signal selected(asset: Dictionary)
+
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const THUMB_SIZE := 160
+
+const TYPE_ICONS := {
+	"model": "MeshInstance3D",
+	"material": "StandardMaterial3D",
+	"hdr": "WorldEnvironment",
+	"scene": "PackedScene",
+	"printable": "MeshInstance3D",
+}
+
+@onready var thumb_button: Button = $ThumbButton
+@onready var downloaded_icon: TextureRect = $ThumbButton/DownloadedIcon
+@onready var title_label: Label = $Title
+@onready var author_label: Label = $Author
+@onready var plan_label: Label = $Footer/Plan
+@onready var rating_label: Label = $Footer/Rating
+
+var asset: Dictionary = {}
+var _has_thumbnail := false
+
+
+func _ready() -> void:
+	var edscale := EditorInterface.get_editor_scale()
+	custom_minimum_size.x = THUMB_SIZE * edscale
+	thumb_button.custom_minimum_size = Vector2.ONE * THUMB_SIZE * edscale
+	downloaded_icon.custom_minimum_size = Vector2.ONE * 16 * edscale
+	thumb_button.pressed.connect(func(): selected.emit(asset))
+	_update()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_THEME_CHANGED and is_node_ready():
+		_update_theme()
+
+
+func setup(new_asset: Dictionary) -> void:
+	asset = new_asset
+	if is_node_ready():
+		_update()
+
+
+func _update() -> void:
+	var title := str(asset.get("displayName", asset.get("name", "")))
+	title_label.text = title
+	var author := GalleryApi.author_name(asset)
+	author_label.text = author
+	thumb_button.tooltip_text = "%s\nby %s" % [title, author] if author else title
+	var free: bool = asset.get("isFree") == true
+	plan_label.text = "Free" if free else "Full Plan"
+	var quality = asset.get("ratingsAverage", {})
+	quality = quality.get("quality") if quality is Dictionary else null
+	rating_label.text = "★ %.1f" % quality if quality is float or quality is int else ""
+	_update_theme()
+
+
+func _update_theme() -> void:
+	var dim := get_theme_color("font_disabled_color", "Editor")
+	author_label.add_theme_color_override("font_color", dim)
+	rating_label.add_theme_color_override("font_color", dim)
+	var free: bool = asset.get("isFree") == true
+	plan_label.add_theme_color_override("font_color",
+		get_theme_color("success_color" if free else "accent_color", "Editor"))
+	downloaded_icon.texture = get_theme_icon("StatusSuccess", "EditorIcons")
+	if not _has_thumbnail:
+		thumb_button.expand_icon = false
+		thumb_button.icon = get_theme_icon(TYPE_ICONS.get(asset.get("assetType", ""), "File"), "EditorIcons")
+
+
+func set_thumbnail(texture: Texture2D) -> void:
+	if texture == null:
+		return
+	_has_thumbnail = true
+	thumb_button.expand_icon = true
+	thumb_button.icon = texture
+
+
+func set_downloaded(downloaded: bool) -> void:
+	downloaded_icon.visible = downloaded
+	downloaded_icon.tooltip_text = "Downloaded" if downloaded else ""

@@ -137,6 +137,12 @@ var client_bin_path: String
 # GUI
 const menu_scene = preload("res://addons/blendkit/menu.tscn")
 const download_progress_bar_scene = preload("res://addons/blendkit/ui/download_progress_bar.tscn")
+const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")
+# Editor tab icon: true for a monochrome icon matching the built-in editor
+# icons, false for the colored Blendkit logo.
+const MONOCHROME_ICON = true
+const ICON_PATH = "res://addons/blendkit/logo/blendkit-icon.svg"
+const LOGO_PATH = "res://addons/blendkit/logo/blendkit-logo-hexa_pure.svg"
 var docked_menu_scene: Control
 var enabled_check_box: CheckBox
 var status_icon: TextureRect
@@ -150,6 +156,11 @@ var model_format_option_button: OptionButton
 var resolution_option_button: OptionButton
 var downloads_container: VBoxContainer
 var download_bars: Dictionary = {}
+var gallery: Control
+var plugin_icon: Texture2D
+var plugin_icon_key: String
+# Category tree from the Client's categories_update task, used by the gallery
+var categories: Array = []
 
 
 func _enter_tree():
@@ -173,6 +184,7 @@ func _enter_tree():
 	timer.timeout.connect(on_timer_timeout)
 
 	init_ui()
+	init_gallery()
 	if enabled_check_box.is_pressed():
 		enter_state(State.EXPLORING)
 
@@ -181,8 +193,66 @@ func _exit_tree():
 	timer.queue_free()
 	http_request.queue_free()
 	unsubscribe_http_request.queue_free()
+	if gallery:
+		gallery.queue_free()
+		gallery = null
 	cleanup_ui()
 	bk_log(LogLevel.INFO, "Plugin exited")
+
+
+# Main screen tab. _has_main_screen() is deprecated in Godot 4.8 in favor of an
+# EditorDock in DOCK_SLOT_MAIN_SCREEN, but it still works and is the only
+# option on Godot 4.0-4.7.
+func _has_main_screen() -> bool:
+	return true
+
+
+func _make_visible(visible: bool) -> void:
+	if gallery:
+		gallery.visible = visible
+
+
+func _get_plugin_name() -> String:
+	return "Blendkit"
+
+
+# Godot asks again on theme changes, so the icon follows the editor scale and
+# light/dark icon colors.
+func _get_plugin_icon() -> Texture2D:
+	var scale := EditorInterface.get_editor_scale()
+	var dark := is_dark_icon_theme()
+	var key := "%s %s %s" % [MONOCHROME_ICON, scale, dark]
+	if plugin_icon and plugin_icon_key == key:
+		return plugin_icon
+	var svg: String
+	var svg_size: float
+	if MONOCHROME_ICON:
+		svg = FileAccess.get_file_as_string(ICON_PATH)
+		svg_size = 16.0
+		if not dark:
+			# Same conversion as Godot does for its own icons on light themes.
+			svg = svg.replace("#e0e0e0", "#5a5a5a")
+	else:
+		svg = FileAccess.get_file_as_string(LOGO_PATH)
+		svg_size = 320.0
+	# Render the SVG at the editor's icon size so it stays crisp.
+	var image := Image.new()
+	if svg.is_empty() or image.load_svg_from_string(svg, 16 * scale / svg_size) != OK:
+		return null
+	plugin_icon = ImageTexture.create_from_image(image)
+	plugin_icon_key = key
+	return plugin_icon
+
+
+# Mirrors EditorThemeManager::is_dark_icon_and_font(): light icons and fonts
+# on a dark theme.
+static func is_dark_icon_theme() -> bool:
+	var settings := EditorInterface.get_editor_settings()
+	match settings.get_setting("interface/theme/icon_and_font_color"):
+		1: return false # dark icons
+		2: return true # light icons
+	var base_color: Color = settings.get_setting("interface/theme/base_color")
+	return base_color.get_luminance() < 0.5
 
 
 func fail(reason: String):
@@ -222,6 +292,7 @@ func enter_state(new_state: State):
 		State.CONNECTED:
 			timer.wait_time = WAIT_OK
 			timer.start()
+			update_poll_rate()
 			if connected_client_version:
 				bk_log(LogLevel.INFO, "Connected to Client v%s on port %s" % [connected_client_version, port])
 			else:
@@ -250,6 +321,8 @@ func update_status():
 			status_label.text = "Failed (%s)" % fail_reason
 	if status_icon:
 		status_icon.texture = get_state_icon()
+	if gallery:
+		gallery.on_connection_changed()
 
 
 func get_state_icon() -> Texture2D:
@@ -353,6 +426,8 @@ func on_timer_timeout():
 
 	if state == State.EXPLORING:
 		bk_log(LogLevel.VERBOSE, "Exploring port %s..." % port)
+	elif state == State.CONNECTED:
+		update_poll_rate()
 
 	var url = "http://127.0.0.1:" + port + "/" + CLIENT_API_VERSION + "/godot/report"
 	var headers = ["Content-Type: application/json"]
@@ -415,6 +490,7 @@ func on_request_completed(result, response_code, _headers, body):
 			var tasks = data.get("tasks", [])
 			if tasks:
 				handle_tasks(tasks)
+			drop_vanished_download_bars(tasks if tasks is Array else [])
 			return
 		bk_log(LogLevel.WARNING, "Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
 
@@ -466,6 +542,19 @@ func request_failed():
 	else:
 		bk_log(LogLevel.ERROR, "Unexpected state: %s" % state_name(state))
 		fail("unexpected state")
+
+
+# Poll faster while the gallery waits for search results, thumbnails or
+# downloads, which all arrive through /godot/report.
+func update_poll_rate():
+	if state != State.CONNECTED:
+		return
+	var wait := WAIT_EXPLORING if gallery and gallery.has_pending_work() else WAIT_OK
+	if is_equal_approx(timer.wait_time, wait):
+		return
+	timer.wait_time = wait
+	if timer.time_left > wait:
+		timer.start()
 
 
 func choose_start_port() -> String:
@@ -622,6 +711,14 @@ func init_ui():
 	update_status()
 
 
+func init_gallery():
+	gallery = gallery_scene.instantiate()
+	gallery.plugin = self
+	gallery.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gallery.hide()
+	EditorInterface.get_editor_main_screen().add_child(gallery)
+
+
 func cleanup_ui():
 	download_bars.clear()
 	remove_control_from_docks(docked_menu_scene)
@@ -630,25 +727,54 @@ func cleanup_ui():
 
 func handle_tasks(tasks: Array) -> void:
 	for task in tasks:
-		if task.get("task_type") != "asset_download":
-			continue
-		var task_id: String = task.get("task_id", "")
-		if task_id == "":
-			continue
+		match task.get("task_type"):
+			"asset_download":
+				# Gallery downloads also show in the dock's Downloads list.
+				handle_download_task(task)
+				if gallery:
+					gallery.handle_task(task)
+			"search", "thumbnail_download":
+				if gallery:
+					gallery.handle_task(task)
+			"categories_update":
+				if task.get("status") == "finished" and task.get("result") is Array:
+					categories = task["result"]
+					if gallery:
+						gallery.on_categories_changed()
 
-		var bar
-		if download_bars.has(task_id):
-			bar = download_bars[task_id]
-		else:
-			bar = download_progress_bar_scene.instantiate()
-			downloads_container.add_child(bar)
-			downloads_container.move_child(bar, 0)
-			download_bars[task_id] = bar
 
-		bar.apply_task(task)
+func handle_download_task(task: Dictionary) -> void:
+	var task_id: String = task.get("task_id", "")
+	if task_id == "":
+		return
 
-		var status: String = task.get("status", "")
-		if status in ["finished", "error"]:
+	var bar
+	if download_bars.has(task_id):
+		bar = download_bars[task_id]
+	else:
+		bar = download_progress_bar_scene.instantiate()
+		downloads_container.add_child(bar)
+		downloads_container.move_child(bar, 0)
+		download_bars[task_id] = bar
+
+	bar.apply_task(task)
+
+	var status: String = task.get("status", "")
+	if status in ["finished", "error", "cancelled"]:
+		download_bars.erase(task_id)
+
+
+# Unfinished tasks are reported on every poll, so a tracked download missing
+# from a report is gone, e.g. cancelled from the Blendkit tab.
+func drop_vanished_download_bars(tasks: Array) -> void:
+	if download_bars.is_empty():
+		return
+	var reported := {}
+	for task in tasks:
+		reported[task.get("task_id", "")] = true
+	for task_id in download_bars.keys():
+		if not reported.has(task_id):
+			download_bars[task_id].apply_task({"task_id": task_id, "status": "cancelled"})
 			download_bars.erase(task_id)
 
 

@@ -1,0 +1,314 @@
+"""Tests for the Blendkit main-screen gallery tab."""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import time
+import urllib.request
+from pathlib import Path
+
+import pytest
+
+from .conftest import PROJECT_DIR, unsubscribe_client
+
+ROOT = Path(PROJECT_DIR)
+
+
+def run_godot_script(godot_executable, tmp_path, project_dir, source, timeout=30):
+    script = tmp_path / "checks.gd"
+    script.write_text(source)
+    return subprocess.run(
+        [
+            godot_executable,
+            "--headless",
+            "--log-file",
+            str(tmp_path / "godot.log"),
+            "--path",
+            str(project_dir),
+            "--script",
+            str(script),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+GALLERY_API_CHECKS = r"""extends SceneTree
+
+const Api = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+
+var failures := 0
+
+func check(ok: bool, what: String) -> void:
+    if not ok:
+        failures += 1
+        print("CHECK FAILED: " + what)
+
+func files(types: Array) -> Dictionary:
+    var result := []
+    for t in types:
+        result.append({"fileType": t, "downloadUrl": "https://x/" + t})
+    return {"assetType": "model", "files": result}
+
+func _initialize():
+    # free text is encoded per word and joined with "+", filters follow
+    var url := Api.build_search_url("https://blendkit.com", "  old  chair&co ", "model", "furniture", "relevance", true, true, 3, 30, "0.6.1")
+    check(url == "https://blendkit.com/api/v1/search/?query=old+chair%26co+asset_type:model+category_subtree:furniture+is_free:true+sexualizedContent:false+last_gltf_godot_upload_isnull:false+order:_score&dict_parameters=1&page_size=30&page=3&addon_version=0.6.1", url)
+    # relevance without text falls back to recently updated; the root category is skipped
+    url = Api.build_search_url("https://blendkit.com", "", "model", "model", "relevance", false, false, 1, 30, "0.6.1")
+    check(url.contains("?query=asset_type:model+sexualizedContent:false+order:-last_blend_upload&"), url)
+    # model-only filters don't apply to other types
+    url = Api.build_search_url("https://blendkit.com", "wood", "material", "", "best", false, true, 1, 30, "0.6.1")
+    check(url.contains("?query=wood+asset_type:material+order:-quality&"), url)
+    check(Api.search_order("newest", "x") == "-created", "newest")
+    check(Api.search_order("popular", "") == "-score", "popular")
+
+    check(Api.page_count(0, 30) == 0, "no pages")
+    check(Api.page_count(31, 30) == 2, "two pages")
+    check(Api.page_count(3673, 30) == 123, "pages")
+    check(Api.page_count(250000, 30) == 334, "clamped to the 10000 result window")
+
+    var all := files(["blend", "gltf", "gltf_godot", "resolution_0_5K", "resolution_1K", "resolution_2K", "resolution_4K", "thumbnail"])
+    check(Api.pick_file_type(all, "gltf_godot", "") == "gltf_godot", "godot glb")
+    check(Api.pick_file_type(files(["blend", "gltf", "thumbnail"]), "gltf_godot", "") == "gltf", "gltf fallback")
+    check(Api.pick_file_type(all, "blend", "") == "blend", "auto is original")
+    check(Api.pick_file_type(all, "blend", "ORIGINAL") == "blend", "original")
+    check(Api.pick_file_type(all, "blend", "resolution_2K") == "resolution_2K", "exact resolution")
+    check(Api.pick_file_type(files(["blend", "resolution_1K", "resolution_4K"]), "blend", "resolution_2K") == "resolution_1K", "closest resolution")
+    check(Api.pick_file_type(files(["zip_file", "thumbnail"]), "gltf_godot", "") == "zip_file", "zip")
+    var material := files(["blend", "gltf", "resolution_1K"])
+    material.assetType = "material"
+    check(Api.pick_file_type(material, "gltf_godot", "resolution_1K") == "resolution_1K", "gltf only for models")
+    check(Array(Api.downloadable_file_types(all)) == ["gltf_godot", "gltf", "blend", "resolution_4K", "resolution_2K", "resolution_1K", "resolution_0_5K"], str(Api.downloadable_file_types(all)))
+
+    var uuid := Api.new_uuid4()
+    var regex := RegEx.create_from_string("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    check(regex.search(uuid) != null, uuid)
+    check(Api.new_uuid4() != uuid, "random uuid")
+
+    check(Api.slugify("  Ribbed Leather -- Chair!! ") == "ribbed-leather-chair", Api.slugify("  Ribbed Leather -- Chair!! "))
+    var asset := {"name": "Ribbed Leather Manager Chair", "id": "2f7f-id", "assetType": "model", "assetBaseId": "base"}
+    check(Api.asset_download_dir("/p/bk_assets", asset) == "/p/bk_assets/models/ribbed-leather-m_2f7f-id", Api.asset_download_dir("/p/bk_assets", asset))
+    check(Api.type_download_dir("/p", "brush") == "/p/brushes", "brushes")
+    check(Api.web_url("https://blendkit.com", asset) == "https://blendkit.com/asset-gallery-detail/base/", "web url")
+
+    check(Api.task_file_path({"result": {"file_paths": ["/a.glb", "/b.glb"]}}) == "/a.glb", "file_paths")
+    check(Api.task_file_path({"result": {"file_path": "/c.glb"}}) == "/c.glb", "file_path")
+    check(Api.task_file_path({"result": null}) == "", "no result")
+
+    var converted = Api.whole_floats_to_ints({"size": 51777067.0, "dim": 1.5, "files": [{"resolution": 0.0}]})
+    check(JSON.stringify(converted, "", true) == '{"dim":1.5,"files":[{"resolution":0}],"size":51777067}', JSON.stringify(converted, "", true))
+
+    check(Api.author_name({"author": {"firstName": "Ann", "lastName": "Lee"}}) == "Ann Lee", "author")
+    check(Api.cant_download_message({"canDownloadError": {"messages": ["User is anonymous"]}}) == "User is anonymous", "cant download")
+    check(Api.cant_download_message({"canDownloadError": true}) == "", "can download")
+    if failures == 0:
+        print("GALLERY_API_CHECKS_PASSED")
+    quit(failures)
+"""
+
+
+def test_gallery_api(godot_executable, tmp_path):
+    result = run_godot_script(godot_executable, tmp_path, ROOT, GALLERY_API_CHECKS)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "GALLERY_API_CHECKS_PASSED" in result.stdout, output
+    assert "SCRIPT ERROR" not in result.stderr, output
+
+
+MAIN_SCREEN_PROBE = r"""@tool
+extends EditorPlugin
+
+func _enter_tree():
+    check.call_deferred()
+
+func check():
+    var gallery = null
+    for child in EditorInterface.get_editor_main_screen().get_children():
+        if child.name == "BlendkitGallery":
+            gallery = child
+    print("GALLERY_FOUND=%s" % (gallery != null))
+    if gallery:
+        print("GALLERY_HIDDEN=%s" % (not gallery.visible))
+        print("GALLERY_HAS_PLUGIN=%s" % (gallery.plugin != null))
+        print("GALLERY_ICON=%s" % (gallery.plugin._get_plugin_icon() != null))
+    get_tree().quit()
+"""
+
+
+def test_gallery_main_screen(godot_executable, tmp_path):
+    """Enabling the plugin adds the gallery to the editor's main screen."""
+    project = tmp_path / "project"
+    shutil.copytree(
+        ROOT / "addons" / "blendkit",
+        project / "addons" / "blendkit",
+        ignore=shutil.ignore_patterns("client"),
+    )
+    probe = project / "addons" / "probe"
+    probe.mkdir()
+    (probe / "plugin.cfg").write_text(
+        '[plugin]\nname="probe"\ndescription=""\nauthor=""\nversion="0"\nscript="probe.gd"\n'
+    )
+    (probe / "probe.gd").write_text(MAIN_SCREEN_PROBE)
+    (project / "project.godot").write_text(
+        "config_version=5\n\n[application]\n\nconfig/name=\"Gallery test\"\n\n"
+        "[editor_plugins]\n\nenabled=PackedStringArray("
+        '"res://addons/blendkit/plugin.cfg", "res://addons/probe/plugin.cfg")\n'
+    )
+    with subprocess.Popen(
+        [godot_executable, "--headless", "--editor", "--path", str(project)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise
+    m = re.search(r"Connected to Client(?: v[\d.]+)? on port (\d+)", stdout)
+    if m:
+        unsubscribe_client(m.group(1), proc.pid)
+    output = stdout + stderr
+    assert "GALLERY_FOUND=true" in stdout, output
+    assert "GALLERY_HIDDEN=true" in stdout, output
+    assert "GALLERY_HAS_PLUGIN=true" in stdout, output
+    assert "GALLERY_ICON=true" in stdout, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
+# MARK: live end-to-end
+
+SERVER = "https://blendkit.com"
+
+
+def client_api_version() -> str:
+    text = (ROOT / "addons" / "blendkit" / "plugin.gd").read_text()
+    return re.search(r'^const CLIENT_API_VERSION = "(v\d+\.\d+)"', text, re.M)[1]
+
+
+def post(port, endpoint, body, timeout=10):
+    url = f"http://127.0.0.1:{port}/{client_api_version()}/{endpoint}"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read() or b"null")
+
+
+@pytest.mark.e2e
+def test_gallery_search_and_download(running_godot, tmp_path):
+    """Search and download through the Client like the gallery does.
+
+    A separate fake app_id stands in for the gallery, so the running editor's
+    plugin does not consume the tasks.
+    """
+    port = running_godot.port
+    app_id = 2_000_000_000 + os.getpid() % 1_000_000
+    assets_path = tmp_path / "bk_assets"
+    thumbs = tmp_path / "thumbs"
+    thumbs.mkdir()
+    report_body = {
+        "name": "Godot",
+        "appID": app_id,
+        "version": "4.5.0",
+        "addonVersion": "0.0.0",
+        "assetsPath": str(assets_path),
+        "projectName": "gallery e2e",
+        "modelFormat": "gltf_godot",
+        "resolution": "",
+    }
+    tasks = {}
+
+    def poll_until(condition, timeout):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            for task in post(port, "godot/report", report_body).get("tasks") or []:
+                tasks.setdefault(task["task_type"], {})[task["task_id"]] = task
+            if condition():
+                return True
+            time.sleep(0.3)
+        return False
+
+    try:
+        poll_until(lambda: True, 5)  # subscribe
+        urlquery = (
+            f"{SERVER}/api/v1/search/?query=chair+asset_type:model+is_free:true"
+            "+sexualizedContent:false+last_gltf_godot_upload_isnull:false+order:_score"
+            "&dict_parameters=1&page_size=5&page=1&addon_version=0.0.0"
+        )
+        search_id = post(
+            port,
+            "assets/search",
+            {
+                "app_id": app_id,
+                "addon_version": "0.0.0",
+                "platform_version": "e2e",
+                "api_key": "",
+                "asset_type": "model",
+                "urlquery": urlquery,
+                "tempdir": str(thumbs),
+                "page_size": 5,
+                "scene_uuid": "6f1c2a43-4b8e-4c55-9d7e-2b1f9a0c3d11",
+            },
+        )["task_id"]
+
+        def search_done():
+            task = tasks.get("search", {}).get(search_id)
+            return task and task["status"] in ("finished", "error") and tasks.get(
+                "thumbnail_download"
+            )
+
+        assert poll_until(search_done, 60), tasks.keys()
+        search = tasks["search"][search_id]
+        assert search["status"] == "finished", search.get("message")
+        results = search["result"]["results"]
+        assert results, "no search results"
+        thumb = next(iter(tasks["thumbnail_download"].values()))
+        assert thumb["data"]["assetBaseId"] in {a["assetBaseId"] for a in results}
+
+        asset = next(a for a in results if a.get("canDownload"))
+        download_id = post(
+            port,
+            "assets/download",
+            {
+                "app_id": app_id,
+                "addon_version": "0.0.0",
+                "platform_version": "e2e",
+                "download_dirs": [str(assets_path / "models")],
+                "resolution": "gltf_godot",
+                "asset_data": {
+                    "name": asset["name"],
+                    "id": asset["id"],
+                    "assetType": "model",
+                    "files": asset["files"],
+                    "available_resolutions": [],
+                },
+                "PREFS": {
+                    "scene_id": "6f1c2a43-4b8e-4c55-9d7e-2b1f9a0c3d11",
+                    "api_key": "",
+                    "unpack_files": False,
+                    "create_asset_library": False,
+                },
+            },
+        )["task_id"]
+
+        def download_done():
+            task = tasks.get("asset_download", {}).get(download_id)
+            return task and task["status"] in ("finished", "error")
+
+        assert poll_until(download_done, 180), "download did not finish"
+        download = tasks["asset_download"][download_id]
+        assert download["status"] == "finished", download.get("message")
+        path = Path(download["result"]["file_paths"][0])
+        assert path.is_file()
+        assert path.parent.parent == assets_path / "models"
+        assert path.suffix == ".glb"
+    finally:
+        unsubscribe_client(port, app_id)

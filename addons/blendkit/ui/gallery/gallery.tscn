@@ -1,0 +1,180 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/blendkit/ui/gallery/gallery.gd" id="1_gallery"]
+[ext_resource type="PackedScene" path="res://addons/blendkit/ui/gallery/asset_details.tscn" id="2_details"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_border"]
+content_margin_left = 15.0
+content_margin_top = 15.0
+content_margin_right = 35.0
+content_margin_bottom = 15.0
+
+[node name="BlendkitGallery" type="PanelContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_gallery")
+
+[node name="Main" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SearchRow" type="HBoxContainer" parent="Main"]
+layout_mode = 2
+
+[node name="SearchEdit" type="LineEdit" parent="Main/SearchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Search Blendkit assets"
+clear_button_enabled = true
+
+[node name="VSeparator" type="VSeparator" parent="Main/SearchRow"]
+layout_mode = 2
+
+[node name="ClientToggle" type="CheckButton" parent="Main/SearchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Client"
+
+[node name="SiteButton" type="Button" parent="Main/SearchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Open the Blendkit asset gallery in your browser."
+text = "blendkit.com"
+
+[node name="FilterRow" type="HFlowContainer" parent="Main"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Sort" type="HBoxContainer" parent="Main/FilterRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Label" type="Label" parent="Main/FilterRow/Sort"]
+layout_mode = 2
+text = "Sort:"
+
+[node name="SortOption" type="OptionButton" parent="Main/FilterRow/Sort"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Type" type="HBoxContainer" parent="Main/FilterRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Label" type="Label" parent="Main/FilterRow/Type"]
+layout_mode = 2
+text = "Type:"
+
+[node name="TypeOption" type="OptionButton" parent="Main/FilterRow/Type"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Category" type="HBoxContainer" parent="Main/FilterRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Label" type="Label" parent="Main/FilterRow/Category"]
+layout_mode = 2
+text = "Category:"
+
+[node name="CategoryOption" type="OptionButton" parent="Main/FilterRow/Category"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+clip_text = true
+fit_to_longest_item = false
+
+[node name="Checks" type="HBoxContainer" parent="Main/FilterRow"]
+layout_mode = 2
+
+[node name="FreeCheck" type="CheckBox" parent="Main/FilterRow/Checks"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show only free assets."
+text = "Free only"
+
+[node name="GodotReadyCheck" type="CheckBox" parent="Main/FilterRow/Checks"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show only models with a GLB exported for Godot."
+text = "Godot-ready (GLB)"
+
+[node name="LibraryMargin" type="MarginContainer" parent="Main"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"NoBorderAssetLib"
+
+[node name="Scroll" type="ScrollContainer" parent="Main/LibraryMargin"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_scroll_mode = 3
+
+[node name="Border" type="PanelContainer" parent="Main/LibraryMargin/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxEmpty_border")
+
+[node name="Body" type="VBoxContainer" parent="Main/LibraryMargin/Scroll/Border"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MessageBox" type="VBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+alignment = 1
+
+[node name="MessageLabel" type="Label" parent="Main/LibraryMargin/Scroll/Border/Body/MessageBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Blendkit"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="MessageButton" type="Button" parent="Main/LibraryMargin/Scroll/Border/Body/MessageBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"PanelBackgroundButton"
+text = "Retry"
+
+[node name="TopPages" type="HBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Grid" type="GridContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+columns = 4
+
+[node name="BottomPages" type="HBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="DebounceTimer" type="Timer" parent="."]
+unique_name_in_owner = true
+wait_time = 0.25
+one_shot = true
+
+[node name="CategoriesTimer" type="Timer" parent="."]
+unique_name_in_owner = true
+wait_time = 3.0
+one_shot = true
+
+[node name="AssetDetails" parent="." instance=ExtResource("2_details")]
+unique_name_in_owner = true
+visible = false

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Blendkit** tab in the editor's top bar, next to **Asset Store**: search
+  Blendkit assets with filters, page through thumbnails, open asset details,
+  and download free assets straight into `bk_assets/`. Full Plan assets link to
+  blendkit.com, where **Send to Godot** gets them.
+
+### Fixed
+
+- Download errors in the dock's **Downloads** list now show the Client's
+  error message, and cancelled downloads no longer stay stuck at
+  "Downloading".
+
 ## 0.6.1 - 2026-07-01
 
 Tiny bugfix release to remove harmless Warning on startup for good.

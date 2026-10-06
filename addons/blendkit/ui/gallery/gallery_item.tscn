@@ -1,0 +1,56 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/blendkit/ui/gallery/gallery_item.gd" id="1_item"]
+
+[node name="GalleryItem" type="VBoxContainer"]
+custom_minimum_size = Vector2(160, 0)
+theme_override_constants/separation = 2
+script = ExtResource("1_item")
+
+[node name="ThumbButton" type="Button" parent="."]
+custom_minimum_size = Vector2(160, 160)
+layout_mode = 2
+theme_type_variation = &"PanelBackgroundButton"
+icon_alignment = 1
+expand_icon = true
+
+[node name="DownloadedIcon" type="TextureRect" parent="ThumbButton"]
+visible = false
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -22.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = 22.0
+grow_horizontal = 0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 2
+text = "Asset"
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="Author" type="Label" parent="."]
+layout_mode = 2
+text = "Author"
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="Footer" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Plan" type="Label" parent="Footer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Free"
+
+[node name="Rating" type="Label" parent="Footer"]
+layout_mode = 2
+tooltip_text = "Average quality rating"
+mouse_filter = 1
+text = "★ 0"
