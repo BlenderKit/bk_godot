@@ -25,6 +25,9 @@ const TYPE_ICONS := {
 
 var asset: Dictionary = {}
 var _has_thumbnail := false
+## Shows the asset type icon instead of the thumbnail. Loading is usually
+## near-instant, so the tile stays empty until the thumbnail fails.
+var _thumbnail_failed := false
 
 
 func _ready() -> void:
@@ -71,15 +74,30 @@ func _update_theme() -> void:
 	downloaded_icon.texture = get_theme_icon("StatusSuccess", "EditorIcons")
 	if not _has_thumbnail:
 		thumb_button.expand_icon = false
-		thumb_button.icon = get_theme_icon(TYPE_ICONS.get(asset.get("assetType", ""), "File"), "EditorIcons")
+		thumb_button.icon = get_theme_icon(TYPE_ICONS.get(asset.get("assetType", ""), "File"), "EditorIcons") \
+			if _thumbnail_failed else null
 
 
 func set_thumbnail(texture: Texture2D) -> void:
 	if texture == null:
+		set_thumbnail_failed()
 		return
 	_has_thumbnail = true
 	thumb_button.expand_icon = true
 	thumb_button.icon = texture
+
+
+func set_thumbnail_failed() -> void:
+	if _has_thumbnail or _thumbnail_failed:
+		return
+	_thumbnail_failed = true
+	if is_node_ready():
+		_update_theme()
+
+
+## Falls back to the type icon if no thumbnail arrives within [param seconds].
+func expect_thumbnail(seconds: float) -> void:
+	get_tree().create_timer(seconds).timeout.connect(set_thumbnail_failed)
 
 
 func set_downloaded(downloaded: bool) -> void:

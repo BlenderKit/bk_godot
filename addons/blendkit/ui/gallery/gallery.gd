@@ -362,6 +362,7 @@ func _show_results() -> void:
 			item.set_thumbnail(GalleryApi.load_texture(thumbs.small))
 		else:
 			_thumbs_missing += 1
+			item.expect_thumbnail(THUMBS_WAIT_MS / 1000.0)
 		if not thumbs.has("full"):
 			_thumbs_missing += 1
 	_thumbs_deadline = Time.get_ticks_msec() + THUMBS_WAIT_MS
@@ -622,6 +623,8 @@ func _handle_thumbnail_task(task: Dictionary) -> void:
 		_thumbs_missing -= 1
 	if status == "error":
 		plugin.bk_log(plugin.LogLevel.DEBUG, "Thumbnail failed: %s" % task.get("message", ""))
+		if type == "small" and items.has(base_id):
+			items[base_id].set_thumbnail_failed()
 		return
 	var path := str(data.get("image_path", ""))
 	if not thumb_cache.has(base_id):
