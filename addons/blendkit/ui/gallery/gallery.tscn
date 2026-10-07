@@ -35,6 +35,9 @@ size_flags_horizontal = 3
 placeholder_text = "Search Blendkit assets"
 clear_button_enabled = true
 
+[node name="VSeparator" type="VSeparator" parent="Main/SearchRow"]
+layout_mode = 2
+
 [node name="MainMenuButton" type="Button" parent="Main/SearchRow"]
 unique_name_in_owner = true
 layout_mode = 2

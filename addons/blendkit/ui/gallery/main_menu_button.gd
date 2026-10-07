@@ -103,6 +103,10 @@ func refresh() -> void:
 
 	var style := get_theme_stylebox("normal", "Button")
 	custom_minimum_size = _content.get_combined_minimum_size() + style.get_minimum_size()
+	# As tall as a text button, like the Asset Store's search row buttons.
+	var font := get_theme_font("font", "Button")
+	var font_height := font.get_height(get_theme_font_size("font_size", "Button"))
+	custom_minimum_size.y = maxf(custom_minimum_size.y, font_height + style.get_minimum_size().y)
 	_content.offset_left = style.get_margin(SIDE_LEFT)
 	_content.offset_right = -style.get_margin(SIDE_RIGHT)
 	if _menu.visible:

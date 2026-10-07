@@ -152,8 +152,12 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_VISIBILITY_CHANGED:
+			if not plugin or not is_visible_in_tree():
+				return
+			# Like the Asset Store, typing goes straight to the search.
+			search_edit.grab_focus()
 			# The first search runs when the tab is first shown.
-			if plugin and is_visible_in_tree() and not _search_started:
+			if not _search_started:
 				_search_started = true
 				request_search()
 		NOTIFICATION_THEME_CHANGED:
