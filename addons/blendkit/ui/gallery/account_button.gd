@@ -37,13 +37,20 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Containers floor shrink-centered positions, so icons land on whole
+	# pixels and draw crisp.
+	_icon_rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_content.add_child(_icon_rect)
 	_label = Label.new()
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The editor theme pads labels, which would make the button taller than
+	# other buttons.
+	_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	_content.add_child(_label)
 	_arrow = TextureRect.new()
 	_arrow.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
 	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arrow.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_content.add_child(_arrow)
 
 	_popup = PopupPanel.new()
@@ -153,7 +160,7 @@ func _fill_popup() -> void:
 		signup.disabled = not connected
 		_popup_box.add_child(_buttons([login, signup]))
 		if not connected:
-			_popup_box.add_child(_note("Logging in needs the Blendkit Client. Turn it on next to this button."))
+			_popup_box.add_child(_note("Logging in needs the Blendkit Client. Turn it on in the Blendkit menu next to this button."))
 		_popup_box.add_child(HSeparator.new())
 		_popup_box.add_child(_buttons([_link("blendkit.com", plugin.SERVER)]))
 	if auth.login_error and not auth.login_pending and not auth.is_logged_in():

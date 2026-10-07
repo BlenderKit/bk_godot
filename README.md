@@ -97,9 +97,9 @@ or [GitHub Releases](https://github.com/BlenderKit/bk_godot/releases)
 2. Open your project in **Godot Editor**, go to **Project → Project Settings... → Plugins** tab
 3. Check **Enabled** for **Blendkit**
 
-If installation succeeded, you should see a new **Blendkit** tab in the right
-panel dock (next to **Inspector**) as well as `Blendkit:` messages in editor
-Output.
+If installation succeeded, you should see a new **Blendkit** tab in the
+editor's top bar (next to **Asset Store**) as well as `Blendkit:` messages in
+editor Output.
 
 ### Upgrading
 
@@ -114,8 +114,8 @@ This avoids stale files left over from the previous version.
 ## Usage
 
 After Blendkit Godot plugin is installed and enabled in your Godot project,
-you should see a new **Blendkit** tab in the right panel dock (next to
-**Inspector**) of the Godot Editor.
+you should see a new **Blendkit** tab in the top bar (next to **Asset Store**)
+of the Godot Editor.
 
 You can now browse assets from [Blendkit.com](https://blendkit.com) in your
 browser and download them into your Godot project with a single click on the **Send
@@ -145,7 +145,10 @@ You can also search and download assets without leaving Godot: open the
   **Free only**.
 - Click an asset to see its details. Choose a file and click **Download** to
   get it into `bk_assets/`, with the same layout as **Send to Godot**. The file
-  defaults to the dock's **Model Format** and **Resolution** settings.
+  defaults to the **Model Format** and **Resolution** settings. A thin bar
+  along the bottom of the asset's thumbnail shows the download progress, and a
+  check mark in its corner shows the asset is in the project (or an error icon
+  when the download failed).
 - Logging in is optional. Free assets download without an account. To
   download Full Plan assets here, click **Log in** next to the search bar and
   log in with a Full Plan account in the browser that opens. Without logging
@@ -158,11 +161,19 @@ so logging in or out in another Blendkit add-on (e.g. Blender's) does the
 same here while both run. The login is stored in the editor's data directory,
 outside your projects.
 
-The **Client** switch next to the search bar turns the Blendkit Client on and
-off, like the checkbox in the dock. Its icon shows the connection status, and
-hovering over it shows details. Downloads also show in the dock's
-**Downloads** list. Thumbnails are cached in
-`~/blenderkit_data/godot_temp/`, outside your project.
+The Blendkit menu at the end of the search bar (the Blendkit logo with **⋮**)
+gathers everything else. The dot in the logo's corner shows the Blendkit
+Client status: green when connected, yellow while connecting, red when it
+failed and gray when it's off. The menu shows the status in full and has:
+
+- **Enable Blendkit Client** to turn the Client on and off, and **Restart
+  Client** when it failed.
+- **Settings…** with the download directory (`res://bk_assets/` by default),
+  **Model Format** (GLTF or `.blend`), **Resolution**, the Client **Port** and
+  the plugin's **Log Level**.
+- Links to blendkit.com, the documentation and the issue tracker.
+
+Thumbnails are cached in `~/blenderkit_data/godot_temp/`, outside your project.
 
 You don't need a credit card to get free assets, but you can access paid assets
 should you decide to support artists with a

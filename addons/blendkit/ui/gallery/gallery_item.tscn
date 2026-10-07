@@ -29,6 +29,26 @@ grow_horizontal = 0
 expand_mode = 1
 stretch_mode = 5
 
+[node name="DownloadTrack" type="ColorRect" parent="ThumbButton"]
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -4.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.5)
+
+[node name="DownloadBar" type="ColorRect" parent="ThumbButton/DownloadTrack"]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+grow_vertical = 2
+mouse_filter = 2
+
 [node name="Title" type="Label" parent="."]
 layout_mode = 2
 text = "Asset"

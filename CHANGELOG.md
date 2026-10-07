@@ -13,12 +13,18 @@
   Plan account, Full Plan assets download straight into the project. Once
   logged in, the button shows your avatar and plan and opens your profile and
   **Log Out**.
+- Blendkit menu at the end of the search bar: the Blendkit logo with a Client
+  status dot and **⋮** opens the Client status and switch, **Settings…** and
+  links to blendkit.com, the docs and the issue tracker.
+- Asset thumbnails show download progress along their bottom edge, and a
+  check mark or an error icon when the download finishes.
 
-### Fixed
+### Removed
 
-- Download errors in the dock's **Downloads** list now show the Client's
-  error message, and cancelled downloads no longer stay stuck at
-  "Downloading".
+- The **Blendkit** dock next to **Inspector**. Its status and Client switch
+  moved to the Blendkit menu, its settings to **Settings…** in that menu, and
+  download progress to the asset thumbnails and details. Downloads started
+  with **Send to Godot** on blendkit.com show in the editor Output.
 
 ## 0.6.1 - 2026-07-01
 

@@ -1,12 +1,15 @@
 @tool
 extends VBoxContainer
 ## One search result: thumbnail button, title, author and a footer with the
-## plan badge and quality rating.
+## plan badge and quality rating. The thumbnail shows download progress along
+## its bottom edge and a downloaded or failed icon in its corner.
 
 signal selected(asset: Dictionary)
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const THUMB_SIZE := 160
+const DOWNLOAD_BAR_HEIGHT := 4
+const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
 
 const TYPE_ICONS := {
 	"model": "MeshInstance3D",
@@ -18,6 +21,8 @@ const TYPE_ICONS := {
 
 @onready var thumb_button: Button = $ThumbButton
 @onready var downloaded_icon: TextureRect = $ThumbButton/DownloadedIcon
+@onready var download_track: ColorRect = $ThumbButton/DownloadTrack
+@onready var download_bar: ColorRect = $ThumbButton/DownloadTrack/DownloadBar
 @onready var title_label: Label = $Title
 @onready var author_label: Label = $Author
 @onready var plan_label: Label = $Footer/Plan
@@ -28,6 +33,9 @@ var _has_thumbnail := false
 ## Shows the asset type icon instead of the thumbnail. Loading is usually
 ## near-instant, so the tile stays empty until the thumbnail fails.
 var _thumbnail_failed := false
+var _downloaded := false
+## The gallery's download state of this asset, see gallery.downloads.
+var _download: Dictionary = {}
 
 
 func _ready() -> void:
@@ -35,6 +43,7 @@ func _ready() -> void:
 	custom_minimum_size.x = THUMB_SIZE * edscale
 	thumb_button.custom_minimum_size = Vector2.ONE * THUMB_SIZE * edscale
 	downloaded_icon.custom_minimum_size = Vector2.ONE * 16 * edscale
+	download_track.offset_top = -DOWNLOAD_BAR_HEIGHT * edscale
 	thumb_button.pressed.connect(func(): selected.emit(asset))
 	_update()
 
@@ -71,7 +80,8 @@ func _update_theme() -> void:
 	var free: bool = asset.get("isFree") == true
 	plan_label.add_theme_color_override("font_color",
 		get_theme_color("success_color" if free else "accent_color", "Editor"))
-	downloaded_icon.texture = get_theme_icon("StatusSuccess", "EditorIcons")
+	download_bar.color = get_theme_color("accent_color", "Editor")
+	_update_download()
 	if not _has_thumbnail:
 		thumb_button.expand_icon = false
 		thumb_button.icon = get_theme_icon(TYPE_ICONS.get(asset.get("assetType", ""), "File"), "EditorIcons") \
@@ -101,5 +111,28 @@ func expect_thumbnail(seconds: float) -> void:
 
 
 func set_downloaded(downloaded: bool) -> void:
-	downloaded_icon.visible = downloaded
-	downloaded_icon.tooltip_text = "Downloaded" if downloaded else ""
+	_downloaded = downloaded
+	_update_download()
+
+
+func set_download(download: Dictionary) -> void:
+	_download = download
+	_update_download()
+
+
+func _update_download() -> void:
+	if not is_node_ready():
+		return
+	var status: String = _download.get("status", "")
+	var active := status in ACTIVE_DOWNLOAD
+	download_track.visible = active
+	download_bar.anchor_right = clampf(_download.get("progress", 0) / 100.0, 0.0, 1.0)
+	# The gallery marks cancelled downloads as errors with this message.
+	var failed: bool = status == "error" and _download.get("message", "") != "Cancelled"
+	downloaded_icon.visible = failed or (_downloaded and not active)
+	if failed:
+		downloaded_icon.texture = get_theme_icon("StatusError", "EditorIcons")
+		downloaded_icon.tooltip_text = "Download failed: %s" % _download.get("message", "")
+	else:
+		downloaded_icon.texture = get_theme_icon("StatusSuccess", "EditorIcons")
+		downloaded_icon.tooltip_text = "Downloaded"

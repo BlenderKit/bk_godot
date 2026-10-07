@@ -4,7 +4,11 @@ extends EditorPlugin
 const SERVER = "https://blendkit.com"
 const CLIENT_API_VERSION = "v1.13"
 const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "5152", "1234"]
-const RESOLUTION_OPTIONS = ["", "ORIGINAL", "resolution_4K", "resolution_2K", "resolution_1K", "resolution_0_5K"]
+# [value, label] pairs for the settings dialog
+const MODEL_FORMATS = [["gltf_godot", "Prefer GLTF (.glb)"], ["blend", "Blender (.blend)"]]
+const RESOLUTIONS = [["", "Auto"], ["ORIGINAL", "Original"], ["resolution_4K", "4K"], ["resolution_2K", "2K"], ["resolution_1K", "1K"], ["resolution_0_5K", "0.5K"]]
+const DOCS_URL = "https://github.com/BlenderKit/bk_godot"
+const ISSUES_URL = "https://github.com/BlenderKit/bk_godot/issues"
 const WAIT_OK: float = 0.8
 const WAIT_EXPLORING: float = 0.2
 const WAIT_STARTING: float = 1
@@ -109,12 +113,15 @@ static func http_result_name(result: int) -> String:
 
 var state: State = State.DISABLED
 var fail_reason: String = ""
+var client_enabled := true
 
 var download_dir: String = "res://bk_assets/"
 var absolute_download_path: String
 var model_format: String = "gltf_godot"
 var resolution: String = ""
 var port: String = CLIENT_PORTS[0]
+# Port to start the Client on when none is running
+var preferred_port: String = CLIENT_PORTS[0]
 var taken_ports: Array[String] = []
 var failed_requests: int = 0
 var max_failed_requests: int = 3
@@ -135,28 +142,14 @@ var client_bin_name: String
 var client_bin_path: String
 
 # GUI
-const menu_scene = preload("res://addons/blendkit/menu.tscn")
-const download_progress_bar_scene = preload("res://addons/blendkit/ui/download_progress_bar.tscn")
 const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")
 const Auth = preload("res://addons/blendkit/auth.gd")
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 # Editor tab icon: true for a monochrome icon matching the built-in editor
 # icons, false for the colored Blendkit logo.
 const MONOCHROME_ICON = true
 const ICON_PATH = "res://addons/blendkit/logo/blendkit-icon.svg"
 const LOGO_PATH = "res://addons/blendkit/logo/blendkit-logo-hexa_pure.svg"
-var docked_menu_scene: Control
-var enabled_check_box: CheckBox
-var status_icon: TextureRect
-var status_label: Label
-var port_option_button: OptionButton
-var log_level_option_button: OptionButton
-var version_label: Label
-var browse_assets_button: Button
-var download_directory: LineEdit
-var model_format_option_button: OptionButton
-var resolution_option_button: OptionButton
-var downloads_container: VBoxContainer
-var download_bars: Dictionary = {}
 var gallery: Control
 var auth: Auth
 var plugin_icon: Texture2D
@@ -167,6 +160,8 @@ var categories: Array = []
 
 func _enter_tree():
 	bk_log(LogLevel.INFO, "Plugin enabled")
+	model_format = ProjectSettings.get_setting("blendkit/model_format", "gltf_godot")
+	resolution = ProjectSettings.get_setting("blendkit/resolution", "")
 	init_paths()
 	bk_log(LogLevel.INFO, "Download path: %s" % absolute_download_path)
 	bk_log(LogLevel.VERBOSE, "Client data dir: %s" % client_data_dir)
@@ -189,9 +184,8 @@ func _enter_tree():
 	auth.plugin = self
 	add_child(auth)
 
-	init_ui()
 	init_gallery()
-	if enabled_check_box.is_pressed():
+	if client_enabled:
 		enter_state(State.EXPLORING)
 
 
@@ -203,7 +197,6 @@ func _exit_tree():
 		gallery.queue_free()
 		gallery = null
 	auth.queue_free()
-	cleanup_ui()
 	bk_log(LogLevel.INFO, "Plugin exited")
 
 
@@ -312,25 +305,26 @@ func enter_state(new_state: State):
 
 
 func update_status():
-	match state:
-		State.DISABLED:
-			status_label.text = "Disabled"
-		State.EXPLORING:
-			status_label.text = "Exploring..."
-		State.STARTING:
-			var starting_elapsed := (Time.get_ticks_msec() - starting_since) / 1000
-			status_label.text = "Starting (%d / %d s)..." % [starting_elapsed, STARTING_TIMEOUT / 1000]
-		State.CONNECTED:
-			if failed_requests > 0:
-				status_label.text = "Reconnecting (#%s)..." % failed_requests
-			else:
-				status_label.text = "Connected (port %s)" % port
-		State.FAILED:
-			status_label.text = "Failed (%s)" % fail_reason
-	if status_icon:
-		status_icon.texture = get_state_icon()
 	if gallery:
 		gallery.on_connection_changed()
+
+
+func status_text() -> String:
+	match state:
+		State.DISABLED:
+			return "Disabled"
+		State.EXPLORING:
+			return "Looking for Client…"
+		State.STARTING:
+			var starting_elapsed := (Time.get_ticks_msec() - starting_since) / 1000
+			return "Starting (%d / %d s)…" % [starting_elapsed, STARTING_TIMEOUT / 1000]
+		State.CONNECTED:
+			if failed_requests > 0:
+				return "Reconnecting (#%s)…" % failed_requests
+			return "Connected (port %s)" % port
+		State.FAILED:
+			return "Failed (%s)" % fail_reason
+	return state_name(state)
 
 
 func get_state_icon() -> Texture2D:
@@ -342,7 +336,7 @@ func get_state_icon() -> Texture2D:
 		State.CONNECTED: icon_name = "StatusSuccess"
 		State.FAILED: icon_name = "StatusError"
 		_: return null
-	return docked_menu_scene.get_theme_icon(icon_name, "EditorIcons")
+	return EditorInterface.get_editor_theme().get_icon(icon_name, "EditorIcons")
 
 
 func start_client(port: String):
@@ -498,7 +492,6 @@ func on_request_completed(result, response_code, _headers, body):
 			var tasks = data.get("tasks", [])
 			if tasks:
 				handle_tasks(tasks)
-			drop_vanished_download_bars(tasks if tasks is Array else [])
 			return
 		bk_log(LogLevel.WARNING, "Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
 
@@ -566,17 +559,15 @@ func update_poll_rate():
 
 
 func choose_start_port() -> String:
-	# The UI-selected port is the desired port, but discovery may have found an
+	# The preferred port is the desired port, but discovery may have found an
 	# unusable Client already running on it. In that case start on another known
 	# port that we did not find occupied.
-	var selected_index := port_option_button.get_selected()
-	var desired := port_option_button.get_item_text(selected_index)
+	var desired := preferred_port
 	if not taken_ports.has(desired):
 		return desired
 
 	bk_log(LogLevel.INFO, "Desired port %s is occupied by an incompatible Client, choosing another port..." % desired)
-	for i in port_option_button.item_count:
-		var candidate := port_option_button.get_item_text(i)
+	for candidate in CLIENT_PORTS:
 		if not taken_ports.has(candidate):
 			bk_log(LogLevel.INFO, "Selected port %s for the Client" % candidate)
 			return candidate
@@ -602,35 +593,41 @@ func on_unsubscribe_completed(result, response_code, _headers, _body):
 		bk_log(LogLevel.VERBOSE, "Unsubscribed from Client on port %s" % port)
 
 
-func on_enabled_toggled(enabled: bool):
+func set_client_enabled(enabled: bool):
+	if enabled == client_enabled:
+		return
+	client_enabled = enabled
 	if enabled:
 		enter_state(State.EXPLORING)
 	else:
 		enter_state(State.DISABLED)
 
 
-func on_browse_assets_pressed():
-	OS.shell_open(SERVER)
+func restart_client():
+	set_client_enabled(false)
+	set_client_enabled(true)
 
 
-func on_download_dir_submitted(_text: String = ""):
-	download_dir = download_directory.text
+func set_download_dir(dir: String):
+	if dir == download_dir:
+		return
+	download_dir = dir
 	absolute_download_path = ProjectSettings.globalize_path(download_dir)
 	bk_log(LogLevel.INFO, "Download path set to: %s" % absolute_download_path)
 
 
-func on_log_level_changed(index: int):
-	log_level = index
+func set_log_level(level: int):
+	log_level = level
 	bk_log(LogLevel.INFO, "Log level set to %s" % LOG_LEVEL_NAMES[log_level])
 
 
-func on_model_format_changed(index: int):
-	model_format = "gltf_godot" if index == 0 else "blend"
+func set_model_format(format: String):
+	model_format = format
 	ProjectSettings.set_setting("blendkit/model_format", model_format)
 
 
-func on_resolution_changed(index: int):
-	resolution = RESOLUTION_OPTIONS[index]
+func set_resolution(new_resolution: String):
+	resolution = new_resolution
 	ProjectSettings.set_setting("blendkit/resolution", resolution)
 
 
@@ -686,39 +683,6 @@ static func is_compatible_client(found: String, required: String) -> bool:
 	return is_valid_client_version(found) and not version_lt(found, required)
 
 
-func init_ui():
-	docked_menu_scene = menu_scene.instantiate()
-	add_control_to_dock(EditorPlugin.DOCK_SLOT_RIGHT_UL, docked_menu_scene)
-	enabled_check_box = docked_menu_scene.get_node("EnabledCheckBox")
-	enabled_check_box.toggled.connect(on_enabled_toggled)
-	status_icon = docked_menu_scene.get_node("StatusRow/StatusIcon")
-	status_label = docked_menu_scene.get_node("StatusRow/StatusLabel")
-	port_option_button = docked_menu_scene.get_node("Port/OptionButton")
-	port_option_button.clear()
-	for client_port in CLIENT_PORTS:
-		port_option_button.add_item(client_port)
-	version_label = docked_menu_scene.get_node("DocsContainer/Version")
-	version_label.text = "Blendkit v%s" % get_addon_version()
-	browse_assets_button = docked_menu_scene.get_node("BrowseAssets")
-	browse_assets_button.pressed.connect(on_browse_assets_pressed)
-	download_directory = docked_menu_scene.get_node("DownloadTo/LineEdit")
-	download_directory.text_submitted.connect(on_download_dir_submitted)
-	download_directory.focus_exited.connect(on_download_dir_submitted)
-	log_level_option_button = docked_menu_scene.get_node("LogLevel/OptionButton")
-	log_level_option_button.selected = log_level
-	log_level_option_button.item_selected.connect(on_log_level_changed)
-	model_format_option_button = docked_menu_scene.get_node("ModelFormat/OptionButton")
-	model_format = ProjectSettings.get_setting("blendkit/model_format", "gltf_godot")
-	model_format_option_button.selected = 0 if model_format == "gltf_godot" else 1
-	model_format_option_button.item_selected.connect(on_model_format_changed)
-	resolution_option_button = docked_menu_scene.get_node("Resolution/OptionButton")
-	resolution = ProjectSettings.get_setting("blendkit/resolution", "")
-	resolution_option_button.selected = max(0, RESOLUTION_OPTIONS.find(resolution))
-	resolution_option_button.item_selected.connect(on_resolution_changed)
-	downloads_container = docked_menu_scene.get_node("DownloadsContainer")
-	update_status()
-
-
 func init_gallery():
 	gallery = gallery_scene.instantiate()
 	gallery.plugin = self
@@ -727,18 +691,11 @@ func init_gallery():
 	EditorInterface.get_editor_main_screen().add_child(gallery)
 
 
-func cleanup_ui():
-	download_bars.clear()
-	remove_control_from_docks(docked_menu_scene)
-	docked_menu_scene.queue_free()
-
-
 func handle_tasks(tasks: Array) -> void:
 	for task in tasks:
 		match task.get("task_type"):
 			"asset_download":
-				# Gallery downloads also show in the dock's Downloads list.
-				handle_download_task(task)
+				log_download_task(task)
 				if gallery:
 					gallery.handle_task(task)
 			"search", "thumbnail_download":
@@ -753,39 +710,15 @@ func handle_tasks(tasks: Array) -> void:
 						gallery.on_categories_changed()
 
 
-func handle_download_task(task: Dictionary) -> void:
-	var task_id: String = task.get("task_id", "")
-	if task_id == "":
-		return
-
-	var bar
-	if download_bars.has(task_id):
-		bar = download_bars[task_id]
-	else:
-		bar = download_progress_bar_scene.instantiate()
-		downloads_container.add_child(bar)
-		downloads_container.move_child(bar, 0)
-		download_bars[task_id] = bar
-
-	bar.apply_task(task)
-
-	var status: String = task.get("status", "")
-	if status in ["finished", "error", "cancelled"]:
-		download_bars.erase(task_id)
-
-
-# Unfinished tasks are reported on every poll, so a tracked download missing
-# from a report is gone, e.g. cancelled from the Blendkit tab.
-func drop_vanished_download_bars(tasks: Array) -> void:
-	if download_bars.is_empty():
-		return
-	var reported := {}
-	for task in tasks:
-		reported[task.get("task_id", "")] = true
-	for task_id in download_bars.keys():
-		if not reported.has(task_id):
-			download_bars[task_id].apply_task({"task_id": task_id, "status": "cancelled"})
-			download_bars.erase(task_id)
+# Downloads from Send to Godot on blendkit.com show only here.
+func log_download_task(task: Dictionary) -> void:
+	match task.get("status"):
+		"finished":
+			bk_log(LogLevel.INFO, "Downloaded %s" % ProjectSettings.localize_path(GalleryApi.task_file_path(task)))
+		"error":
+			bk_log(LogLevel.WARNING, "Download failed: %s" % task.get("message", ""))
+		"cancelled":
+			bk_log(LogLevel.INFO, "Download cancelled")
 
 
 func get_addon_version():

@@ -74,7 +74,7 @@ layout_mode = 2
 
 [node name="FileRow" type="HBoxContainer" parent="Content/Right"]
 layout_mode = 2
-tooltip_text = "File to download. The default follows the Model Format and Resolution settings in the Blendkit dock."
+tooltip_text = "File to download. The default follows the Model Format and Resolution in Blendkit Settings."
 
 [node name="Label" type="Label" parent="Content/Right/FileRow"]
 layout_mode = 2

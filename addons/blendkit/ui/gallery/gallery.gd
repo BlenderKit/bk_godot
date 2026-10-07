@@ -21,8 +21,8 @@ const SPINNER_SPEED := 0.75
 
 @onready var main: VBoxContainer = %Main
 @onready var search_edit: LineEdit = %SearchEdit
-@onready var client_toggle: CheckButton = %ClientToggle
 @onready var account_button: Button = %AccountButton
+@onready var menu_button: Button = %MainMenuButton
 @onready var sort_option: OptionButton = %SortOption
 @onready var type_option: OptionButton = %TypeOption
 @onready var category_option: OptionButton = %CategoryOption
@@ -126,8 +126,8 @@ func _ready() -> void:
 	category_option.item_selected.connect(func(_i): request_search())
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
 	godot_ready_check.toggled.connect(_on_filter_toggled.bind("gallery_godot_ready"))
-	client_toggle.toggled.connect(_on_client_toggled)
 	account_button.setup(plugin)
+	menu_button.setup(plugin)
 	plugin.auth.account_changed.connect(_on_account_changed)
 	plugin.auth.changed.connect(func():
 		if details.visible:
@@ -170,7 +170,6 @@ func _update_theme() -> void:
 	add_theme_stylebox_override("panel", get_theme_stylebox("bg", "AssetLib"))
 	scroll.add_theme_stylebox_override("panel", get_theme_stylebox("panel", "Tree"))
 	search_edit.right_icon = get_theme_icon("Search", "EditorIcons")
-	_update_client_toggle()
 
 
 # MARK: plugin interface
@@ -178,7 +177,7 @@ func _update_theme() -> void:
 func on_connection_changed() -> void:
 	if not is_node_ready():
 		return
-	_update_client_toggle()
+	menu_button.refresh()
 	account_button.refresh()
 	var connected := _is_connected()
 	if connected == _was_connected:
@@ -209,7 +208,7 @@ func on_connection_changed() -> void:
 		if dl.status in ACTIVE_DOWNLOAD:
 			dl.status = "error"
 			dl.message = "Blendkit Client disconnected"
-			_refresh_details(base_id)
+			_refresh_download(base_id)
 	if _pending_search:
 		_show_connection_message()
 
@@ -356,6 +355,7 @@ func _show_results() -> void:
 		item.setup(asset)
 		item.selected.connect(_open_details)
 		item.set_downloaded(is_downloaded(asset))
+		item.set_download(downloads.get(base_id, {}))
 		items[base_id] = item
 		var thumbs: Dictionary = thumb_cache.get(base_id, {})
 		if thumbs.has("small"):
@@ -475,50 +475,11 @@ func _on_message_button_pressed() -> void:
 
 func _show_connection_message() -> void:
 	if plugin.state == plugin.State.DISABLED:
-		_show_message("Blendkit Client is disabled.", "Enable", _restart_client)
+		_show_message("Blendkit Client is disabled.", "Enable", plugin.set_client_enabled.bind(true))
 	elif plugin.state == plugin.State.FAILED:
-		_show_message("Blendkit Client failed: %s" % plugin.fail_reason, "Retry", _restart_client)
+		_show_message("Blendkit Client failed: %s" % plugin.fail_reason, "Retry", plugin.restart_client)
 	else:
 		_show_message("Connecting to Blendkit Client…")
-
-
-## Client switch in the search row: a compact version of the dock's status.
-func _update_client_toggle() -> void:
-	client_toggle.set_pressed_no_signal(plugin.enabled_check_box.button_pressed)
-	client_toggle.icon = plugin.get_state_icon()
-	var failed: bool = plugin.state == plugin.State.FAILED
-	client_toggle.text = "Client failed" if failed else "Client"
-	if failed:
-		client_toggle.add_theme_color_override("font_color", get_theme_color("error_color", "Editor"))
-	else:
-		client_toggle.remove_theme_color_override("font_color")
-	var tooltip: String
-	if plugin.state == plugin.State.DISABLED:
-		tooltip = "Blendkit Client is disabled. Turn it on to search and download assets."
-	elif plugin.state == plugin.State.EXPLORING:
-		tooltip = "Looking for a running Blendkit Client…"
-	elif plugin.state == plugin.State.STARTING:
-		tooltip = "Starting Blendkit Client…"
-	elif plugin.state == plugin.State.CONNECTED:
-		tooltip = "Connected to Blendkit Client v%s." % plugin.connected_client_version
-		if plugin.failed_requests > 0:
-			tooltip = "Reconnecting to Blendkit Client…"
-	else:
-		tooltip = "Blendkit Client failed: %s.\nSee the Output panel for details. Turn the Client off and on to retry." % plugin.fail_reason
-	client_toggle.tooltip_text = tooltip
-
-
-func _on_client_toggled(pressed: bool) -> void:
-	# The dock checkbox runs the plugin's usual state transitions.
-	plugin.enabled_check_box.button_pressed = pressed
-
-
-func _restart_client() -> void:
-	# Toggling the dock checkbox runs the plugin's usual state transitions.
-	var check: CheckBox = plugin.enabled_check_box
-	if check.button_pressed:
-		check.button_pressed = false
-	check.button_pressed = true
 
 
 # MARK: filters
@@ -661,9 +622,9 @@ func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 	if not _is_connected():
 		dl.status = "error"
 		dl.message = "Blendkit Client is not connected"
-		_refresh_details(base_id)
+		_refresh_download(base_id)
 		return
-	_refresh_details(base_id)
+	_refresh_download(base_id)
 	_download_posts += 1
 	plugin.update_poll_rate()
 	var response: Array = await GalleryApi.download(self, plugin.port, plugin.CLIENT_API_VERSION,
@@ -674,7 +635,7 @@ func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 	if response[0].is_empty():
 		dl.status = "error"
 		dl.message = response[1]
-		_refresh_details(base_id)
+		_refresh_download(base_id)
 		return
 	dl.task_id = response[0]
 	dl.status = "created"
@@ -685,7 +646,7 @@ func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 	if early:
 		_apply_download_task(base_id, early)
 	else:
-		_refresh_details(base_id)
+		_refresh_download(base_id)
 
 
 func _handle_download_task(task: Dictionary) -> void:
@@ -720,7 +681,7 @@ func _apply_download_task(base_id: String, task: Dictionary) -> void:
 		"error", "cancelled":
 			dl.status = "error"
 			dl.message = "Cancelled" if status == "cancelled" else str(task.get("message", ""))
-	_refresh_details(base_id)
+	_refresh_download(base_id)
 
 
 func _on_cancel_requested(task_id: String) -> void:
@@ -731,10 +692,13 @@ func _on_cancel_requested(task_id: String) -> void:
 		if dl.task_id == task_id and dl.status in ACTIVE_DOWNLOAD:
 			dl.status = "error"
 			dl.message = "Cancelled"
-			_refresh_details(base_id)
+			_refresh_download(base_id)
 
 
-func _refresh_details(base_id: String) -> void:
+## Show the download state on the asset's tile and, when open, its details.
+func _refresh_download(base_id: String) -> void:
+	if items.has(base_id):
+		items[base_id].set_download(downloads.get(base_id, {}))
 	if details.visible and str(details.asset.get("assetBaseId", "")) == base_id:
 		details.refresh_download()
 

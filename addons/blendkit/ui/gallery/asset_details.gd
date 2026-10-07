@@ -26,7 +26,7 @@ const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
 @onready var file_option: OptionButton = %FileOption
 @onready var note_label: Label = %Note
 
-## Set by the gallery, used to read download state and the dock's preferences.
+## Set by the gallery, used to read download state and the download settings.
 var gallery: Node
 var asset: Dictionary = {}
 var _textures: Dictionary = {}
