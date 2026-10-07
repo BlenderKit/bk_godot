@@ -150,28 +150,30 @@ You can also search and download assets without leaving Godot: open the
   check mark in its corner shows the asset is in the project (or an error icon
   when the download failed).
 - Logging in is optional. Free assets download without an account. To
-  download Full Plan assets here, click **Log in** next to the search bar and
-  log in with a Full Plan account in the browser that opens. Without logging
+  download Full Plan assets here, click **Log In…** in the Blendkit menu at
+  the end of the search bar and log in with a Full Plan account in the
+  browser that opens. Without logging
   in, click **Get on blendkit.com** and use **Send to Godot** there.
 
-The account button next to the search bar shows **Log in**, or your avatar
-and plan once you're logged in. Click it for your profile, the plan, a link to
-blendkit.com and **Log Out**. The login is shared through the Blendkit Client,
-so logging in or out in another Blendkit add-on (e.g. Blender's) does the
-same here while both run. The login is stored in the editor's data directory,
-outside your projects.
-
 The Blendkit menu at the end of the search bar (the Blendkit logo with **⋮**)
-gathers everything else. The dot in the logo's corner shows the Blendkit
-Client status: green when connected, yellow while connecting, red when it
-failed and gray when it's off. The menu shows the status in full and has:
+gathers the Client, the account and settings. The dot in the logo's corner
+shows the Blendkit Client status: green when connected, yellow while
+connecting, red when it failed and gray when it's off. The menu has:
 
-- **Enable Blendkit Client** to turn the Client on and off, and **Restart
-  Client** when it failed.
+- The Client status in full, **Enable Blendkit Client** to turn the Client on
+  and off, and **Restart Client** when it failed.
+- The account: your avatar, name and email once you're logged in (click them
+  for your profile), and your plan (click it for the plans). **Log In…** and
+  **Sign Up…** open the browser and turn the Client on if it's off, as logging
+  in goes through it. **Log Out** when logged in.
 - **Settings…** with the download directory (`res://bk_assets/` by default),
   **Model Format** (GLTF or `.blend`), **Resolution**, the Client **Port** and
   the plugin's **Log Level**.
 - Links to blendkit.com, the documentation and the issue tracker.
+
+The login is shared through the Blendkit Client, so logging in or out in
+another Blendkit add-on (e.g. Blender's) does the same here while both run.
+The login is stored in the editor's data directory, outside your projects.
 
 Thumbnails are cached in `~/blenderkit_data/godot_temp/`, outside your project.
 

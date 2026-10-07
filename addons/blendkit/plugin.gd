@@ -263,6 +263,7 @@ func fail(reason: String):
 	timer.stop()
 	http_request.cancel_request()
 	bk_log(LogLevel.ERROR, "Client failed: %s. Please consider reporting this with your Output." % fail_reason)
+	auth.on_client_lost()
 	update_status()
 
 
@@ -278,6 +279,7 @@ func enter_state(new_state: State):
 			bk_log(LogLevel.INFO, "Disabled")
 			timer.stop()
 			http_request.cancel_request()
+			auth.on_client_lost()
 		State.EXPLORING:
 			port = CLIENT_PORTS[0]
 			taken_ports.clear()

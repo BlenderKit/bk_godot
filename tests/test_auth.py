@@ -10,7 +10,7 @@ ROOT = Path(PROJECT_DIR)
 AUTH_CHECKS = r"""extends SceneTree
 
 const Auth = preload("res://addons/blendkit/auth.gd")
-const AccountButton = preload("res://addons/blendkit/ui/gallery/account_button.gd")
+const MainMenuButton = preload("res://addons/blendkit/ui/gallery/main_menu_button.gd")
 
 var failures := 0
 
@@ -50,7 +50,7 @@ func _initialize():
 
     var image := Image.create(8, 6, false, Image.FORMAT_RGB8)
     image.fill(Color.RED)
-    var round := AccountButton.circle_crop(image)
+    var round := MainMenuButton.circle_crop(image)
     check(round.get_size() == Vector2i(6, 6), str(round.get_size()))
     check(round.get_pixel(0, 0).a == 0.0, "corner transparent")
     check(round.get_pixel(3, 3).a == 1.0, "center opaque")

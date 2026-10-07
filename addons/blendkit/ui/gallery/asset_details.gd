@@ -201,7 +201,7 @@ func refresh_download() -> void:
 		ok.text = "Get on blendkit.com"
 		if not auth.is_logged_in():
 			_login_button.show()
-			_login_button.disabled = auth.login_pending or gallery.plugin.state != gallery.plugin.State.CONNECTED
+			_login_button.disabled = auth.login_pending
 			if asset.get("isFree") == true:
 				note_label.text = "Log in to download this asset here, or use Send to Godot on blendkit.com."
 			else:

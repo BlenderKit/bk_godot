@@ -8,14 +8,14 @@
   Blendkit assets with filters, page through thumbnails, open asset details,
   and download free assets straight into `bk_assets/`. Full Plan assets link to
   blendkit.com, where **Send to Godot** gets them.
-- Optional login from the **Blendkit** tab: the **Log in** button next to the
-  search bar logs in through the browser like the Blender add-on. With a Full
-  Plan account, Full Plan assets download straight into the project. Once
-  logged in, the button shows your avatar and plan and opens your profile and
-  **Log Out**.
+- Optional login from the **Blendkit** tab: **Log In…** in the Blendkit menu
+  logs in through the browser like the Blender add-on, turning the Client on
+  if needed. With a Full Plan account, Full Plan assets download straight
+  into the project.
 - Blendkit menu at the end of the search bar: the Blendkit logo with a Client
-  status dot and **⋮** opens the Client status and switch, **Settings…** and
-  links to blendkit.com, the docs and the issue tracker.
+  status dot and **⋮** opens the Client status and switch, the account
+  (avatar, name, email and plan, or **Log In…** and **Sign Up…**),
+  **Settings…** and links to blendkit.com, the docs and the issue tracker.
 - Asset thumbnails show download progress along their bottom edge, and a
   check mark or an error icon when the download finishes.
 

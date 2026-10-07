@@ -21,7 +21,6 @@ const SPINNER_SPEED := 0.75
 
 @onready var main: VBoxContainer = %Main
 @onready var search_edit: LineEdit = %SearchEdit
-@onready var account_button: Button = %AccountButton
 @onready var menu_button: Button = %MainMenuButton
 @onready var sort_option: OptionButton = %SortOption
 @onready var type_option: OptionButton = %TypeOption
@@ -126,7 +125,6 @@ func _ready() -> void:
 	category_option.item_selected.connect(func(_i): request_search())
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
 	godot_ready_check.toggled.connect(_on_filter_toggled.bind("gallery_godot_ready"))
-	account_button.setup(plugin)
 	menu_button.setup(plugin)
 	plugin.auth.account_changed.connect(_on_account_changed)
 	plugin.auth.changed.connect(func():
@@ -178,7 +176,6 @@ func on_connection_changed() -> void:
 	if not is_node_ready():
 		return
 	menu_button.refresh()
-	account_button.refresh()
 	var connected := _is_connected()
 	if connected == _was_connected:
 		if not connected and _pending_search:

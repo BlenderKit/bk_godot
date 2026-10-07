@@ -38,6 +38,8 @@ var profile: Dictionary = {}
 var avatar_path := ""
 var login_pending := false
 var login_error := ""
+## A login waits for the Client to connect: -1 none, else signup as 0 or 1.
+var _queued_login := -1
 
 var _login_timer: Timer
 var _refresh_started := -1
@@ -70,6 +72,11 @@ func api_key() -> String:
 
 ## Called by the plugin when it connects to a Client.
 func on_connected() -> void:
+	if _queued_login >= 0:
+		var signup := _queued_login == 1
+		_queued_login = -1
+		_start_login(signup)
+		return
 	if not is_logged_in():
 		return
 	maybe_refresh()
@@ -78,11 +85,35 @@ func on_connected() -> void:
 
 # MARK: login and logout
 
+## Log in through the browser. Without a Client connection, turn the Client
+## on and log in once it connects.
 func login(signup := false) -> void:
-	if not _is_connected():
-		login_error = "Blendkit Client is not connected."
-		changed.emit()
+	if _is_connected():
+		_start_login(signup)
 		return
+	_queued_login = 1 if signup else 0
+	login_pending = true
+	login_error = ""
+	# Also gives up when the Client never connects.
+	_login_timer.start()
+	changed.emit()
+	if not plugin.client_enabled:
+		plugin.bk_log(plugin.LogLevel.INFO, "Enabling the Client to log in")
+		plugin.set_client_enabled(true)
+
+
+## The login waits for the Client to connect before opening the browser.
+func is_waiting_for_client() -> bool:
+	return login_pending and _queued_login >= 0
+
+
+## Called by the plugin when the Client fails or is turned off.
+func on_client_lost() -> void:
+	if is_waiting_for_client():
+		_login_failed("Blendkit Client is not connected.")
+
+
+func _start_login(signup: bool) -> void:
 	var verifier := new_pkce_verifier()
 	var state := Crypto.new().generate_random_bytes(16).hex_encode()
 	login_pending = true
@@ -107,6 +138,7 @@ func cancel_login() -> void:
 	if not login_pending:
 		return
 	login_pending = false
+	_queued_login = -1
 	_login_timer.stop()
 	changed.emit()
 
@@ -240,6 +272,7 @@ func _on_login_error(message: String) -> void:
 
 func _login_failed(message: String) -> void:
 	login_pending = false
+	_queued_login = -1
 	login_error = message
 	_login_timer.stop()
 	plugin.bk_log(plugin.LogLevel.WARNING, "Login failed: %s" % message)

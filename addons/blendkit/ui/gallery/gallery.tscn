@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/gallery.gd" id="1_gallery"]
 [ext_resource type="PackedScene" path="res://addons/blendkit/ui/gallery/asset_details.tscn" id="2_details"]
-[ext_resource type="Script" path="res://addons/blendkit/ui/gallery/account_button.gd" id="3_account"]
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/main_menu_button.gd" id="4_menu"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_border"]
@@ -35,11 +34,6 @@ layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Search Blendkit assets"
 clear_button_enabled = true
-
-[node name="AccountButton" type="Button" parent="Main/SearchRow"]
-unique_name_in_owner = true
-layout_mode = 2
-script = ExtResource("3_account")
 
 [node name="MainMenuButton" type="Button" parent="Main/SearchRow"]
 unique_name_in_owner = true

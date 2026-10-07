@@ -2,14 +2,21 @@
 extends Button
 ## Blendkit menu at the end of the gallery's search row: the logo with a
 ## Client status dot in its corner, then the editor's "more" dots. It opens
-## the Client status and switch, settings and links.
+## the Client status and switch, the account and plan, settings and links.
 
+const Auth = preload("res://addons/blendkit/auth.gd")
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const SettingsDialog = preload("res://addons/blendkit/ui/settings_dialog.gd")
 
-enum Item { STATUS, ENABLE, RESTART, SETTINGS, WEBSITE, DOCS, ISSUES, VERSION }
+enum Item {
+	PROFILE, EMAIL, PLAN, LOGIN, SIGNUP, LOGOUT, LOGIN_STATUS, CANCEL_LOGIN, LOGIN_ERROR,
+	STATUS, ENABLE, RESTART, SETTINGS, WEBSITE, DOCS, ISSUES, VERSION,
+}
 
+const USER_ICON_PATH = "res://addons/blendkit/ui/icons/user.svg"
 const LOGO_SIZE := 16
 const DOT_RADIUS := 3.5
+const AVATAR_SIZE := 24
 
 var plugin: EditorPlugin
 
@@ -20,6 +27,9 @@ var _dots: TextureRect
 var _menu: PopupMenu
 var _settings: AcceptDialog
 var _logo_key := ""
+var _avatar: Texture2D
+var _avatar_key := ""
+var _user_icons: Dictionary = {}
 
 
 ## Called by the gallery once the plugin is known.
@@ -59,6 +69,7 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_settings.setup(plugin)
 	toggle_mode = true
 	toggled.connect(_on_toggled)
+	plugin.auth.changed.connect(refresh)
 	refresh()
 
 
@@ -67,7 +78,8 @@ func _notification(what: int) -> void:
 		refresh()
 
 
-## Update the status dot, tooltip and, when open, the menu.
+## Update the status dot, tooltip and, when open, the menu, e.g. after the
+## Client or the login changed.
 func refresh() -> void:
 	if _content == null:
 		return
@@ -128,7 +140,7 @@ func _on_toggled(pressed: bool) -> void:
 	_fill_menu()
 	_menu.reset_size()
 	var canvas_scale := get_global_transform_with_canvas().get_scale()
-	# Right-aligned below the button like the account panel.
+	# Right-aligned below the button, positioned like MenuButton does it.
 	var pos := get_screen_position() + Vector2(size.x * canvas_scale.x - _menu.size.x, size.y * canvas_scale.y)
 	_menu.popup(Rect2i(Vector2i(pos), _menu.size))
 
@@ -142,6 +154,8 @@ func _fill_menu() -> void:
 	_menu.set_item_tooltip(-1, "The Blendkit Client searches and downloads assets and connects Send to Godot on blendkit.com.")
 	if plugin.state == plugin.State.FAILED:
 		_menu.add_icon_item(get_theme_icon("Reload", "EditorIcons"), "Restart Client", Item.RESTART)
+	_menu.add_separator("Account")
+	_fill_account()
 	_menu.add_separator()
 	_menu.add_icon_item(get_theme_icon("Tools", "EditorIcons"), "Settings…", Item.SETTINGS)
 	_menu.add_separator()
@@ -156,8 +170,68 @@ func _fill_menu() -> void:
 	_menu.set_item_disabled(-1, true)
 
 
+## Who is logged in and the plan on top, then logging in or out.
+func _fill_account() -> void:
+	var auth = plugin.auth
+	var logged_in: bool = auth.is_logged_in()
+	if logged_in:
+		_update_avatar()
+		var who: String = Auth.display_name(auth.profile)
+		_menu.add_icon_item(_avatar if _avatar else _user_icon(AVATAR_SIZE), who if who else "Loading profile…", Item.PROFILE)
+		_menu.set_item_icon_max_width(-1, int(AVATAR_SIZE * EditorInterface.get_editor_scale()))
+		_menu.set_item_tooltip(-1, "Open your profile on blendkit.com.")
+		var email := str(auth.profile.get("email", "")) if auth.profile.get("email") else ""
+		if email and email != who:
+			_menu.add_item(email, Item.EMAIL)
+			_menu.set_item_disabled(-1, true)
+	else:
+		_menu.add_icon_item(_user_icon(), "Not logged in", Item.PROFILE)
+		_menu.set_item_disabled(-1, true)
+
+	# Without an account, only free assets download, as with the Free plan.
+	var plan: String = Auth.plan_label(auth.profile) if logged_in else "Free"
+	if plan.is_empty():
+		_menu.add_icon_item(get_theme_icon("Favorites", "EditorIcons"), "Plan: …", Item.PLAN)
+		_menu.set_item_disabled(-1, true)
+	else:
+		_menu.add_icon_item(get_theme_icon("Favorites", "EditorIcons"), "Plan: %s" % plan, Item.PLAN)
+		if logged_in:
+			_menu.set_item_tooltip(-1, plugin.SERVER + "/plans/pricing")
+		else:
+			_menu.set_item_tooltip(-1, "Free assets download without an account. Log in to download Full Plan assets.\n" + plugin.SERVER + "/plans/pricing")
+
+	if auth.login_pending:
+		var status := "Starting Blendkit Client…" if auth.is_waiting_for_client() else "Finish logging in in your browser…"
+		_menu.add_icon_item(get_theme_icon("Timer", "EditorIcons"), status, Item.LOGIN_STATUS)
+		_menu.set_item_disabled(-1, true)
+		_menu.add_icon_item(get_theme_icon("Close", "EditorIcons"), "Cancel Login", Item.CANCEL_LOGIN)
+	elif logged_in:
+		_menu.add_item("Log Out", Item.LOGOUT)
+	else:
+		var tooltip := "" if plugin.client_enabled else "\nThis turns on the Blendkit Client, which logging in needs."
+		_menu.add_item("Log In…", Item.LOGIN)
+		_menu.set_item_tooltip(-1, "Log in to Blendkit in your browser." + tooltip)
+		_menu.add_item("Sign Up…", Item.SIGNUP)
+		_menu.set_item_tooltip(-1, "Create a Blendkit account in your browser." + tooltip)
+		if auth.login_error:
+			_menu.add_icon_item(get_theme_icon("StatusError", "EditorIcons"), auth.login_error, Item.LOGIN_ERROR)
+			_menu.set_item_disabled(-1, true)
+
+
 func _on_id_pressed(id: int) -> void:
 	match id:
+		Item.PROFILE:
+			OS.shell_open(plugin.SERVER + "/profile")
+		Item.PLAN:
+			OS.shell_open(plugin.SERVER + "/plans/pricing")
+		Item.LOGIN:
+			plugin.auth.login(false)
+		Item.SIGNUP:
+			plugin.auth.login(true)
+		Item.LOGOUT:
+			plugin.auth.logout()
+		Item.CANCEL_LOGIN:
+			plugin.auth.cancel_login()
 		Item.ENABLE:
 			plugin.set_client_enabled(not plugin.client_enabled)
 		Item.RESTART:
@@ -178,3 +252,55 @@ func _render_logo(px: float) -> Texture2D:
 	if svg.is_empty() or image.load_svg_from_string(svg, px / 320.0) != OK:
 		return null
 	return ImageTexture.create_from_image(image)
+
+
+## Monochrome user icon matching the editor icons, rendered like the
+## plugin's tab icon. size is in unscaled pixels.
+func _user_icon(size := 16) -> Texture2D:
+	var key := "%s %s %s" % [size, EditorInterface.get_editor_scale(), plugin.is_dark_icon_theme()]
+	if _user_icons.has(key):
+		return _user_icons[key]
+	var svg := FileAccess.get_file_as_string(USER_ICON_PATH)
+	if not plugin.is_dark_icon_theme():
+		svg = svg.replace("#e0e0e0", "#5a5a5a")
+	var image := Image.new()
+	if svg.is_empty() or image.load_svg_from_string(svg, size * EditorInterface.get_editor_scale() / 16.0) != OK:
+		return null
+	_user_icons[key] = ImageTexture.create_from_image(image)
+	return _user_icons[key]
+
+
+## The avatar as a round icon at its menu size, scaled down here so it
+## stays smooth.
+func _update_avatar() -> void:
+	var px := int(AVATAR_SIZE * EditorInterface.get_editor_scale())
+	var path: String = plugin.auth.avatar_path
+	var key := "%s %s" % [path, px]
+	if key == _avatar_key:
+		return
+	_avatar_key = key
+	_avatar = null
+	var image := GalleryApi.load_image(path)
+	if not image:
+		return
+	image = circle_crop(image)
+	image.resize(px, px, Image.INTERPOLATE_LANCZOS)
+	_avatar = ImageTexture.create_from_image(image)
+
+
+## The image cropped to a centered circle with a transparent outside.
+static func circle_crop(image: Image) -> Image:
+	var side := mini(image.get_width(), image.get_height())
+	var result := image.get_region(Rect2i((image.get_width() - side) / 2, (image.get_height() - side) / 2, side, side))
+	result.convert(Image.FORMAT_RGBA8)
+	var r := side / 2.0
+	for y in side:
+		for x in side:
+			# Antialias the edge over one pixel.
+			var d := Vector2(x + 0.5 - r, y + 0.5 - r).length()
+			var alpha := clampf(r - d, 0.0, 1.0)
+			if alpha < 1.0:
+				var c := result.get_pixel(x, y)
+				c.a *= alpha
+				result.set_pixel(x, y, c)
+	return result
