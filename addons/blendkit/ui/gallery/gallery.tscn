@@ -165,6 +165,16 @@ columns = 4
 unique_name_in_owner = true
 layout_mode = 2
 
+[node name="Spinner" type="TextureRect" parent="Main/LibraryMargin"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
 [node name="DebounceTimer" type="Timer" parent="."]
 unique_name_in_owner = true
 wait_time = 0.25

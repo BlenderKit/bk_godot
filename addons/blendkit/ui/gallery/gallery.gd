@@ -15,6 +15,9 @@ const PAGE_SIZE := 30
 ## How long to keep polling fast for thumbnails after results arrive.
 const THUMBS_WAIT_MS := 20000
 const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
+const SPINNER_SIZE := 128
+## Spinner turns per second.
+const SPINNER_SPEED := 0.75
 
 @onready var main: VBoxContainer = %Main
 @onready var search_edit: LineEdit = %SearchEdit
@@ -35,6 +38,7 @@ const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
 @onready var top_pages: HBoxContainer = %TopPages
 @onready var grid: GridContainer = %Grid
 @onready var bottom_pages: HBoxContainer = %BottomPages
+@onready var spinner: TextureRect = %Spinner
 @onready var debounce_timer: Timer = %DebounceTimer
 @onready var categories_timer: Timer = %CategoriesTimer
 @onready var details = %AssetDetails
@@ -74,6 +78,7 @@ var _page_count := 0
 
 
 func _ready() -> void:
+	set_process(false)
 	if plugin == null:
 		return
 	# Spacing follows the Asset Store (EditorAssetLibrary).
@@ -98,6 +103,9 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	if "scroll_hint_mode" in scroll: # Godot 4.6+
 		scroll.set("scroll_hint_mode", 2) # SCROLL_HINT_MODE_TOP_AND_LEFT
+	spinner.texture = _render_logo(SPINNER_SIZE * edscale)
+	spinner.custom_minimum_size = Vector2.ONE * SPINNER_SIZE * edscale
+	spinner.resized.connect(func(): spinner.pivot_offset = spinner.size / 2)
 
 	for sort in GalleryApi.SORTS:
 		sort_option.add_item(sort[1])
@@ -137,6 +145,10 @@ func _ready() -> void:
 	_update_theme()
 	_updating_theme = false
 	on_connection_changed()
+
+
+func _process(delta: float) -> void:
+	spinner.rotation = fmod(spinner.rotation + TAU * SPINNER_SPEED * delta, TAU)
 
 
 func _notification(what: int) -> void:
@@ -188,6 +200,8 @@ func on_connection_changed() -> void:
 		_searching = false
 		_search_seq += 1
 		_pending_search = true
+		_set_busy(false)
+		_clear_results()
 	_search_url = ""
 	_search_task_id = ""
 	for base_id in downloads:
@@ -235,6 +249,7 @@ func request_search(new_page: int = 1, force: bool = false) -> void:
 		_pending_search = true
 		_search_seq += 1
 		_searching = false
+		_set_busy(false)
 		_clear_results()
 		_show_connection_message()
 		return
@@ -257,8 +272,9 @@ func _run_search(force: bool = true) -> void:
 	_search_task_id = ""
 	_searching = true
 	_early_search_tasks.clear()
-	_clear_results()
-	_show_message("Searching…")
+	# Like the Asset Store, keep the current page dimmed until results arrive.
+	message_box.hide()
+	_set_busy(true)
 	plugin.update_poll_rate()
 
 	var tempdir := GalleryApi.search_temp_dir(plugin.client_data_dir, asset_type)
@@ -286,6 +302,7 @@ func _handle_search_task(task: Dictionary) -> void:
 			_early_search_tasks[task_id] = task
 		return
 	_searching = false
+	_set_busy(false)
 	if status == "error":
 		_search_failed(str(task.get("message", "")))
 		return
@@ -300,6 +317,7 @@ func _handle_search_task(task: Dictionary) -> void:
 
 func _search_failed(message: String) -> void:
 	_searching = false
+	_set_busy(false)
 	_search_error = message if message else "unknown error"
 	plugin.bk_log(plugin.LogLevel.WARNING, "Search failed: %s" % _search_error)
 	_clear_results()
@@ -410,9 +428,7 @@ func _page_button(text: String, icon_name: String, tooltip: String, target_page:
 	button.theme_type_variation = "PanelBackgroundButton"
 	button.disabled = not enabled
 	if enabled:
-		button.pressed.connect(func():
-			scroll.scroll_vertical = 0
-			request_search(target_page, true))
+		button.pressed.connect(request_search.bind(target_page, true))
 	return button
 
 
@@ -424,6 +440,23 @@ func _update_columns() -> void:
 	grid.columns = maxi(1, int((available + separation) / (item_width + separation)))
 	if _page_count > 1:
 		_update_pages()
+
+
+## Dims the results with a spinning logo over them, like the Asset Store
+## while it waits for a response.
+func _set_busy(busy: bool) -> void:
+	scroll.modulate = Color(1, 1, 1, 0.5) if busy else Color.WHITE
+	spinner.visible = busy
+	spinner.rotation = 0
+	set_process(busy)
+
+
+func _render_logo(px: float) -> Texture2D:
+	var svg := FileAccess.get_file_as_string(plugin.LOGO_PATH)
+	var image := Image.new()
+	if svg.is_empty() or image.load_svg_from_string(svg, px / 320.0) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
 
 
 func _show_message(text: String, button_text: String = "", action: Callable = Callable()) -> void:
