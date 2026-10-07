@@ -4,6 +4,7 @@ extends Button
 ## plan when logged in. It opens a panel with login, profile and site links.
 
 const Auth = preload("res://addons/blendkit/auth.gd")
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 
 const USER_ICON_PATH = "res://addons/blendkit/ui/icons/user.svg"
 const PANEL_WIDTH := 280
@@ -258,10 +259,8 @@ func _update_avatar() -> void:
 		return
 	_avatar_path = path
 	_avatar = null
-	if path.is_empty() or not FileAccess.file_exists(path):
-		return
-	var image := Image.new()
-	if image.load(path) != OK:
+	var image := GalleryApi.load_image(path)
+	if not image:
 		return
 	_avatar = ImageTexture.create_from_image(circle_crop(image))
 

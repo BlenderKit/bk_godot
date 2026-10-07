@@ -105,6 +105,15 @@ func _initialize():
     check(Api.author_name({"author": {"firstName": "Ann", "lastName": "Lee"}}) == "Ann Lee", "author")
     check(Api.cant_download_message({"canDownloadError": {"messages": ["User is anonymous"]}}) == "User is anonymous", "cant download")
     check(Api.cant_download_message({"canDownloadError": true}) == "", "can download")
+
+    # Cached avatars can be PNGs named .jpg; the format comes from the bytes.
+    var img := Image.create(4, 2, false, Image.FORMAT_RGBA8)
+    var mislabeled := OS.get_temp_dir().path_join("bk_test_png_as.jpg")
+    img.save_png(mislabeled)
+    var loaded := Api.load_image(mislabeled)
+    check(loaded != null and loaded.get_size() == Vector2i(4, 2), "png named .jpg")
+    DirAccess.remove_absolute(mislabeled)
+    check(Api.load_image("/nonexistent.png") == null, "missing image")
     if failures == 0:
         print("GALLERY_API_CHECKS_PASSED")
     quit(failures)

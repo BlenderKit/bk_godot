@@ -362,12 +362,26 @@ static func fetch_categories(parent: Node, port: String, api_version: String, se
 # MARK: files from tasks
 
 static func load_texture(path: String) -> Texture2D:
+	var image := load_image(path)
+	return ImageTexture.create_from_image(image) if image else null
+
+
+## Image.load() picks the decoder by extension, but the client's cached files
+## don't always match theirs (e.g. PNG avatars saved as .jpg), so sniff the
+## format from the file's first bytes instead.
+static func load_image(path: String) -> Image:
 	if path.is_empty() or not FileAccess.file_exists(path):
 		return null
+	var bytes := FileAccess.get_file_as_bytes(path)
 	var image := Image.new()
-	if image.load(path) != OK:
-		return null
-	return ImageTexture.create_from_image(image)
+	var err := ERR_FILE_UNRECOGNIZED
+	if bytes.size() >= 8 and bytes.slice(0, 8) == PackedByteArray([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]):
+		err = image.load_png_from_buffer(bytes)
+	elif bytes.size() >= 3 and bytes.slice(0, 3) == PackedByteArray([0xFF, 0xD8, 0xFF]):
+		err = image.load_jpg_from_buffer(bytes)
+	elif bytes.size() >= 12 and bytes.slice(0, 4).get_string_from_ascii() == "RIFF" and bytes.slice(8, 12).get_string_from_ascii() == "WEBP":
+		err = image.load_webp_from_buffer(bytes)
+	return image if err == OK else null
 
 
 ## Path of the downloaded file from a finished asset_download task.
