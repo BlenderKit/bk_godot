@@ -51,6 +51,7 @@ const WEB_DOWNLOAD_NAME := "Send to Godot"
 @onready var project_body: VBoxContainer = %ProjectBody
 @onready var project_message: Label = %ProjectMessage
 @onready var project_grid: GridContainer = %ProjectGrid
+@onready var browse_button: Button = %BrowseButton
 @onready var categories_timer: Timer = %CategoriesTimer
 @onready var details = %AssetDetails
 
@@ -129,6 +130,7 @@ func _ready() -> void:
 	var edscale := EditorInterface.get_editor_scale()
 	main.add_theme_constant_override("separation", int(10 * edscale))
 	body.add_theme_constant_override("separation", int(20 * edscale))
+	project_body.add_theme_constant_override("separation", int(20 * edscale))
 	# Filters share one line when they fit and wrap otherwise.
 	filter_row.add_theme_constant_override("h_separation", int(12 * edscale))
 	filter_row.add_theme_constant_override("v_separation", int(6 * edscale))
@@ -177,6 +179,7 @@ func _ready() -> void:
 			details.refresh_download())
 	message_button.pressed.connect(_on_message_button_pressed)
 	project_toggle.toggled.connect(_on_project_toggled)
+	browse_button.pressed.connect(func(): project_toggle.button_pressed = false)
 	_download_badge = Label.new()
 	_download_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_download_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -827,8 +830,12 @@ func _filter_project() -> void:
 		if entry.item.visible:
 			shown += 1
 	project_message.visible = shown == 0
+	project_grid.visible = shown > 0
+	# The message and Browse Blendkit sit in the middle, otherwise the button
+	# follows the tiles.
+	project_body.alignment = BoxContainer.ALIGNMENT_CENTER if shown == 0 else BoxContainer.ALIGNMENT_BEGIN
 	if _project_entries.is_empty():
-		project_message.text = "No assets downloaded to %s yet.\nDownload them here or with Send to Godot on blendkit.com." % plugin.download_dir
+		project_message.text = "No assets downloaded yet to %s" % plugin.download_dir
 	elif shown == 0:
 		project_message.text = "No downloaded assets match \"%s\"." % search_edit.text.strip_edges()
 

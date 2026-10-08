@@ -23,7 +23,8 @@
   sent with **Send to Godot**, with a local search and **Show in FileSystem**.
   Asset folders found in `bk_assets/` are looked up on blendkit.com and
   remembered in `.godot/blendkit/`, so nothing is added to the project.
-  Switching back returns to the previous search instantly.
+  Switching back, with the toggle or **Browse Blendkit** below the assets,
+  returns to the previous search instantly.
 - The download toggle shows the number of downloads in progress, and the
   project assets list them first with their progress, including **Send to
   Godot** downloads from blendkit.com.
