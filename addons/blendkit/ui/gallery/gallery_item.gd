@@ -34,6 +34,7 @@ var _has_thumbnail := false
 ## near-instant, so the tile stays empty until the thumbnail fails.
 var _thumbnail_failed := false
 var _downloaded := false
+var _tooltip := ""
 ## The gallery's download state of this asset, see gallery.downloads.
 var _download: Dictionary = {}
 
@@ -64,7 +65,7 @@ func _update() -> void:
 	title_label.text = title
 	var author := GalleryApi.author_name(asset)
 	author_label.text = author
-	thumb_button.tooltip_text = "%s\nby %s" % [title, author] if author else title
+	_tooltip = "%s\nby %s" % [title, author] if author else title
 	var free: bool = asset.get("isFree") == true
 	# Unknown for assets in the project not found on Blendkit.
 	plan_label.text = "" if not asset.has("isFree") else "Free" if free else "Full Plan"
@@ -128,6 +129,8 @@ func _update_download() -> void:
 	var active := status in ACTIVE_DOWNLOAD
 	download_track.visible = active
 	download_bar.anchor_right = clampf(_download.get("progress", 0) / 100.0, 0.0, 1.0)
+	var message: String = _download.get("message", "")
+	thumb_button.tooltip_text = "%s\n%s" % [_tooltip, message] if active and message else _tooltip
 	# The gallery marks cancelled downloads as errors with this message.
 	var failed: bool = status == "error" and _download.get("message", "") != "Cancelled"
 	downloaded_icon.visible = failed or (_downloaded and not active)

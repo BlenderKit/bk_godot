@@ -177,8 +177,22 @@ func _initialize():
     check(not project.index.get_value(ID_A, "asset").has("canDownload"), "account fields dropped")
     check(FileAccess.file_exists(project.thumbnail(ID_A)), "thumbnail copied")
 
+    check(project.get_asset(ID_A).name == "Travel wooden chess set", "indexed asset")
+    check(project.get_asset(ID_B).is_empty(), "unknown asset")
+
     var entries := project.scan(downloads)
     check(entries.size() == 2, "two asset folders: %s" % [entries.map(func(e): return e.file_path)])
+    var skipped := project.scan(downloads, {dir_b: true})
+    check(skipped.size() == 1 and skipped[0].id == ID_A, "downloading folder skipped")
+
+    # Send to Godot downloads go to the folder changed last.
+    var now := int(Time.get_unix_time_from_system())
+    var recent := ProjectAssets.recent_download_folder(downloads, now - 60)
+    check(recent.get("folder") in [dir_a, dir_b, downloads.path_join("models/empty_" + ID_B)], str(recent))
+    check(ProjectAssets.recent_download_folder(downloads, now + 60).is_empty(), "nothing changed since")
+    var taken := {dir_a: true, downloads.path_join("models/empty_" + ID_B): true}
+    recent = ProjectAssets.recent_download_folder(downloads, now - 60, taken)
+    check(recent == {"folder": dir_b, "id": ID_B, "asset_type": "material"}, str(recent))
     var by_id := {}
     for e in entries:
         by_id[e.id] = e
@@ -222,6 +236,8 @@ def test_project_assets(godot_executable, tmp_path):
 MAIN_SCREEN_PROBE = r"""@tool
 extends EditorPlugin
 
+const ID := "17982784-2390-4999-83d7-c72ea929f352"
+
 func _enter_tree():
     check.call_deferred()
 
@@ -235,7 +251,32 @@ func check():
         print("GALLERY_HIDDEN=%s" % (not gallery.visible))
         print("GALLERY_HAS_PLUGIN=%s" % (gallery.plugin != null))
         print("GALLERY_ICON=%s" % (gallery.plugin._get_plugin_icon() != null))
+        check_downloads(gallery)
     get_tree().quit()
+
+func check_downloads(gallery):
+    var badge: Label = gallery._download_badge
+    print("BADGE_HIDDEN=%s" % (not badge.visible))
+    # A Send to Godot download goes to the asset folder the Client just made.
+    var folder: String = gallery.plugin.absolute_download_path.path_join("models/wooden-chair_" + ID)
+    DirAccess.make_dir_recursive_absolute(folder)
+    FileAccess.open(folder.path_join("wooden-chair_gltf_godot.glb"), FileAccess.WRITE).store_string("glb")
+    gallery.project_toggle.button_pressed = true
+    gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "created", "message": "Starting download"})
+    gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "progress", "progress": 40, "message": "Downloading 1.0MB (40%)"})
+    print("WEB_COUNT=%d" % gallery.active_download_count())
+    print("BADGE=%s %s" % [badge.visible, badge.text])
+    print("WEB_ID=%s" % gallery.web_downloads["web-1"].id)
+    var entries: Array = gallery._project_entries
+    print("PROJECT_TILES=%s" % [entries.map(func(e): return [e.id, e.asset.name])])
+    var item = gallery._project_download_items["web-1"]
+    print("TILE_TOOLTIP=%s" % item.thumb_button.tooltip_text.replace("\n", "|"))
+    # Unfinished tasks are reported every poll; a missing one is gone.
+    gallery.drop_vanished_downloads({"web-1": true})
+    print("KEPT=%d" % gallery.active_download_count())
+    gallery.drop_vanished_downloads({})
+    print("DROPPED=%d BADGE_HIDDEN=%s" % [gallery.active_download_count(), not badge.visible])
+    print("PROJECT_TILES=%s" % [gallery._project_entries.map(func(e): return [e.id, e.asset.name])])
 """
 
 
@@ -278,6 +319,19 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     assert "GALLERY_HIDDEN=true" in stdout, output
     assert "GALLERY_HAS_PLUGIN=true" in stdout, output
     assert "GALLERY_ICON=true" in stdout, output
+    assert "BADGE_HIDDEN=true" in stdout, output
+    assert "WEB_COUNT=1" in stdout, output
+    assert "BADGE=true 1" in stdout, output
+    assert "WEB_ID=17982784-2390-4999-83d7-c72ea929f352" in stdout, output
+    # the downloading folder shows as the download, not as a finished asset
+    assert "PROJECT_TILES=[[\"web-1\", \"Wooden Chair\"]]" in stdout, output
+    assert "TILE_TOOLTIP=Wooden Chair|Downloading 1.0MB (40%)" in stdout, output
+    assert "KEPT=1" in stdout, output
+    assert "DROPPED=0 BADGE_HIDDEN=true" in stdout, output
+    assert (
+        'PROJECT_TILES=[["17982784-2390-4999-83d7-c72ea929f352", "Wooden Chair"]]'
+        in stdout
+    ), output
     assert "SCRIPT ERROR" not in stderr, output
 
 

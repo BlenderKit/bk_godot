@@ -6,8 +6,9 @@ extends PanelContainer
 ## project, see ProjectAssets.
 ##
 ## The plugin owns the Client connection. It calls handle_task() for search,
-## thumbnail and download tasks from its /godot/report poll, and
-## on_connection_changed() / on_categories_changed() on updates.
+## thumbnail and download tasks from its /godot/report poll,
+## drop_vanished_downloads() after each report, and on_connection_changed() /
+## on_categories_changed() on updates.
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const GalleryItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
@@ -21,6 +22,11 @@ const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
 const SPINNER_SIZE := 128
 ## Spinner turns per second.
 const SPINNER_SPEED := 0.75
+## How long before a Send to Godot task first shows its asset folder may have
+## changed, and how long after to keep looking for it, in seconds.
+const WEB_FOLDER_SLACK := 5
+const WEB_FOLDER_SEARCH := 30
+const WEB_DOWNLOAD_NAME := "Send to Godot"
 
 @onready var main: VBoxContainer = %Main
 @onready var search_edit: LineEdit = %SearchEdit
@@ -61,6 +67,11 @@ var thumb_cache: Dictionary = {}
 var items: Dictionary = {}
 ## assetBaseId -> {task_id, status, progress, message, file_type, file_path}
 var downloads: Dictionary = {}
+## Send to Godot downloads from blendkit.com, task_id -> {task_id, status,
+## progress, message, since, folder, id, asset_type}. Their tasks don't say
+## which asset they download, so the folder is guessed, see
+## ProjectAssets.recent_download_folder().
+var web_downloads: Dictionary = {}
 
 var _search_started := false
 var _pending_search := false
@@ -92,6 +103,9 @@ var project: ProjectAssets
 ## Scanned asset folders with their tiles, see ProjectAssets.scan().
 var _project_entries: Array = []
 var _project_signature := ""
+## assetBaseId or task_id -> project tile of a download in progress.
+var _project_download_items: Dictionary = {}
+var _download_badge: Label
 ## Asset id -> asset type of unknown folders to look up on Blendkit.
 var _lookup_queue: Dictionary = {}
 var _lookup_id := ""
@@ -159,6 +173,20 @@ func _ready() -> void:
 			details.refresh_download())
 	message_button.pressed.connect(_on_message_button_pressed)
 	project_toggle.toggled.connect(_on_project_toggled)
+	_download_badge = Label.new()
+	_download_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_download_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_download_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_download_badge.custom_minimum_size = Vector2.ONE * roundf(16 * edscale)
+	project_toggle.add_child(_download_badge)
+	_download_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_download_badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	# Hang over the corner, clear of the icon.
+	_download_badge.offset_left = 5 * edscale
+	_download_badge.offset_right = 5 * edscale
+	_download_badge.offset_top = -4 * edscale
+	_download_badge.offset_bottom = -4 * edscale
+	_update_download_badge()
 	project = ProjectAssets.new()
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_project_files_changed)
 	categories_timer.timeout.connect(_fetch_categories)
@@ -206,6 +234,19 @@ func _update_theme() -> void:
 	project_toggle.icon = get_theme_icon("AssetStore" if has_theme_icon("AssetStore", "EditorIcons") else "AssetLib", "EditorIcons")
 	# Flat look, but the padding of a regular button like the menu button.
 	project_toggle.custom_minimum_size.x = project_toggle.icon.get_width() + get_theme_stylebox("normal", "Button").get_minimum_size().x
+	var edscale := EditorInterface.get_editor_scale()
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = get_theme_color("accent_color", "Editor")
+	badge_style.set_corner_radius_all(int(8 * edscale))
+	# A ring in the background color keeps it apart from the pressed button.
+	badge_style.set_border_width_all(maxi(1, int(2 * edscale)))
+	badge_style.border_color = get_theme_color("base_color", "Editor")
+	badge_style.content_margin_left = 3 * edscale
+	badge_style.content_margin_right = 3 * edscale
+	_download_badge.add_theme_stylebox_override("normal", badge_style)
+	_download_badge.add_theme_color_override("font_color", get_theme_color("base_color", "Editor"))
+	_download_badge.add_theme_font_override("font", get_theme_font("bold", "EditorFonts"))
+	_download_badge.add_theme_font_size_override("font_size", int(10 * edscale))
 
 
 # MARK: plugin interface
@@ -249,6 +290,8 @@ func on_connection_changed() -> void:
 			dl.status = "error"
 			dl.message = "Blendkit Client disconnected"
 			_refresh_download(base_id)
+	for task_id in web_downloads.keys():
+		_drop_web_download(task_id)
 	if _pending_search:
 		_show_connection_message()
 
@@ -259,7 +302,7 @@ func on_categories_changed() -> void:
 
 
 func has_pending_work() -> bool:
-	if _searching or _download_posts > 0 or not _lookup_id.is_empty():
+	if _searching or _download_posts > 0 or not _lookup_id.is_empty() or not web_downloads.is_empty():
 		return true
 	if _thumbs_missing > 0 and Time.get_ticks_msec() < _thumbs_deadline:
 		return true
@@ -277,6 +320,32 @@ func handle_task(task: Dictionary) -> void:
 			_handle_thumbnail_task(task)
 		"asset_download":
 			_handle_download_task(task)
+
+
+## Unfinished tasks are reported on every poll, so a download missing from a
+## report is gone, e.g. cancelled in the Client. [param reported] holds the
+## report's task ids.
+func drop_vanished_downloads(reported: Dictionary) -> void:
+	if not is_node_ready():
+		return
+	for task_id in web_downloads.keys():
+		if not reported.has(task_id):
+			_drop_web_download(task_id)
+	for base_id in downloads:
+		var dl: Dictionary = downloads[base_id]
+		if dl.get("reported", false) and dl.status in ACTIVE_DOWNLOAD and not reported.has(dl.task_id):
+			dl.status = "error"
+			dl.message = "Cancelled"
+			_refresh_download(base_id)
+
+
+## Gallery and Send to Godot downloads in progress.
+func active_download_count() -> int:
+	var count := web_downloads.size()
+	for base_id in downloads:
+		if downloads[base_id].status in ACTIVE_DOWNLOAD:
+			count += 1
+	return count
 
 
 # MARK: search
@@ -677,15 +746,23 @@ func _on_project_files_changed() -> void:
 
 
 ## Rescan the download directory and rebuild the tiles if anything changed.
+## Downloads in progress come first, and their folders aren't scanned until
+## they finish.
 func _refresh_project() -> void:
-	var entries := project.scan(plugin.absolute_download_path)
-	var signature := str(entries.map(func(e): return [e.id, e.time, e.known, e.thumbnail]))
+	var entries := _download_entries()
+	var skip := {}
+	for entry in entries:
+		if not entry.folder.is_empty():
+			skip[entry.folder] = true
+	entries.append_array(project.scan(plugin.absolute_download_path, skip))
+	var signature := str(entries.map(func(e): return [e.id, e.time, e.known, e.thumbnail, e.asset.get("name", "")]))
 	if signature != _project_signature:
 		_project_signature = signature
 		for child in project_grid.get_children():
 			project_grid.remove_child(child)
 			child.queue_free()
 		_project_entries = entries
+		_project_download_items.clear()
 		for entry in entries:
 			var item = gallery_item_scene.instantiate()
 			project_grid.add_child(item)
@@ -696,13 +773,35 @@ func _refresh_project() -> void:
 				item.set_thumbnail(texture)
 			else:
 				item.set_thumbnail_failed()
+			if entry.has("download"):
+				item.set_download(entry.download)
+				_project_download_items[entry.id] = item
 			entry.item = item
 		_update_columns()
 	_filter_project()
 	for entry in _project_entries:
-		if not entry.known and not _lookup_failed.has(entry.id) and entry.id != _lookup_id:
+		if not entry.has("download") and not entry.known and not _lookup_failed.has(entry.id) and entry.id != _lookup_id:
 			_lookup_queue[entry.id] = entry.asset.assetType
 	_next_lookup()
+
+
+## Project entries for the downloads in progress, like ProjectAssets.scan()
+## with the download and its asset folder.
+func _download_entries() -> Array:
+	var entries: Array = []
+	for base_id in downloads:
+		var dl: Dictionary = downloads[base_id]
+		if dl.status in ACTIVE_DOWNLOAD:
+			entries.append({"id": base_id, "file_path": "", "time": -1, "asset": dl.asset, "known": true,
+				"thumbnail": thumb_cache.get(base_id, {}).get("small", ""), "download": dl,
+				"folder": GalleryApi.asset_download_dir(plugin.absolute_download_path, dl.asset)})
+	for task_id in web_downloads:
+		var web: Dictionary = web_downloads[task_id]
+		var known: bool = not web.id.is_empty() and project.has(web.id)
+		entries.append({"id": task_id, "file_path": "", "time": -1, "asset": _web_download_asset(web),
+			"known": known, "thumbnail": project.thumbnail(web.id) if known else "", "download": web,
+			"folder": web.folder})
+	return entries
 
 
 func _filter_project() -> void:
@@ -831,6 +930,11 @@ func _open_details(asset: Dictionary) -> void:
 
 
 func _open_project_details(entry: Dictionary) -> void:
+	if entry.has("download"):
+		# Send to Godot downloads have no details until they finish.
+		if entry.download.has("asset"):
+			_open_details(entry.asset)
+		return
 	var thumbs: Dictionary = thumb_cache.get(str(entry.asset.get("assetBaseId", "")), {}).duplicate()
 	if entry.thumbnail and not thumbs.has("small"):
 		thumbs.small = entry.thumbnail
@@ -873,6 +977,8 @@ func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 		return
 	dl.task_id = response[0]
 	dl.status = "created"
+	# Its tasks may have been taken for Send to Godot while the POST ran.
+	_drop_web_download(dl.task_id)
 	var early = _early_download_tasks.get(dl.task_id)
 	_early_download_tasks.erase(dl.task_id)
 	if _download_posts == 0:
@@ -891,8 +997,9 @@ func _handle_download_task(task: Dictionary) -> void:
 			return
 	if _download_posts > 0:
 		_early_download_tasks[task_id] = task
-	# Send to Godot on blendkit.com, or a download that finished before the
-	# POST returned (handled again when it does).
+	# Send to Godot on blendkit.com, or a download whose POST hasn't returned
+	# yet (handled again when it does).
+	_handle_web_download_task(task)
 	if task.get("status") == "finished":
 		_on_downloaded_elsewhere(GalleryApi.task_file_path(task))
 
@@ -902,6 +1009,7 @@ func _apply_download_task(base_id: String, task: Dictionary) -> void:
 	if not dl.status in ACTIVE_DOWNLOAD:
 		return
 	var status: String = task.get("status", "")
+	dl.reported = true
 	match status:
 		"created", "progress":
 			dl.status = status
@@ -935,12 +1043,87 @@ func _on_cancel_requested(task_id: String) -> void:
 			_refresh_download(base_id)
 
 
-## Show the download state on the asset's tile and, when open, its details.
+## Show the download state on the asset's tiles and, when open, its details.
 func _refresh_download(base_id: String) -> void:
+	var dl: Dictionary = downloads.get(base_id, {})
 	if items.has(base_id):
-		items[base_id].set_download(downloads.get(base_id, {}))
+		items[base_id].set_download(dl)
 	if details.visible and str(details.asset.get("assetBaseId", "")) == base_id:
 		details.refresh_download()
+	if _project_download_items.has(base_id) != (dl.get("status", "") in ACTIVE_DOWNLOAD):
+		_on_project_files_changed()
+	elif _project_download_items.has(base_id):
+		_project_download_items[base_id].set_download(dl)
+	_update_download_badge()
+
+
+# MARK: Send to Godot downloads
+
+func _handle_web_download_task(task: Dictionary) -> void:
+	var task_id: String = task.get("task_id", "")
+	var status: String = task.get("status", "")
+	if not status in ACTIVE_DOWNLOAD:
+		_drop_web_download(task_id)
+		return
+	var changed := not web_downloads.has(task_id)
+	if changed:
+		web_downloads[task_id] = {"task_id": task_id, "folder": "", "id": "", "asset_type": "",
+			"since": int(Time.get_unix_time_from_system()) - WEB_FOLDER_SLACK}
+		plugin.update_poll_rate()
+	var web: Dictionary = web_downloads[task_id]
+	web.status = status
+	web.progress = int(task.get("progress", 0))
+	web.message = str(task.get("message", ""))
+	if web.folder.is_empty() and Time.get_unix_time_from_system() < web.since + WEB_FOLDER_SLACK + WEB_FOLDER_SEARCH:
+		changed = _find_web_download_folder(web) or changed
+	if changed:
+		_on_project_files_changed()
+	elif _project_download_items.has(task_id):
+		_project_download_items[task_id].set_download(web)
+	_update_download_badge()
+
+
+func _drop_web_download(task_id: String) -> void:
+	if web_downloads.erase(task_id):
+		_on_project_files_changed()
+		_update_download_badge()
+
+
+## Guess the asset the Send to Godot task downloads from the folder that
+## changed last, and look it up for its name and thumbnail. Returns whether
+## a folder was found.
+func _find_web_download_folder(web: Dictionary) -> bool:
+	var taken := {}
+	for entry in _download_entries():
+		if not entry.folder.is_empty():
+			taken[entry.folder] = true
+	var found := ProjectAssets.recent_download_folder(plugin.absolute_download_path, web.since, taken)
+	if found.is_empty():
+		return false
+	web.merge(found, true)
+	if not project.has(web.id) and not _lookup_failed.has(web.id) and web.id != _lookup_id:
+		_lookup_queue[web.id] = web.asset_type
+		_next_lookup()
+	return true
+
+
+func _web_download_asset(web: Dictionary) -> Dictionary:
+	if web.id.is_empty():
+		return {"name": WEB_DOWNLOAD_NAME}
+	if project.has(web.id):
+		return project.get_asset(web.id)
+	var file := ProjectAssets.main_file(web.folder)
+	return {"id": web.id, "name": ProjectAssets.placeholder_name(file if file else web.folder),
+		"assetType": web.asset_type}
+
+
+func _update_download_badge() -> void:
+	var count := active_download_count()
+	_download_badge.text = str(count)
+	_download_badge.visible = count > 0
+	project_toggle.tooltip_text = "Show assets downloaded to this project"
+	if count > 0:
+		project_toggle.tooltip_text += "\n%d %s in progress" % [count, "download" if count == 1 else "downloads"]
 
 
 func _is_connected() -> bool:

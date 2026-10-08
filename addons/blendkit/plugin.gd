@@ -492,8 +492,7 @@ func on_request_completed(result, response_code, _headers, body):
 				var level := client_message_log_level(int(data.get("message_level", 10)))
 				bk_log(level, "Client: %s" % msg)
 			var tasks = data.get("tasks", [])
-			if tasks:
-				handle_tasks(tasks)
+			handle_tasks(tasks if tasks is Array else [])
 			return
 		bk_log(LogLevel.WARNING, "Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
 
@@ -710,9 +709,14 @@ func handle_tasks(tasks: Array) -> void:
 					categories = task["result"]
 					if gallery:
 						gallery.on_categories_changed()
+	if gallery:
+		var reported := {}
+		for task in tasks:
+			reported[task.get("task_id", "")] = true
+		gallery.drop_vanished_downloads(reported)
 
 
-# Downloads from Send to Godot on blendkit.com show only here.
+# Failed downloads from Send to Godot on blendkit.com show only here.
 func log_download_task(task: Dictionary) -> void:
 	match task.get("status"):
 		"finished":
