@@ -69,7 +69,7 @@ var items: Dictionary = {}
 var downloads: Dictionary = {}
 ## Send to Godot downloads from blendkit.com, task_id -> {task_id, status,
 ## progress, message, since, folder, id, asset_type}. Their tasks don't say
-## which asset they download, so the folder is guessed, see
+## which asset they download, so the staging folder is guessed, see
 ## ProjectAssets.recent_download_folder().
 var web_downloads: Dictionary = {}
 
@@ -106,6 +106,8 @@ var _project_signature := ""
 ## assetBaseId or task_id -> project tile of a download in progress.
 var _project_download_items: Dictionary = {}
 var _download_badge: Label
+## Whether leftover staging folders were cleared since connecting.
+var _staging_cleared := false
 ## Asset id -> asset type of unknown folders to look up on Blendkit.
 var _lookup_queue: Dictionary = {}
 var _lookup_id := ""
@@ -292,6 +294,7 @@ func on_connection_changed() -> void:
 			_refresh_download(base_id)
 	for task_id in web_downloads.keys():
 		_drop_web_download(task_id)
+	_staging_cleared = false
 	if _pending_search:
 		_show_connection_message()
 
@@ -331,6 +334,15 @@ func drop_vanished_downloads(reported: Dictionary) -> void:
 	for task_id in web_downloads.keys():
 		if not reported.has(task_id):
 			_drop_web_download(task_id)
+	# Once the report shows which downloads still run, clear the rest.
+	if not _staging_cleared:
+		_staging_cleared = true
+		var keep := {}
+		for entry in _download_entries():
+			keep[entry.folder] = true
+		var cleared := GalleryApi.clear_staging(plugin.absolute_download_path, keep)
+		if cleared > 0:
+			plugin.bk_log(plugin.LogLevel.VERBOSE, "Deleted %d unfinished downloads" % cleared)
 	for base_id in downloads:
 		var dl: Dictionary = downloads[base_id]
 		if dl.get("reported", false) and dl.status in ACTIVE_DOWNLOAD and not reported.has(dl.task_id):
@@ -746,15 +758,10 @@ func _on_project_files_changed() -> void:
 
 
 ## Rescan the download directory and rebuild the tiles if anything changed.
-## Downloads in progress come first, and their folders aren't scanned until
-## they finish.
+## Downloads in progress come first.
 func _refresh_project() -> void:
 	var entries := _download_entries()
-	var skip := {}
-	for entry in entries:
-		if not entry.folder.is_empty():
-			skip[entry.folder] = true
-	entries.append_array(project.scan(plugin.absolute_download_path, skip))
+	entries.append_array(project.scan(plugin.absolute_download_path))
 	var signature := str(entries.map(func(e): return [e.id, e.time, e.known, e.thumbnail, e.asset.get("name", "")]))
 	if signature != _project_signature:
 		_project_signature = signature
@@ -786,7 +793,7 @@ func _refresh_project() -> void:
 
 
 ## Project entries for the downloads in progress, like ProjectAssets.scan()
-## with the download and its asset folder.
+## with the download and its staging folder.
 func _download_entries() -> Array:
 	var entries: Array = []
 	for base_id in downloads:
@@ -794,7 +801,7 @@ func _download_entries() -> Array:
 		if dl.status in ACTIVE_DOWNLOAD:
 			entries.append({"id": base_id, "file_path": "", "time": -1, "asset": dl.asset, "known": true,
 				"thumbnail": thumb_cache.get(base_id, {}).get("small", ""), "download": dl,
-				"folder": GalleryApi.asset_download_dir(plugin.absolute_download_path, dl.asset)})
+				"folder": GalleryApi.asset_download_dir(GalleryApi.staging_path(plugin.absolute_download_path), dl.asset)})
 	for task_id in web_downloads:
 		var web: Dictionary = web_downloads[task_id]
 		var known: bool = not web.id.is_empty() and project.has(web.id)
@@ -965,8 +972,9 @@ func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 	_refresh_download(base_id)
 	_download_posts += 1
 	plugin.update_poll_rate()
+	GalleryApi.ensure_staging(plugin.absolute_download_path)
 	var response: Array = await GalleryApi.download(self, plugin.port, plugin.CLIENT_API_VERSION,
-		asset, file_type, plugin.absolute_download_path, plugin.get_addon_version(), plugin.auth.api_key())
+		asset, file_type, GalleryApi.staging_path(plugin.absolute_download_path), plugin.get_addon_version(), plugin.auth.api_key())
 	_download_posts -= 1
 	if not is_same(downloads.get(base_id), dl) or dl.status != "posting":
 		return # reset by a disconnect meanwhile
@@ -1001,7 +1009,10 @@ func _handle_download_task(task: Dictionary) -> void:
 	# yet (handled again when it does).
 	_handle_web_download_task(task)
 	if task.get("status") == "finished":
-		_on_downloaded_elsewhere(GalleryApi.task_file_path(task))
+		var path := GalleryApi.finish_download(GalleryApi.task_file_path(task))
+		if path.is_empty():
+			plugin.bk_log(plugin.LogLevel.WARNING, "Could not move %s into %s" % [GalleryApi.task_file_path(task), plugin.download_dir])
+		_on_downloaded_elsewhere(path)
 
 
 func _apply_download_task(base_id: String, task: Dictionary) -> void:
@@ -1016,9 +1027,14 @@ func _apply_download_task(base_id: String, task: Dictionary) -> void:
 			dl.progress = int(task.get("progress", 0))
 			dl.message = str(task.get("message", ""))
 		"finished":
+			dl.file_path = GalleryApi.finish_download(GalleryApi.task_file_path(task))
+			if dl.file_path.is_empty():
+				dl.status = "error"
+				dl.message = "Could not move the download into %s" % plugin.download_dir
+				_refresh_download(base_id)
+				return
 			dl.status = "finished"
 			dl.progress = 100
-			dl.file_path = GalleryApi.task_file_path(task)
 			dl.message = ""
 			if items.has(base_id):
 				items[base_id].set_downloaded(true)
@@ -1069,6 +1085,8 @@ func _handle_web_download_task(task: Dictionary) -> void:
 	if changed:
 		web_downloads[task_id] = {"task_id": task_id, "folder": "", "id": "", "asset_type": "",
 			"since": int(Time.get_unix_time_from_system()) - WEB_FOLDER_SLACK}
+		# The Client made the staging folder, but not its .gitignore.
+		GalleryApi.ensure_staging(plugin.absolute_download_path)
 		plugin.update_poll_rate()
 	var web: Dictionary = web_downloads[task_id]
 	web.status = status
@@ -1097,7 +1115,7 @@ func _find_web_download_folder(web: Dictionary) -> bool:
 	for entry in _download_entries():
 		if not entry.folder.is_empty():
 			taken[entry.folder] = true
-	var found := ProjectAssets.recent_download_folder(plugin.absolute_download_path, web.since, taken)
+	var found := ProjectAssets.recent_download_folder(GalleryApi.staging_path(plugin.absolute_download_path), web.since, taken)
 	if found.is_empty():
 		return false
 	web.merge(found, true)

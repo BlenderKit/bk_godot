@@ -250,7 +250,8 @@ def test_send_to_godot_downloads_asset(running_godot, assets_dir):
             # The 200 above plus the downloaded file below are the real signals.)
             browser.close()
 
-        # The Client downloads asynchronously and writes into bk_assets/.
+        # The Client downloads asynchronously, and the plugin moves the file
+        # into bk_assets/ once complete.
         downloaded = _wait_for_download(assets_dir, before, DOWNLOAD_TIMEOUT_S)
         assert downloaded, (
             f"No asset file appeared under {assets_dir} within {DOWNLOAD_TIMEOUT_S}s.\n"
@@ -264,7 +265,13 @@ def _wait_for_download(assets_dir: str, before: set, timeout_s: int):
     """Wait until a new, non-empty, size-stable file appears in assets_dir."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        new = [f for f in (_all_files(assets_dir) - before) if os.path.getsize(f) > 0]
+        # Downloads are staged in .downloads/ until the plugin moves them in.
+        staging = os.path.join(assets_dir, ".downloads") + os.sep
+        new = [
+            f
+            for f in (_all_files(assets_dir) - before)
+            if not f.startswith(staging) and os.path.getsize(f) > 0
+        ]
         if new:
             sizes = {f: os.path.getsize(f) for f in new}
             time.sleep(2)  # let an in-progress download settle

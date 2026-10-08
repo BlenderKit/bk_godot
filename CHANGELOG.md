@@ -27,6 +27,8 @@
 - The download toggle shows the number of downloads in progress, and the
   project assets list them first with their progress, including **Send to
   Godot** downloads from blendkit.com.
+- Downloads are staged in `bk_assets/.downloads/` and move into place once
+  complete, so Godot no longer tries to import partial files.
 
 ### Removed
 

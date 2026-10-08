@@ -116,17 +116,14 @@ static func trim_asset(asset: Dictionary) -> Dictionary:
 
 ## Asset folders in the download directory, newest first:
 ## [{id, file_path, time, asset, known, thumbnail}]. Folders not in the
-## index get a placeholder asset named after their file. Folders in
-## [param skip], e.g. ones still downloading, are left out.
-func scan(abs_download_path: String, skip: Dictionary = {}) -> Array:
+## index get a placeholder asset named after their file.
+func scan(abs_download_path: String) -> Array:
 	var entries: Array = []
 	for asset_type in GalleryApi.ASSET_TYPES:
 		var type_dir := GalleryApi.type_download_dir(abs_download_path, asset_type)
 		if not DirAccess.dir_exists_absolute(type_dir):
 			continue
 		for folder in DirAccess.get_directories_at(type_dir):
-			if skip.has(type_dir.path_join(folder)):
-				continue
 			var id := folder_asset_id(folder)
 			var file := main_file(type_dir.path_join(folder))
 			if id.is_empty() or file.is_empty():
@@ -146,16 +143,17 @@ func scan(abs_download_path: String, skip: Dictionary = {}) -> Array:
 	return entries
 
 
-## The asset folder the Client most likely just started downloading into:
-## the one changed most recently, at or after [param since] (Unix time),
-## leaving out [param taken] folders. Send to Godot tasks don't say which
-## asset they download, but the Client creates its folder and file right
-## before. Returns {folder, id, asset_type}, or {} if none changed.
-static func recent_download_folder(abs_download_path: String, since: int, taken: Dictionary = {}) -> Dictionary:
+## The asset folder in the [param staging] folder that the Client most
+## likely just started downloading into: the one changed most recently, at or
+## after [param since] (Unix time), leaving out [param taken] folders. Send
+## to Godot tasks don't say which asset they download, but the Client creates
+## its folder and file right before. Returns {folder, id, asset_type}, or {}
+## if none changed.
+static func recent_download_folder(staging: String, since: int, taken: Dictionary = {}) -> Dictionary:
 	var found := {}
 	var found_time := since - 1
 	for asset_type in GalleryApi.ASSET_TYPES:
-		var type_dir := GalleryApi.type_download_dir(abs_download_path, asset_type)
+		var type_dir := GalleryApi.type_download_dir(staging, asset_type)
 		if not DirAccess.dir_exists_absolute(type_dir):
 			continue
 		for folder in DirAccess.get_directories_at(type_dir):

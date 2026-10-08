@@ -177,6 +177,12 @@ The login is stored in the editor's data directory, outside your projects.
 
 Thumbnails are cached in `~/blenderkit_data/godot_temp/`, outside your project.
 
+Downloads in progress, from the **Blendkit** tab and **Send to Godot** alike,
+go to `bk_assets/.downloads/` first. Godot doesn't scan hidden folders and git
+ignores it, so partial files are never imported or committed. Each file moves
+to its folder once complete, replacing an older copy, and Godot imports it.
+Downloads left there when the editor closed are deleted on the next start.
+
 You don't need a credit card to get free assets, but you can access paid assets
 should you decide to support artists with a
 [Blendkit.com](https://blendkit.com) Full Plan.

@@ -182,17 +182,51 @@ func _initialize():
 
     var entries := project.scan(downloads)
     check(entries.size() == 2, "two asset folders: %s" % [entries.map(func(e): return e.file_path)])
-    var skipped := project.scan(downloads, {dir_b: true})
-    check(skipped.size() == 1 and skipped[0].id == ID_A, "downloading folder skipped")
+
+    # Downloads are staged in a hidden folder and moved when complete.
+    var staging := Api.staging_path(downloads)
+    check(staging == downloads.path_join(".downloads"), staging)
+    Api.ensure_staging(downloads)
+    check(FileAccess.get_file_as_string(staging.path_join(".gitignore")).contains("\n*\n"), "staging ignored by git")
+    check(Api.unstaged_path("/p/bk_assets/.downloads/models/x/a.glb") == "/p/bk_assets/models/x/a.glb", "unstaged")
+    check(Api.unstaged_path("C:\\p\\.downloads\\models\\x\\a.glb") == "C:/p/models/x/a.glb", "windows path")
+    check(Api.unstaged_path("/p/bk_assets/models/x/a.glb") == "/p/bk_assets/models/x/a.glb", "not staged")
+    check(project.scan(downloads).size() == 2, "staging not scanned")
 
     # Send to Godot downloads go to the folder changed last.
+    var staged_a := staging.path_join("models/travel-wooden-ch_" + ID_A)
+    write(staged_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), "new glb")
+    var staged_b := staging.path_join("materials/old-planks_" + ID_B)
+    DirAccess.make_dir_recursive_absolute(staged_b)
     var now := int(Time.get_unix_time_from_system())
-    var recent := ProjectAssets.recent_download_folder(downloads, now - 60)
-    check(recent.get("folder") in [dir_a, dir_b, downloads.path_join("models/empty_" + ID_B)], str(recent))
-    check(ProjectAssets.recent_download_folder(downloads, now + 60).is_empty(), "nothing changed since")
-    var taken := {dir_a: true, downloads.path_join("models/empty_" + ID_B): true}
-    recent = ProjectAssets.recent_download_folder(downloads, now - 60, taken)
-    check(recent == {"folder": dir_b, "id": ID_B, "asset_type": "material"}, str(recent))
+    var recent := ProjectAssets.recent_download_folder(staging, now - 60)
+    check(recent.get("folder") in [staged_a, staged_b], str(recent))
+    check(ProjectAssets.recent_download_folder(staging, now + 60).is_empty(), "nothing changed since")
+    recent = ProjectAssets.recent_download_folder(staging, now - 60, {staged_b: true})
+    check(recent == {"folder": staged_a, "id": ID_A, "asset_type": "model"}, str(recent))
+
+    # A finished download replaces the older copy; .import stays.
+    var moved := Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot.glb"))
+    check(moved == dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), moved)
+    check(FileAccess.get_file_as_string(moved) == "new glb", "replaced")
+    check(FileAccess.file_exists(moved + ".import"), "import kept")
+    check(not DirAccess.dir_exists_absolute(staged_a), "staging folder removed")
+    check(Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot.glb")) == moved, "moved twice")
+    # A new asset gets its folder.
+    var staged_c := staging.path_join("models/new-one_" + ID_B)
+    write(staged_c.path_join("new-one.glb"), "glb")
+    moved = Api.finish_download(staged_c.path_join("new-one.glb"))
+    check(moved == downloads.path_join("models/new-one_" + ID_B + "/new-one.glb") and FileAccess.file_exists(moved), moved)
+    DirAccess.remove_absolute(moved)
+    DirAccess.remove_absolute(moved.get_base_dir())
+
+    # Leftovers are cleared unless kept or still written to.
+    var stale := OS.get_environment("BK_STALE_DIR")
+    check(DirAccess.dir_exists_absolute(stale), "stale folder prepared")
+    check(Api.clear_staging(downloads, {staged_b: true}) == 1, "one stale folder")
+    check(not DirAccess.dir_exists_absolute(stale), "stale folder deleted")
+    check(DirAccess.dir_exists_absolute(staged_b), "kept folder")
+    check(Api.clear_staging(root.path_join("nowhere"), {}) == 0, "no staging")
     var by_id := {}
     for e in entries:
         by_id[e.id] = e
@@ -221,10 +255,19 @@ func _initialize():
 
 def test_project_assets(godot_executable, tmp_path):
     os.environ["BK_TEST_DIR"] = str(tmp_path / "data")
+    # A download the editor closed during, last written to an hour ago.
+    stale = tmp_path / "data" / "bk_assets" / ".downloads" / "models" / "old_x"
+    stale.mkdir(parents=True)
+    (stale / "old.glb").write_text("partial")
+    hour_ago = time.time() - 3600
+    for path in (stale / "old.glb", stale):
+        os.utime(path, (hour_ago, hour_ago))
+    os.environ["BK_STALE_DIR"] = str(stale)
     try:
         result = run_godot_script(godot_executable, tmp_path, ROOT, PROJECT_ASSETS_CHECKS)
     finally:
         del os.environ["BK_TEST_DIR"]
+        del os.environ["BK_STALE_DIR"]
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
     assert "PROJECT_ASSETS_CHECKS_PASSED" in result.stdout, output
@@ -257,10 +300,11 @@ func check():
 func check_downloads(gallery):
     var badge: Label = gallery._download_badge
     print("BADGE_HIDDEN=%s" % (not badge.visible))
-    # A Send to Godot download goes to the asset folder the Client just made.
-    var folder: String = gallery.plugin.absolute_download_path.path_join("models/wooden-chair_" + ID)
+    # A Send to Godot download goes to the staging folder the Client just made.
+    var folder: String = gallery.plugin.absolute_download_path.path_join(".downloads/models/wooden-chair_" + ID)
+    var file := folder.path_join("wooden-chair_gltf_godot.glb")
     DirAccess.make_dir_recursive_absolute(folder)
-    FileAccess.open(folder.path_join("wooden-chair_gltf_godot.glb"), FileAccess.WRITE).store_string("glb")
+    FileAccess.open(file, FileAccess.WRITE).store_string("glb")
     gallery.project_toggle.button_pressed = true
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "created", "message": "Starting download"})
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "progress", "progress": 40, "message": "Downloading 1.0MB (40%)"})
@@ -273,10 +317,15 @@ func check_downloads(gallery):
     print("TILE_TOOLTIP=%s" % item.thumb_button.tooltip_text.replace("\n", "|"))
     # Unfinished tasks are reported every poll; a missing one is gone.
     gallery.drop_vanished_downloads({"web-1": true})
-    print("KEPT=%d" % gallery.active_download_count())
-    gallery.drop_vanished_downloads({})
-    print("DROPPED=%d BADGE_HIDDEN=%s" % [gallery.active_download_count(), not badge.visible])
+    print("KEPT=%d STAGED=%s" % [gallery.active_download_count(), FileAccess.file_exists(file)])
+    # Finished, it moves into the project.
+    gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "finished", "result": {"file_path": file}})
+    print("FINISHED=%d BADGE_HIDDEN=%s" % [gallery.active_download_count(), not badge.visible])
     print("PROJECT_TILES=%s" % [gallery._project_entries.map(func(e): return [e.id, e.asset.name])])
+    gallery.handle_task({"task_type": "asset_download", "task_id": "web-2", "status": "created"})
+    print("WEB_NAME=%s" % gallery._project_entries[0].asset.name)
+    gallery.drop_vanished_downloads({})
+    print("DROPPED=%d" % gallery.active_download_count())
 """
 
 
@@ -323,11 +372,13 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     assert "WEB_COUNT=1" in stdout, output
     assert "BADGE=true 1" in stdout, output
     assert "WEB_ID=17982784-2390-4999-83d7-c72ea929f352" in stdout, output
-    # the downloading folder shows as the download, not as a finished asset
+    # the staged download shows only as the download
     assert "PROJECT_TILES=[[\"web-1\", \"Wooden Chair\"]]" in stdout, output
     assert "TILE_TOOLTIP=Wooden Chair|Downloading 1.0MB (40%)" in stdout, output
-    assert "KEPT=1" in stdout, output
-    assert "DROPPED=0 BADGE_HIDDEN=true" in stdout, output
+    assert "KEPT=1 STAGED=true" in stdout, output
+    assert "FINISHED=0 BADGE_HIDDEN=true" in stdout, output
+    assert "WEB_NAME=Send to Godot" in stdout, output
+    assert "DROPPED=0" in stdout, output
     assert (
         'PROJECT_TILES=[["17982784-2390-4999-83d7-c72ea929f352", "Wooden Chair"]]'
         in stdout

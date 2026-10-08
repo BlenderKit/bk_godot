@@ -4,6 +4,12 @@ extends RefCounted
 ## (pure, unit tested), plus JSON POSTs to the Blendkit Client.
 
 const MAX_RESULT_WINDOW := 10000
+## Downloads land in this hidden folder of the download directory, which
+## Godot doesn't scan, and move to their place once complete. That keeps the
+## editor from importing partial files.
+const STAGING_DIR := ".downloads"
+## Leftover staging folders this old are no longer written to.
+const STAGING_STALE_SECONDS := 60
 
 ## Asset types the gallery offers, in OptionButton order. These match what
 ## Send to Godot can deliver.
@@ -201,6 +207,81 @@ static func asset_download_dir(abs_download_path: String, asset: Dictionary) -> 
 
 static func type_download_dir(abs_download_path: String, asset_type: String) -> String:
 	return abs_download_path.path_join(plural_asset_type(asset_type))
+
+
+# MARK: staging
+
+## Where the Client downloads for download dir [param abs_download_path],
+## with the same layout.
+static func staging_path(abs_download_path: String) -> String:
+	return abs_download_path.path_join(STAGING_DIR)
+
+
+## Create the staging folder, kept out of version control.
+static func ensure_staging(abs_download_path: String) -> void:
+	var staging := staging_path(abs_download_path)
+	DirAccess.make_dir_recursive_absolute(staging)
+	var ignore := staging.path_join(".gitignore")
+	if not FileAccess.file_exists(ignore):
+		var file := FileAccess.open(ignore, FileAccess.WRITE)
+		if file:
+			file.store_string("# Blendkit downloads in progress\n*\n")
+
+
+## Where a file downloaded to the staging folder belongs. Paths outside it
+## are returned as they are. The Client reports native paths, so Windows
+## backslashes become slashes.
+static func unstaged_path(path: String) -> String:
+	path = path.replace("\\", "/")
+	var marker := "/" + STAGING_DIR + "/"
+	var i := path.rfind(marker)
+	return path if i < 0 else path.left(i) + path.substr(i + marker.length() - 1)
+
+
+## Move a finished download from the staging folder to its place, replacing
+## an older copy there, whose .import and .uid stay so references keep
+## working. Returns the new path; "" if the move failed.
+static func finish_download(path: String) -> String:
+	path = path.replace("\\", "/")
+	var target := unstaged_path(path)
+	# Not staged, or moved already (a task can be handled twice).
+	if target == path or not FileAccess.file_exists(path):
+		return target
+	DirAccess.make_dir_recursive_absolute(target.get_base_dir())
+	if FileAccess.file_exists(target) and DirAccess.remove_absolute(target) != OK:
+		return ""
+	if DirAccess.rename_absolute(path, target) != OK:
+		return ""
+	DirAccess.remove_absolute(path.get_base_dir()) # only if empty
+	return target
+
+
+## Delete asset folders left in the staging folder, e.g. by downloads the
+## editor closed during, except those in [param keep] and ones still being
+## written to. Returns how many were deleted.
+static func clear_staging(abs_download_path: String, keep: Dictionary) -> int:
+	var staging := staging_path(abs_download_path)
+	var now := int(Time.get_unix_time_from_system())
+	var cleared := 0
+	if not DirAccess.dir_exists_absolute(staging):
+		return cleared
+	for type_name in DirAccess.get_directories_at(staging):
+		var type_dir := staging.path_join(type_name)
+		for folder in DirAccess.get_directories_at(type_dir):
+			var path := type_dir.path_join(folder)
+			if keep.has(path):
+				continue
+			var files := DirAccess.get_files_at(path)
+			var newest := FileAccess.get_modified_time(path)
+			for file in files:
+				newest = maxi(newest, FileAccess.get_modified_time(path.path_join(file)))
+			if now - newest < STAGING_STALE_SECONDS:
+				continue
+			for file in files:
+				DirAccess.remove_absolute(path.path_join(file))
+			if DirAccess.remove_absolute(path) == OK:
+				cleared += 1
+	return cleared
 
 
 static func web_url(server: String, asset: Dictionary) -> String:

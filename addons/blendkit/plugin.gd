@@ -440,7 +440,8 @@ func on_timer_timeout():
 		"appID": OS.get_process_id(),
 		"version": get_godot_version(),
 		"addonVersion": get_addon_version(),
-		"assetsPath": absolute_download_path,
+		# Send to Godot downloads there, see GalleryApi.STAGING_DIR.
+		"assetsPath": GalleryApi.staging_path(absolute_download_path),
 		"projectName": ProjectSettings.get_setting("application/config/name"),
 		"modelFormat": model_format,
 		"resolution": resolution,
@@ -720,7 +721,8 @@ func handle_tasks(tasks: Array) -> void:
 func log_download_task(task: Dictionary) -> void:
 	match task.get("status"):
 		"finished":
-			bk_log(LogLevel.INFO, "Downloaded %s" % ProjectSettings.localize_path(GalleryApi.task_file_path(task)))
+			var path := GalleryApi.unstaged_path(GalleryApi.task_file_path(task))
+			bk_log(LogLevel.INFO, "Downloaded %s" % ProjectSettings.localize_path(path))
 		"error":
 			bk_log(LogLevel.WARNING, "Download failed: %s" % task.get("message", ""))
 		"cancelled":
