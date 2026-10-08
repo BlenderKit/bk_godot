@@ -18,6 +18,12 @@
   **Settings…** and links to blendkit.com, the docs and the issue tracker.
 - Asset thumbnails show download progress along their bottom edge, and a
   check mark or an error icon when the download finishes.
+- Project assets: the download toggle next to the search switches the
+  **Blendkit** tab to the assets downloaded to the project, including those
+  sent with **Send to Godot**, with a local search and **Show in FileSystem**.
+  Asset folders found in `bk_assets/` are looked up on blendkit.com and
+  remembered in `.godot/blendkit/`, so nothing is added to the project.
+  Switching back returns to the previous search instantly.
 
 ### Removed
 

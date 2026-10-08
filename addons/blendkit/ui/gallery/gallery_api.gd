@@ -94,6 +94,13 @@ static func build_search_url(server: String, text: String, asset_type: String, c
 		server, "+".join(tokens), page_size, page, addon_version.uri_encode()]
 
 
+## Search for one asset by its version id, as named in the asset's
+## download folder.
+static func build_lookup_url(server: String, asset_id: String, addon_version: String) -> String:
+	return "%s/api/v1/search/?query=asset_id:%s&dict_parameters=1&page_size=1&addon_version=%s" % [
+		server, asset_id.uri_encode(), addon_version.uri_encode()]
+
+
 ## Pages reachable by the server, which serves only the first 10000 results.
 static func page_count(count: int, page_size: int) -> int:
 	if count <= 0 or page_size <= 0:

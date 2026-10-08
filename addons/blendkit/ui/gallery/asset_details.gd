@@ -2,7 +2,8 @@
 extends ConfirmationDialog
 ## Asset details with a preview, description, key parameters, tags and a
 ## file chooser. OK downloads, or opens the asset web page (or the plans for
-## a Free plan account) when the user can't download it.
+## a Free plan account) when the user can't download it. For an asset
+## already in the project, OK shows its file instead.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
@@ -29,6 +30,8 @@ const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
 ## Set by the gallery, used to read download state and the download settings.
 var gallery: Node
 var asset: Dictionary = {}
+## The asset's file when it's shown from the project assets, else "".
+var local_path := ""
 var _textures: Dictionary = {}
 var _preview_type := ""
 var _web_button: Button
@@ -50,8 +53,9 @@ func _ready() -> void:
 	file_option.item_selected.connect(func(_i): refresh_download())
 
 
-func show_asset(new_asset: Dictionary, thumbnails: Dictionary) -> void:
+func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_local_path: String = "") -> void:
 	asset = new_asset
+	local_path = new_local_path
 	title = str(asset.get("displayName", asset.get("name", "Asset")))
 	title_label.text = title
 	title_label.tooltip_text = title
@@ -59,7 +63,7 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary) -> void:
 	author_label.text = "by " + author if author else ""
 	var license := str(asset.get("license", ""))
 	var info := PackedStringArray([
-		"Free" if asset.get("isFree") == true else "Full Plan",
+		"" if not asset.has("isFree") else "Free" if asset.isFree == true else "Full Plan",
 		LICENSE_LABELS.get(license, license.replace("_", " ").capitalize()),
 		GalleryApi.ASSET_TYPE_LABELS.get(asset.get("assetType", ""), "").trim_suffix("s"),
 	])
@@ -195,7 +199,13 @@ func refresh_download() -> void:
 	_login_button.hide()
 	note_label.text = ""
 	note_label.remove_theme_color_override("font_color")
+	_web_button.visible = not str(asset.get("assetBaseId", "")).is_empty()
+	file_option.get_parent().visible = local_path.is_empty()
 
+	if not local_path.is_empty():
+		ok.text = "Show in FileSystem"
+		note_label.text = "In the project at %s" % ProjectSettings.localize_path(local_path)
+		return
 	if asset.get("canDownload") != true:
 		var auth = gallery.plugin.auth
 		ok.text = "Get on blendkit.com"
@@ -249,6 +259,10 @@ func _needs_full_plan() -> bool:
 
 
 func _on_ok() -> void:
+	if not local_path.is_empty():
+		FileReveal.reveal(local_path)
+		hide()
+		return
 	if asset.get("canDownload") != true:
 		if _needs_full_plan():
 			OS.shell_open(gallery.plugin.SERVER + "/plans/pricing")

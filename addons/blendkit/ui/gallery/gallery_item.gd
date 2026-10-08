@@ -66,7 +66,8 @@ func _update() -> void:
 	author_label.text = author
 	thumb_button.tooltip_text = "%s\nby %s" % [title, author] if author else title
 	var free: bool = asset.get("isFree") == true
-	plan_label.text = "Free" if free else "Full Plan"
+	# Unknown for assets in the project not found on Blendkit.
+	plan_label.text = "" if not asset.has("isFree") else "Free" if free else "Full Plan"
 	var quality = asset.get("ratingsAverage", {})
 	quality = quality.get("quality") if quality is Dictionary else null
 	rating_label.text = "★ %.1f" % quality if quality is float or quality is int else ""

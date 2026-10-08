@@ -128,6 +128,97 @@ def test_gallery_api(godot_executable, tmp_path):
     assert "SCRIPT ERROR" not in result.stderr, output
 
 
+PROJECT_ASSETS_CHECKS = r"""extends SceneTree
+
+const Api = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
+
+const ID_A := "17982784-2390-4999-83d7-c72ea929f352"
+const ID_B := "2f7f0000-0000-4000-8000-000000000001"
+
+var failures := 0
+
+func check(ok: bool, what: String) -> void:
+    if not ok:
+        failures += 1
+        print("CHECK FAILED: " + what)
+
+func write(path: String, text: String) -> void:
+    DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+    FileAccess.open(path, FileAccess.WRITE).store_string(text)
+
+func _initialize():
+    var root := OS.get_environment("BK_TEST_DIR")
+    var downloads := root.path_join("bk_assets")
+    var index_dir := root.path_join("index")
+
+    var url := Api.build_lookup_url("https://blendkit.com", ID_A, "0.6.1")
+    check(url == "https://blendkit.com/api/v1/search/?query=asset_id:%s&dict_parameters=1&page_size=1&addon_version=0.6.1" % ID_A, url)
+
+    check(ProjectAssets.folder_asset_id("travel-wooden-ch_" + ID_A) == ID_A, "folder id")
+    check(ProjectAssets.folder_asset_id("my-folder") == "", "not an asset folder")
+    check(ProjectAssets.placeholder_name("/x/travel-wooden-chess-set_gltf_godot.glb") == "Travel Wooden Chess Set", ProjectAssets.placeholder_name("/x/travel-wooden-chess-set_gltf_godot.glb"))
+
+    # A known asset, an unknown one, and folders that aren't assets.
+    var dir_a := downloads.path_join("models/travel-wooden-ch_" + ID_A)
+    write(dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), "glb")
+    write(dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb.import"), "import")
+    var dir_b := downloads.path_join("materials/old-planks_" + ID_B)
+    write(dir_b.path_join("old-planks_2K.blend"), "blend")
+    DirAccess.make_dir_recursive_absolute(downloads.path_join("models/empty_" + ID_B))
+    write(downloads.path_join("models/user-stuff/a.glb"), "glb")
+    check(ProjectAssets.main_file(dir_a) == dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), ProjectAssets.main_file(dir_a))
+
+    var project := ProjectAssets.new(index_dir)
+    var thumb := root.path_join("thumb.jpg")
+    write(thumb, "jpg")
+    project.store({"id": ID_A, "assetBaseId": "base-a", "name": "Travel wooden chess set", "assetType": "model",
+        "tags": ["chess", "board"], "isFree": true, "canDownload": true}, thumb)
+    check(not project.index.get_value(ID_A, "asset").has("canDownload"), "account fields dropped")
+    check(FileAccess.file_exists(project.thumbnail(ID_A)), "thumbnail copied")
+
+    var entries := project.scan(downloads)
+    check(entries.size() == 2, "two asset folders: %s" % [entries.map(func(e): return e.file_path)])
+    var by_id := {}
+    for e in entries:
+        by_id[e.id] = e
+    check(by_id[ID_A].known and by_id[ID_A].asset.name == "Travel wooden chess set", "known asset")
+    check(not by_id[ID_B].known and by_id[ID_B].asset.name == "Old Planks" and by_id[ID_B].asset.assetType == "material", str(by_id[ID_B].asset))
+    check(ProjectAssets.matches(by_id[ID_A], "CHESS board"), "matches name and tags")
+    check(ProjectAssets.matches(by_id[ID_A], ""), "empty query matches")
+    check(not ProjectAssets.matches(by_id[ID_A], "chess planks"), "every word must match")
+    check(ProjectAssets.matches(by_id[ID_B], "planks material"), "matches placeholder and type")
+
+    # Looked up later; the thumbnail arrives separately.
+    project.store({"id": ID_B, "assetBaseId": "base-b", "name": "Old planks", "assetType": "material"})
+    check(project.thumbnail(ID_B) == "", "no thumbnail yet")
+    check(project.add_thumbnail("base-b", thumb), "thumbnail added")
+    check(not project.add_thumbnail("base-b", thumb), "thumbnail kept")
+
+    # The index persists and is read back.
+    var reloaded := ProjectAssets.new(index_dir)
+    check(reloaded.has(ID_A) and reloaded.has(ID_B), "index saved")
+    check(FileAccess.file_exists(reloaded.thumbnail(ID_B)), "thumbnail saved")
+    if failures == 0:
+        print("PROJECT_ASSETS_CHECKS_PASSED")
+    quit(failures)
+"""
+
+
+def test_project_assets(godot_executable, tmp_path):
+    os.environ["BK_TEST_DIR"] = str(tmp_path / "data")
+    try:
+        result = run_godot_script(godot_executable, tmp_path, ROOT, PROJECT_ASSETS_CHECKS)
+    finally:
+        del os.environ["BK_TEST_DIR"]
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "PROJECT_ASSETS_CHECKS_PASSED" in result.stdout, output
+    assert "SCRIPT ERROR" not in result.stderr, output
+    # missing type folders are skipped without engine errors
+    assert "ERROR" not in result.stderr, output
+
+
 MAIN_SCREEN_PROBE = r"""@tool
 extends EditorPlugin
 

@@ -2,6 +2,8 @@
 extends PanelContainer
 ## Blendkit main-screen tab: search with filters, paged thumbnails and an
 ## asset details dialog with a Download button. Works like the Asset Store.
+## The toggle next to the search switches to the assets downloaded to the
+## project, see ProjectAssets.
 ##
 ## The plugin owns the Client connection. It calls handle_task() for search,
 ## thumbnail and download tasks from its /godot/report poll, and
@@ -9,6 +11,7 @@ extends PanelContainer
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const GalleryItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
+const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
 
 const PAGE_SIZE := 30
@@ -22,6 +25,7 @@ const SPINNER_SPEED := 0.75
 @onready var main: VBoxContainer = %Main
 @onready var search_edit: LineEdit = %SearchEdit
 @onready var menu_button: Button = %MainMenuButton
+@onready var project_toggle: Button = %ProjectToggle
 @onready var sort_option: OptionButton = %SortOption
 @onready var type_option: OptionButton = %TypeOption
 @onready var category_option: OptionButton = %CategoryOption
@@ -38,6 +42,9 @@ const SPINNER_SPEED := 0.75
 @onready var grid: GridContainer = %Grid
 @onready var bottom_pages: HBoxContainer = %BottomPages
 @onready var spinner: TextureRect = %Spinner
+@onready var project_body: VBoxContainer = %ProjectBody
+@onready var project_message: Label = %ProjectMessage
+@onready var project_grid: GridContainer = %ProjectGrid
 @onready var debounce_timer: Timer = %DebounceTimer
 @onready var categories_timer: Timer = %CategoriesTimer
 @onready var details = %AssetDetails
@@ -74,6 +81,26 @@ var _fetching_categories := false
 var _message_action := Callable()
 var _updating_theme := false
 var _page_count := 0
+var _busy := false
+
+## Project mode shows the downloaded assets instead of the Blendkit search.
+## Each mode keeps its own query and scroll position.
+var _project_mode := false
+var _other_text := ""
+var _other_scroll := 0
+var project: ProjectAssets
+## Scanned asset folders with their tiles, see ProjectAssets.scan().
+var _project_entries: Array = []
+var _project_signature := ""
+## Asset id -> asset type of unknown folders to look up on Blendkit.
+var _lookup_queue: Dictionary = {}
+var _lookup_id := ""
+var _lookup_type := ""
+var _lookup_task_id := ""
+var _lookup_posting := false
+var _early_lookup_tasks: Dictionary = {}
+## Asset ids not found on Blendkit; not looked up again this session.
+var _lookup_failed: Dictionary = {}
 
 
 func _ready() -> void:
@@ -117,8 +144,8 @@ func _ready() -> void:
 	_update_type_filters()
 	_fill_categories()
 
-	search_edit.text_changed.connect(func(_t): debounce_timer.start())
-	search_edit.text_submitted.connect(func(_t): request_search())
+	search_edit.text_changed.connect(_on_search_text_changed)
+	search_edit.text_submitted.connect(_on_search_text_submitted)
 	debounce_timer.timeout.connect(request_search)
 	sort_option.item_selected.connect(_on_sort_selected)
 	type_option.item_selected.connect(_on_type_selected)
@@ -131,6 +158,9 @@ func _ready() -> void:
 		if details.visible:
 			details.refresh_download())
 	message_button.pressed.connect(_on_message_button_pressed)
+	project_toggle.toggled.connect(_on_project_toggled)
+	project = ProjectAssets.new()
+	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_project_files_changed)
 	categories_timer.timeout.connect(_fetch_categories)
 	scroll.resized.connect(_update_columns)
 
@@ -172,6 +202,10 @@ func _update_theme() -> void:
 	add_theme_stylebox_override("panel", get_theme_stylebox("bg", "AssetLib"))
 	scroll.add_theme_stylebox_override("panel", get_theme_stylebox("panel", "Tree"))
 	search_edit.right_icon = get_theme_icon("Search", "EditorIcons")
+	# AssetStore is the Godot 4.7+ name of AssetLib.
+	project_toggle.icon = get_theme_icon("AssetStore" if has_theme_icon("AssetStore", "EditorIcons") else "AssetLib", "EditorIcons")
+	# Flat look, but the padding of a regular button like the menu button.
+	project_toggle.custom_minimum_size.x = project_toggle.icon.get_width() + get_theme_stylebox("normal", "Button").get_minimum_size().x
 
 
 # MARK: plugin interface
@@ -192,6 +226,7 @@ func on_connection_changed() -> void:
 			categories_timer.start()
 		if _pending_search:
 			_run_search()
+		_next_lookup()
 		return
 
 	# The Client cancels the app's tasks when it unsubscribes.
@@ -204,6 +239,10 @@ func on_connection_changed() -> void:
 		_clear_results()
 	_search_url = ""
 	_search_task_id = ""
+	if not _lookup_id.is_empty():
+		_lookup_queue[_lookup_id] = _lookup_type
+	_lookup_id = ""
+	_lookup_task_id = ""
 	for base_id in downloads:
 		var dl: Dictionary = downloads[base_id]
 		if dl.status in ACTIVE_DOWNLOAD:
@@ -220,7 +259,7 @@ func on_categories_changed() -> void:
 
 
 func has_pending_work() -> bool:
-	if _searching or _download_posts > 0:
+	if _searching or _download_posts > 0 or not _lookup_id.is_empty():
 		return true
 	if _thumbs_missing > 0 and Time.get_ticks_msec() < _thumbs_deadline:
 		return true
@@ -258,7 +297,7 @@ func request_search(new_page: int = 1, force: bool = false) -> void:
 
 func _run_search(force: bool = true) -> void:
 	var asset_type := _asset_type()
-	var url := GalleryApi.build_search_url(plugin.SERVER, search_edit.text, asset_type,
+	var url := GalleryApi.build_search_url(plugin.SERVER, _browse_text(), asset_type,
 		_category_slug(), _sort(), free_check.button_pressed,
 		godot_ready_check.button_pressed and not godot_ready_check.disabled, page, PAGE_SIZE, plugin.get_addon_version())
 	if url == _search_url and _search_error.is_empty() and not force:
@@ -267,7 +306,7 @@ func _run_search(force: bool = true) -> void:
 	_search_seq += 1
 	var seq := _search_seq
 	_search_url = url
-	_search_text = search_edit.text.strip_edges()
+	_search_text = _browse_text().strip_edges()
 	_search_error = ""
 	_search_task_id = ""
 	_searching = true
@@ -297,6 +336,8 @@ func _handle_search_task(task: Dictionary) -> void:
 	if not status in ["finished", "error"]:
 		return
 	var task_id: String = task.get("task_id", "")
+	if _handle_lookup_task(task):
+		return
 	if task_id != _search_task_id:
 		if _searching and _search_task_id.is_empty():
 			_early_search_tasks[task_id] = task
@@ -375,7 +416,10 @@ func _show_results() -> void:
 			if asset is Dictionary and str(asset.get("assetBaseId", "")) == open_id:
 				details.asset = asset
 				details.refresh_download()
-	scroll.scroll_vertical = 0
+	if _project_mode:
+		_other_scroll = 0
+	else:
+		scroll.scroll_vertical = 0
 
 
 func _update_pages() -> void:
@@ -440,6 +484,7 @@ func _update_columns() -> void:
 	var available := scroll.size.x - scroll.get_v_scroll_bar().size.x
 	available -= border.get_theme_stylebox("panel").get_minimum_size().x
 	grid.columns = maxi(1, int((available + separation) / (item_width + separation)))
+	project_grid.columns = grid.columns
 	if _page_count > 1:
 		_update_pages()
 
@@ -447,9 +492,16 @@ func _update_columns() -> void:
 ## Dims the results with a spinning logo over them, like the Asset Store
 ## while it waits for a response.
 func _set_busy(busy: bool) -> void:
+	_busy = busy
+	spinner.rotation = 0
+	_update_busy()
+
+
+## The busy state belongs to the search, so it doesn't show in project mode.
+func _update_busy() -> void:
+	var busy := _busy and not _project_mode
 	scroll.modulate = Color(1, 1, 1, 0.5) if busy else Color.WHITE
 	spinner.visible = busy
-	spinner.rotation = 0
 	set_process(busy)
 
 
@@ -561,7 +613,7 @@ func _on_account_changed() -> void:
 func _on_tag_selected(tag: String) -> void:
 	details.hide()
 	search_edit.text = tag
-	request_search()
+	_on_search_text_submitted(tag)
 
 
 static func _get_meta(key: String, default: Variant) -> Variant:
@@ -570,6 +622,178 @@ static func _get_meta(key: String, default: Variant) -> Variant:
 
 static func _set_meta(key: String, value: Variant) -> void:
 	EditorInterface.get_editor_settings().set_project_metadata("blendkit", key, value)
+
+
+# MARK: project assets
+
+func _browse_text() -> String:
+	return _other_text if _project_mode else search_edit.text
+
+
+func _on_search_text_changed(_text: String) -> void:
+	if _project_mode:
+		_filter_project()
+	else:
+		debounce_timer.start()
+
+
+func _on_search_text_submitted(_text: String) -> void:
+	if _project_mode:
+		_filter_project()
+	else:
+		request_search()
+
+
+## Switches between the search and the project assets. Each keeps its query
+## and scroll position, and the search isn't run again.
+func _on_project_toggled(pressed: bool) -> void:
+	if pressed == _project_mode:
+		return
+	_project_mode = pressed
+	debounce_timer.stop()
+	var text := search_edit.text
+	var scroll_position := scroll.scroll_vertical
+	search_edit.text = _other_text
+	search_edit.caret_column = search_edit.text.length()
+	_other_text = text
+	search_edit.placeholder_text = "Search downloaded project assets" if pressed else "Search Blendkit assets"
+	filter_row.visible = not pressed
+	body.visible = not pressed
+	project_body.visible = pressed
+	_update_busy()
+	if pressed:
+		_refresh_project()
+	search_edit.grab_focus()
+	# The scroll range follows the new content after layout.
+	var restore := _other_scroll
+	_other_scroll = scroll_position
+	await get_tree().process_frame
+	scroll.scroll_vertical = restore
+
+
+func _on_project_files_changed() -> void:
+	if _project_mode:
+		_refresh_project()
+
+
+## Rescan the download directory and rebuild the tiles if anything changed.
+func _refresh_project() -> void:
+	var entries := project.scan(plugin.absolute_download_path)
+	var signature := str(entries.map(func(e): return [e.id, e.time, e.known, e.thumbnail]))
+	if signature != _project_signature:
+		_project_signature = signature
+		for child in project_grid.get_children():
+			project_grid.remove_child(child)
+			child.queue_free()
+		_project_entries = entries
+		for entry in entries:
+			var item = gallery_item_scene.instantiate()
+			project_grid.add_child(item)
+			item.setup(entry.asset)
+			item.selected.connect(func(_asset): _open_project_details(entry))
+			var texture := GalleryApi.load_texture(entry.thumbnail)
+			if texture:
+				item.set_thumbnail(texture)
+			else:
+				item.set_thumbnail_failed()
+			entry.item = item
+		_update_columns()
+	_filter_project()
+	for entry in _project_entries:
+		if not entry.known and not _lookup_failed.has(entry.id) and entry.id != _lookup_id:
+			_lookup_queue[entry.id] = entry.asset.assetType
+	_next_lookup()
+
+
+func _filter_project() -> void:
+	var shown := 0
+	for entry in _project_entries:
+		entry.item.visible = ProjectAssets.matches(entry, search_edit.text)
+		if entry.item.visible:
+			shown += 1
+	project_message.visible = shown == 0
+	if _project_entries.is_empty():
+		project_message.text = "No assets downloaded to %s yet.\nDownload them here or with Send to Godot on blendkit.com." % plugin.download_dir
+	elif shown == 0:
+		project_message.text = "No downloaded assets match \"%s\"." % search_edit.text.strip_edges()
+
+
+## A finished download this gallery didn't start, e.g. Send to Godot.
+func _on_downloaded_elsewhere(file_path: String) -> void:
+	if file_path.is_empty():
+		return
+	var folder := file_path.get_base_dir()
+	for base_id in items:
+		if GalleryApi.asset_download_dir(plugin.absolute_download_path, items[base_id].asset) == folder:
+			items[base_id].set_downloaded(true)
+	if ProjectSettings.localize_path(file_path).begins_with("res://"):
+		EditorInterface.get_resource_filesystem().scan()
+	_on_project_files_changed()
+
+
+# MARK: project asset lookups
+
+## Look up the next unknown asset folder on Blendkit, one at a time. The
+## search task also downloads the thumbnail, see _handle_thumbnail_task().
+func _next_lookup() -> void:
+	if not _lookup_id.is_empty() or _lookup_queue.is_empty() or not _is_connected():
+		return
+	var id: String = _lookup_queue.keys()[0]
+	var asset_type: String = _lookup_queue[id]
+	_lookup_queue.erase(id)
+	if project.has(id):
+		_next_lookup()
+		return
+	_lookup_id = id
+	_lookup_type = asset_type
+	_lookup_posting = true
+	_early_lookup_tasks.clear()
+	plugin.update_poll_rate()
+	var url := GalleryApi.build_lookup_url(plugin.SERVER, id, plugin.get_addon_version())
+	var tempdir := GalleryApi.search_temp_dir(plugin.client_data_dir, asset_type)
+	var response: Array = await GalleryApi.search(self, plugin.port, plugin.CLIENT_API_VERSION,
+		url, asset_type, tempdir, 1, plugin.get_addon_version(), plugin.auth.api_key())
+	_lookup_posting = false
+	if _lookup_id != id:
+		return # reset by a disconnect meanwhile
+	if response[0].is_empty():
+		plugin.bk_log(plugin.LogLevel.DEBUG, "Asset lookup failed: %s" % response[1])
+		_finish_lookup({})
+		return
+	_lookup_task_id = response[0]
+	var early = _early_lookup_tasks.get(_lookup_task_id)
+	_early_lookup_tasks.clear()
+	if early:
+		_finish_lookup(early)
+
+
+## Returns whether the search task was a lookup.
+func _handle_lookup_task(task: Dictionary) -> bool:
+	var task_id: String = task.get("task_id", "")
+	if not _lookup_task_id.is_empty() and task_id == _lookup_task_id:
+		_finish_lookup(task)
+		return true
+	if _lookup_posting:
+		# It may also be the gallery's search; whichever POST returns it takes it.
+		_early_lookup_tasks[task_id] = task
+	return false
+
+
+func _finish_lookup(task: Dictionary) -> void:
+	var id := _lookup_id
+	_lookup_id = ""
+	_lookup_task_id = ""
+	var result = task.get("result")
+	var results = result.get("results") if result is Dictionary else null
+	if task.get("status") == "finished" and results is Array and not results.is_empty() \
+			and results[0] is Dictionary and str(results[0].get("id", "")) == id:
+		var asset: Dictionary = results[0]
+		project.store(asset, thumb_cache.get(str(asset.get("assetBaseId", "")), {}).get("small", ""))
+		_on_project_files_changed()
+	else:
+		plugin.bk_log(plugin.LogLevel.VERBOSE, "Asset %s not found on Blendkit" % id)
+		_lookup_failed[id] = true
+	_next_lookup()
 
 
 # MARK: thumbnails
@@ -594,6 +818,8 @@ func _handle_thumbnail_task(task: Dictionary) -> void:
 	thumb_cache[base_id][type] = path
 	if type == "small" and items.has(base_id):
 		items[base_id].set_thumbnail(GalleryApi.load_texture(path))
+	if type == "small" and project.add_thumbnail(base_id, path):
+		_on_project_files_changed()
 	if details.visible and str(details.asset.get("assetBaseId", "")) == base_id:
 		details.on_thumbnail(type, GalleryApi.load_texture(path))
 
@@ -602,6 +828,13 @@ func _handle_thumbnail_task(task: Dictionary) -> void:
 
 func _open_details(asset: Dictionary) -> void:
 	details.show_asset(asset, thumb_cache.get(str(asset.get("assetBaseId", "")), {}))
+
+
+func _open_project_details(entry: Dictionary) -> void:
+	var thumbs: Dictionary = thumb_cache.get(str(entry.asset.get("assetBaseId", "")), {}).duplicate()
+	if entry.thumbnail and not thumbs.has("small"):
+		thumbs.small = entry.thumbnail
+	details.show_asset(entry.asset, thumbs, entry.file_path)
 
 
 func get_download(base_id: String) -> Dictionary:
@@ -658,6 +891,10 @@ func _handle_download_task(task: Dictionary) -> void:
 			return
 	if _download_posts > 0:
 		_early_download_tasks[task_id] = task
+	# Send to Godot on blendkit.com, or a download that finished before the
+	# POST returned (handled again when it does).
+	if task.get("status") == "finished":
+		_on_downloaded_elsewhere(GalleryApi.task_file_path(task))
 
 
 func _apply_download_task(base_id: String, task: Dictionary) -> void:
@@ -677,8 +914,10 @@ func _apply_download_task(base_id: String, task: Dictionary) -> void:
 			dl.message = ""
 			if items.has(base_id):
 				items[base_id].set_downloaded(true)
+			project.store(dl.asset, thumb_cache.get(base_id, {}).get("small", ""))
 			if ProjectSettings.localize_path(dl.file_path).begins_with("res://"):
 				EditorInterface.get_resource_filesystem().scan()
+			_on_project_files_changed()
 		"error", "cancelled":
 			dl.status = "error"
 			dl.message = "Cancelled" if status == "cancelled" else str(task.get("message", ""))

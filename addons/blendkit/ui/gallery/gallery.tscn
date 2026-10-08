@@ -35,6 +35,14 @@ size_flags_horizontal = 3
 placeholder_text = "Search Blendkit assets"
 clear_button_enabled = true
 
+[node name="ProjectToggle" type="Button" parent="Main/SearchRow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show assets downloaded to this project"
+theme_type_variation = &"FlatButton"
+toggle_mode = true
+icon_alignment = 1
+
 [node name="VSeparator" type="VSeparator" parent="Main/SearchRow"]
 layout_mode = 2
 
@@ -159,6 +167,25 @@ columns = 4
 [node name="BottomPages" type="HBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
 unique_name_in_owner = true
 layout_mode = 2
+
+[node name="ProjectBody" type="VBoxContainer" parent="Main/LibraryMargin/Scroll/Border"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ProjectMessage" type="Label" parent="Main/LibraryMargin/Scroll/Border/ProjectBody"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 6
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="ProjectGrid" type="GridContainer" parent="Main/LibraryMargin/Scroll/Border/ProjectBody"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+columns = 4
 
 [node name="Spinner" type="TextureRect" parent="Main/LibraryMargin"]
 unique_name_in_owner = true
