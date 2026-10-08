@@ -32,7 +32,7 @@ layout_mode = 2
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "Search Blendkit assets"
+placeholder_text = "Search Blendkit assets (ENTER to search)"
 clear_button_enabled = true
 
 [node name="ProjectToggle" type="Button" parent="Main/SearchRow"]
@@ -196,11 +196,6 @@ size_flags_vertical = 4
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
-
-[node name="DebounceTimer" type="Timer" parent="."]
-unique_name_in_owner = true
-wait_time = 0.25
-one_shot = true
 
 [node name="CategoriesTimer" type="Timer" parent="."]
 unique_name_in_owner = true

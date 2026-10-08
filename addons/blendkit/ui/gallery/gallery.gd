@@ -51,7 +51,6 @@ const WEB_DOWNLOAD_NAME := "Send to Godot"
 @onready var project_body: VBoxContainer = %ProjectBody
 @onready var project_message: Label = %ProjectMessage
 @onready var project_grid: GridContainer = %ProjectGrid
-@onready var debounce_timer: Timer = %DebounceTimer
 @onready var categories_timer: Timer = %CategoriesTimer
 @onready var details = %AssetDetails
 
@@ -99,6 +98,9 @@ var _busy := false
 var _project_mode := false
 var _other_text := ""
 var _other_scroll := 0
+## Whether the last edit of the search box came from the mouse, which empties
+## it only through the clear button (or the context menu's Clear).
+var _search_mouse_edit := false
 var project: ProjectAssets
 ## Scanned asset folders with their tiles, see ProjectAssets.scan().
 var _project_entries: Array = []
@@ -162,7 +164,7 @@ func _ready() -> void:
 
 	search_edit.text_changed.connect(_on_search_text_changed)
 	search_edit.text_submitted.connect(_on_search_text_submitted)
-	debounce_timer.timeout.connect(request_search)
+	search_edit.gui_input.connect(_on_search_gui_input)
 	sort_option.item_selected.connect(_on_sort_selected)
 	type_option.item_selected.connect(_on_type_selected)
 	category_option.item_selected.connect(func(_i): request_search())
@@ -364,7 +366,6 @@ func active_download_count() -> int:
 
 func request_search(new_page: int = 1, force: bool = false) -> void:
 	page = new_page
-	debounce_timer.stop()
 	if not _is_connected():
 		_pending_search = true
 		_search_seq += 1
@@ -711,11 +712,20 @@ func _browse_text() -> String:
 	return _other_text if _project_mode else search_edit.text
 
 
-func _on_search_text_changed(_text: String) -> void:
+## Searching Blendkit waits for Enter, like the Blender add-on, except the
+## clear button, which shows the default results right away.
+func _on_search_text_changed(text: String) -> void:
 	if _project_mode:
 		_filter_project()
-	else:
-		debounce_timer.start()
+	elif text.is_empty() and _search_mouse_edit:
+		request_search()
+
+
+## Runs before the box handles the event, so the text change that follows
+## knows whether it came from the keyboard or the mouse.
+func _on_search_gui_input(event: InputEvent) -> void:
+	if event is InputEventKey or event is InputEventMouseButton:
+		_search_mouse_edit = event is InputEventMouseButton
 
 
 func _on_search_text_submitted(_text: String) -> void:
@@ -731,13 +741,12 @@ func _on_project_toggled(pressed: bool) -> void:
 	if pressed == _project_mode:
 		return
 	_project_mode = pressed
-	debounce_timer.stop()
 	var text := search_edit.text
 	var scroll_position := scroll.scroll_vertical
 	search_edit.text = _other_text
 	search_edit.caret_column = search_edit.text.length()
 	_other_text = text
-	search_edit.placeholder_text = "Search downloaded project assets" if pressed else "Search Blendkit assets"
+	search_edit.placeholder_text = "Search downloaded project assets" if pressed else "Search Blendkit assets (ENTER to search)"
 	filter_row.visible = not pressed
 	body.visible = not pressed
 	project_body.visible = pressed
