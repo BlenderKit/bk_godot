@@ -16,6 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        # Oldest and newest supported Godot.
+        godot: ["4.4.1", "4.7.2"]
 
     steps:
       - name: Checkout repository
@@ -29,7 +31,7 @@ jobs:
       - name: Set up Godot
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: 4.5.0
+          version: ${{ matrix.godot }}
           use-dotnet: false
           include-templates: false
 
@@ -56,6 +58,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        # Oldest and newest supported Godot.
+        godot: ["4.4.1", "4.7.2"]
 
     steps:
       - name: Checkout repository
@@ -69,7 +73,7 @@ jobs:
       - name: Set up Godot
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: 4.5.0
+          version: ${{ matrix.godot }}
           use-dotnet: false
           include-templates: false
 
@@ -104,6 +108,6 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-diagnostic-screenshot-${{ matrix.os }}
+          name: e2e-diagnostic-screenshot-${{ matrix.os }}-godot-${{ matrix.godot }}
           path: tests/e2e_failure.png
           if-no-files-found: ignore
