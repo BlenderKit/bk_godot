@@ -196,13 +196,10 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	ProjectSettings.settings_changed.disconnect(load_settings)
 	EditorInterface.get_editor_settings().settings_changed.disconnect(load_settings)
-	timer.queue_free()
-	http_request.queue_free()
-	unsubscribe_http_request.queue_free()
+	# The children go with the plugin; the gallery lives in the main screen.
 	if gallery:
 		gallery.queue_free()
 		gallery = null
-	auth.queue_free()
 	log_info("Plugin exited")
 
 
@@ -475,7 +472,7 @@ func on_timer_timeout() -> void:
 		request_failed()
 
 
-func on_request_completed(result, response_code, _headers, body) -> void:
+func on_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	var elapsed := Time.get_ticks_msec() - request_start_time
 	if result != OK:
 		log_debug("Request %s, response_code=%d, state=%s, port=%s" % [http_result_name(result), response_code, state_name(state), port])
@@ -494,12 +491,10 @@ func on_request_completed(result, response_code, _headers, body) -> void:
 		if typeof(data) == TYPE_DICTIONARY:
 			if state != State.CONNECTED:
 				var found_version := str(data.get("client_version", ""))
-				# Require the supported API series and at least the bundled patch.
 				if not is_compatible_client(found_version, client_version):
 					var found_label := found_version if found_version else "(unknown)"
 					log_info("Skipping Client v%s on port %s: incompatible with required v%s" % [found_label, port, client_version])
-					if not taken_ports.has(port):
-						taken_ports.append(port)
+					mark_port_taken()
 					request_failed()
 					return
 				connected_client_version = found_version
@@ -519,13 +514,18 @@ func on_request_completed(result, response_code, _headers, body) -> void:
 
 	if state == State.EXPLORING:
 		# Any HTTP response means the port is occupied, including a different API series.
-		if response_code > 0 and not taken_ports.has(port):
-			taken_ports.append(port)
+		if response_code > 0:
+			mark_port_taken()
 		log_verbose("Client not found on port %s" % port)
 	elif response_code != 200:
 		log_warning("Request on port %s failed (response_code=%d)" % [port, response_code])
 
 	request_failed()
+
+
+func mark_port_taken() -> void:
+	if not taken_ports.has(port):
+		taken_ports.append(port)
 
 
 func request_failed() -> void:
@@ -606,7 +606,7 @@ func send_unsubscribe() -> void:
 		log_warning("Failed to send unsubscribe request: %s" % error)
 
 
-func on_unsubscribe_completed(result, response_code, _headers, _body) -> void:
+func on_unsubscribe_completed(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
 	if result != OK or response_code != 200:
 		log_warning("Unsubscribe request failed on port %s: result=%s, response_code=%d" % [port, http_result_name(result), response_code])
 	else:
