@@ -8,7 +8,8 @@ const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
 
 const PAGE_SIZE := 30
-## How long to keep polling fast for thumbnails after results arrive.
+## How long to keep polling fast for thumbnails after results arrive. Tiles
+## still without one then show their asset type icon.
 const THUMBS_WAIT_MS := 20000
 ## Short Model Format labels for the filter row.
 const FORMAT_LABELS := {"blend": "Blender (.blend)", "gltf_godot": "glTF (.glb)"}
@@ -247,10 +248,10 @@ func _show_results() -> void:
 			item.set_thumbnail(GalleryApi.load_texture(thumbs.small))
 		else:
 			_thumbs_missing += 1
-			item.expect_thumbnail(THUMBS_WAIT_MS / 1000.0)
 		if not thumbs.has("full"):
 			_thumbs_missing += 1
 	_thumbs_deadline = Time.get_ticks_msec() + THUMBS_WAIT_MS
+	get_tree().create_timer(THUMBS_WAIT_MS / 1000.0).timeout.connect(_on_thumbs_timeout.bind(_thumbs_deadline))
 	gallery.update_columns()
 	# canDownload depends on the account, e.g. after logging in from the dialog.
 	var details = gallery.details
@@ -275,6 +276,15 @@ func on_thumbnail(base_id: String, type: String, path: String) -> void:
 		items[base_id].set_thumbnail(GalleryApi.load_texture(path))
 	else:
 		items[base_id].set_thumbnail_failed()
+
+
+## Thumbnails that didn't arrive in time failed, unless newer results
+## replaced the tiles meanwhile.
+func _on_thumbs_timeout(deadline: int) -> void:
+	if deadline != _thumbs_deadline:
+		return
+	for item in items.values():
+		item.set_thumbnail_failed()
 
 
 # MARK: pages

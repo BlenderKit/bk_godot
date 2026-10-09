@@ -106,11 +106,6 @@ func set_thumbnail_failed() -> void:
 		_update_theme()
 
 
-## Falls back to the type icon if no thumbnail arrives within [param seconds].
-func expect_thumbnail(seconds: float) -> void:
-	get_tree().create_timer(seconds).timeout.connect(set_thumbnail_failed)
-
-
 func set_downloaded(downloaded: bool) -> void:
 	_downloaded = downloaded
 	_update_download()
