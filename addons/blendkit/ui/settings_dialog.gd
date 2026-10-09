@@ -3,6 +3,8 @@ extends AcceptDialog
 ## Settings opened from the Blendkit menu. Changes apply right away. They are
 ## also in Godot's Project Settings and Editor Settings under Blendkit.
 
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+
 var plugin: EditorPlugin
 
 var _grid: GridContainer
@@ -69,8 +71,8 @@ func setup(new_plugin: EditorPlugin) -> void:
 
 func _load() -> void:
 	_download_dir.text = plugin.download_dir
-	_model_format.select(maxi(0, plugin.MODEL_FORMATS.map(func(f): return f[0]).find(plugin.model_format)))
-	_resolution.select(maxi(0, plugin.RESOLUTIONS.map(func(r): return r[0]).find(plugin.resolution)))
+	_model_format.select(GalleryApi.option_index(plugin.MODEL_FORMATS, plugin.model_format))
+	_resolution.select(GalleryApi.option_index(plugin.RESOLUTIONS, plugin.resolution))
 	_port.select(maxi(0, plugin.CLIENT_PORTS.find(plugin.preferred_port)))
 	_log_level.select(plugin.log_level)
 

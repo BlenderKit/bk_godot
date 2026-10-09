@@ -71,7 +71,7 @@ func setup(new_gallery: Node) -> void:
 		type_option.add_item(GalleryApi.ASSET_TYPE_LABELS[asset_type])
 	for format in plugin.MODEL_FORMATS:
 		format_option.add_item(FORMAT_LABELS.get(format[0], format[1]))
-	sort_option.select(maxi(0, GalleryApi.SORTS.map(func(s): return s[0]).find(_get_meta("gallery_sort", "relevance"))))
+	sort_option.select(GalleryApi.option_index(GalleryApi.SORTS, _get_meta("gallery_sort", "relevance")))
 	type_option.select(maxi(0, GalleryApi.ASSET_TYPES.find(_get_meta("gallery_type", "model"))))
 	free_check.button_pressed = _get_meta("gallery_free", false)
 	_on_model_format_changed()
@@ -457,7 +457,7 @@ func _on_filter_toggled(pressed: bool, meta_key: String) -> void:
 ## The Format dropdown is the Model Format setting. glTF shows only models
 ## with glTF, so search again.
 func _on_model_format_changed() -> void:
-	format_option.select(maxi(0, plugin.MODEL_FORMATS.map(func(f): return f[0]).find(plugin.model_format)))
+	format_option.select(GalleryApi.option_index(plugin.MODEL_FORMATS, plugin.model_format))
 	if _started:
 		request_search()
 

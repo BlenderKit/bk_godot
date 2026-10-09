@@ -40,7 +40,8 @@ const SORT_ORDERS := {
 	"best": "-quality",
 }
 
-const RESOLUTIONS := {
+## Texture size of the resolution file types, in pixels.
+const RESOLUTION_PIXELS := {
 	"resolution_0_5K": 512,
 	"resolution_1K": 1024,
 	"resolution_2K": 2048,
@@ -62,6 +63,15 @@ const FILE_TYPES := [
 ]
 
 static var _slug_regex := RegEx.create_from_string("[^a-z0-9]+")
+
+
+## Index of [param value] in [code][value, label][/code] [param options],
+## e.g. for an OptionButton; the first option when it's not there.
+static func option_index(options: Array, value: Variant) -> int:
+	for i in options.size():
+		if options[i][0] == value:
+			return i
+	return 0
 
 
 # MARK: query building
@@ -170,13 +180,13 @@ static func pick_resolution_file_type(present: PackedStringArray, resolution: St
 		return "blend"
 	if not resolution.is_empty() and resolution in present:
 		return resolution
-	var target: int = RESOLUTIONS.get(resolution, 0)
+	var target: int = RESOLUTION_PIXELS.get(resolution, 0)
 	var closest := ""
 	var min_dist := 100000000
 	if target != 0:
 		for ft in present:
-			if RESOLUTIONS.has(ft):
-				var dist: int = absi(target - RESOLUTIONS[ft])
+			if RESOLUTION_PIXELS.has(ft):
+				var dist: int = absi(target - RESOLUTION_PIXELS[ft])
 				if dist < min_dist:
 					closest = ft
 					min_dist = dist
