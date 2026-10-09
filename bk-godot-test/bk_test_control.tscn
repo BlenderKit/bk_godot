@@ -25,6 +25,6 @@ layout_mode = 2
 theme_override_font_sizes/normal_font_size = 24
 theme_override_font_sizes/bold_font_size = 24
 bbcode_enabled = true
-text = "See [b]Blendkit[/b] tab in the right Godot Editor dock ->"
+text = "Open the [b]Blendkit[/b] tab at the top of the editor, next to [b]Asset Store[/b]."
 fit_content = true
 horizontal_alignment = 1

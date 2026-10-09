@@ -89,7 +89,7 @@ func refresh() -> void:
 	var key := str(edscale)
 	if key != _logo_key:
 		_logo_key = key
-		_logo.texture = _render_logo(LOGO_SIZE * edscale)
+		_logo.texture = plugin.render_logo(LOGO_SIZE * edscale)
 	# Bottom right corner of the logo, half outside like a badge.
 	var dot_size := Vector2.ONE * (DOT_RADIUS + 1.5) * 2 * edscale
 	_dot.position = logo_size - dot_size * 0.6
@@ -250,32 +250,16 @@ func _on_id_pressed(id: int) -> void:
 			OS.shell_open(plugin.ISSUES_URL)
 
 
-func _render_logo(px: float) -> Texture2D:
-	var svg := FileAccess.get_file_as_string(plugin.LOGO_PATH)
-	var image := Image.new()
-	if svg.is_empty() or image.load_svg_from_string(svg, px / 320.0) != OK:
-		return null
-	return ImageTexture.create_from_image(image)
-
-
 ## Monochrome user icon matching the editor icons, rendered like the
 ## plugin's tab icon. size is in unscaled pixels.
 func _user_icon(size := 16) -> Texture2D:
 	var key := "%s %s %s" % [size, EditorInterface.get_editor_scale(), plugin.is_dark_icon_theme()]
-	if _user_icons.has(key):
-		return _user_icons[key]
-	var svg := FileAccess.get_file_as_string(USER_ICON_PATH)
-	if not plugin.is_dark_icon_theme():
-		svg = svg.replace("#e0e0e0", "#5a5a5a")
-	var image := Image.new()
-	if svg.is_empty() or image.load_svg_from_string(svg, size * EditorInterface.get_editor_scale() / 16.0) != OK:
-		return null
-	_user_icons[key] = ImageTexture.create_from_image(image)
+	if not _user_icons.has(key):
+		_user_icons[key] = plugin.render_svg(USER_ICON_PATH, size * EditorInterface.get_editor_scale() / 16.0, true)
 	return _user_icons[key]
 
 
-## The avatar as a round icon at its menu size, scaled down here so it
-## stays smooth.
+## The avatar as a round icon at its menu size.
 func _update_avatar() -> void:
 	var px := int(AVATAR_SIZE * EditorInterface.get_editor_scale())
 	var path: String = plugin.auth.avatar_path
@@ -287,15 +271,18 @@ func _update_avatar() -> void:
 	var image := GalleryApi.load_image(path)
 	if not image:
 		return
-	image = circle_crop(image)
-	image.resize(px, px, Image.INTERPOLATE_LANCZOS)
+	image = circle_crop(image, px)
 	_avatar = ImageTexture.create_from_image(image)
 
 
-## The image cropped to a centered circle with a transparent outside.
-static func circle_crop(image: Image) -> Image:
+## The image cropped to a centered circle with a transparent outside,
+## scaled to [param px] first when given, so fewer pixels are masked.
+static func circle_crop(image: Image, px: int = 0) -> Image:
 	var side := mini(image.get_width(), image.get_height())
 	var result := image.get_region(Rect2i((image.get_width() - side) / 2, (image.get_height() - side) / 2, side, side))
+	if px > 0:
+		result.resize(px, px, Image.INTERPOLATE_LANCZOS)
+		side = px
 	result.convert(Image.FORMAT_RGBA8)
 	var r := side / 2.0
 	for y in side:

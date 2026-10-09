@@ -10,6 +10,9 @@ const MAX_RESULT_WINDOW := 10000
 const STAGING_DIR := ".downloads"
 ## Leftover staging folders this old are no longer written to.
 const STAGING_STALE_SECONDS := 60
+## Download statuses while it runs. A gallery download ends as finished,
+## error or cancelled.
+const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
 
 ## Asset types the gallery offers, in OptionButton order. These match what
 ## Send to Godot can deliver.
@@ -334,10 +337,6 @@ static func search_temp_dir(client_data_dir: String, asset_type: String) -> Stri
 
 # MARK: Client requests
 
-static func client_url(port: String, api_version: String, endpoint: String) -> String:
-	return "http://127.0.0.1:%s/%s/%s" % [port, api_version, endpoint]
-
-
 ## POST JSON with a short-lived HTTPRequest under parent. Returns
 ## {"ok": bool, "code": int, "data": Variant, "error": String}.
 static func post_json(parent: Node, url: String, body: Dictionary, timeout: float = 10.0) -> Dictionary:
@@ -392,26 +391,25 @@ static func task_id_from(response: Dictionary) -> Array:
 	return ["", "unexpected Client response"]
 
 
-static func search(parent: Node, port: String, api_version: String, url_query: String, asset_type: String, tempdir: String, page_size: int, addon_version: String, api_key: String) -> Array:
+## The requests below go through [param plugin]'s Client connection and run
+## under [param parent], which they don't outlive.
+static func search(parent: Node, plugin: EditorPlugin, url_query: String, asset_type: String, tempdir: String, page_size: int) -> Array:
 	DirAccess.make_dir_recursive_absolute(tempdir)
-	var body := {
-		"app_id": OS.get_process_id(),
-		"addon_version": addon_version,
-		"platform_version": OS.get_name(),
-		"api_key": api_key,
+	var body: Dictionary = plugin.client_data(plugin.auth.api_key())
+	body.merge({
 		"asset_type": asset_type,
 		"urlquery": url_query,
 		"tempdir": tempdir,
 		"page_size": page_size,
 		"scene_uuid": project_scene_uuid(),
-	}
-	return task_id_from(await post_json(parent, client_url(port, api_version, "assets/search"), body))
+	})
+	return task_id_from(await post_json(parent, plugin.client_url("assets/search"), body))
 
 
-static func download(parent: Node, port: String, api_version: String, asset: Dictionary, file_type: String, abs_download_path: String, addon_version: String, api_key: String) -> Array:
+static func download(parent: Node, plugin: EditorPlugin, asset: Dictionary, file_type: String, abs_download_path: String) -> Array:
 	var body := {
 		"app_id": OS.get_process_id(),
-		"addon_version": addon_version,
+		"addon_version": plugin.get_addon_version(),
 		"platform_version": OS.get_name(),
 		"download_dirs": [type_download_dir(abs_download_path, str(asset.get("assetType", "")))],
 		"resolution": file_type,
@@ -424,24 +422,24 @@ static func download(parent: Node, port: String, api_version: String, asset: Dic
 		},
 		"PREFS": {
 			"scene_id": project_scene_uuid(),
-			"api_key": api_key,
+			"api_key": plugin.auth.api_key(),
 			"unpack_files": false,
 			"create_asset_library": false,
 		},
 	}
-	return task_id_from(await post_json(parent, client_url(port, api_version, "assets/download"), body))
+	return task_id_from(await post_json(parent, plugin.client_url("assets/download"), body))
 
 
-static func cancel_download(parent: Node, port: String, api_version: String, task_id: String) -> Dictionary:
+static func cancel_download(parent: Node, plugin: EditorPlugin, task_id: String) -> Dictionary:
 	var body := {"task_id": task_id, "app_id": OS.get_process_id()}
-	return await post_json(parent, client_url(port, api_version, "assets/cancel_download"), body)
+	return await post_json(parent, plugin.client_url("assets/cancel_download"), body)
 
 
 ## Fallback for a missed categories_update task. Returns the category tree
 ## (top-level entries per asset type) or [].
-static func fetch_categories(parent: Node, port: String, api_version: String, server: String) -> Array:
-	var body := {"url": server + "/api/v1/categories/", "method": "GET", "headers": {}}
-	var response := await post_json(parent, client_url(port, api_version, "wrappers/blocking_request"), body, 30.0)
+static func fetch_categories(parent: Node, plugin: EditorPlugin) -> Array:
+	var body := {"url": plugin.SERVER + "/api/v1/categories/", "method": "GET", "headers": {}}
+	var response := await post_json(parent, plugin.client_url("wrappers/blocking_request"), body, 30.0)
 	if response.ok and response.data is Dictionary and response.data.get("results") is Array:
 		return response.data.results
 	return []

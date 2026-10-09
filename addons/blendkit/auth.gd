@@ -119,10 +119,10 @@ func _start_login(signup: bool) -> void:
 	login_pending = true
 	login_error = ""
 	changed.emit()
-	var body := _minimal_data()
+	var body: Dictionary = plugin.client_data()
 	body["code_verifier"] = verifier
 	body["state"] = state
-	var response := await GalleryApi.post_json(self, _client_url("oauth2/verification_data"), body)
+	var response := await GalleryApi.post_json(self, plugin.client_url("oauth2/verification_data"), body)
 	if not login_pending:
 		return # cancelled meanwhile
 	if not response.ok:
@@ -152,9 +152,9 @@ func logout() -> void:
 	plugin.bk_log(plugin.LogLevel.INFO, "Logged out")
 	if old_refresh.is_empty() or not _is_connected():
 		return
-	var body := _minimal_data(old_access)
+	var body: Dictionary = plugin.client_data(old_access)
 	body["refresh_token"] = old_refresh
-	var response := await GalleryApi.post_json(self, _client_url("oauth2/logout"), body)
+	var response := await GalleryApi.post_json(self, plugin.client_url("oauth2/logout"), body)
 	if not response.ok:
 		plugin.bk_log(plugin.LogLevel.WARNING, "Could not revoke tokens: %s" % response.error)
 
@@ -165,10 +165,10 @@ func maybe_refresh() -> void:
 	if _refresh_started >= 0 and Time.get_ticks_msec() - _refresh_started < REFRESH_RETRY_MS:
 		return
 	_refresh_started = Time.get_ticks_msec()
-	var body := _minimal_data(access_token)
+	var body: Dictionary = plugin.client_data(access_token)
 	body["refresh_token"] = refresh_token
 	plugin.bk_log(plugin.LogLevel.VERBOSE, "Refreshing login tokens")
-	var response := await GalleryApi.post_json(self, _client_url("refresh_token"), body)
+	var response := await GalleryApi.post_json(self, plugin.client_url("refresh_token"), body)
 	if not response.ok:
 		_refresh_started = -1
 		plugin.bk_log(plugin.LogLevel.WARNING, "Could not refresh login: %s" % response.error)
@@ -177,7 +177,7 @@ func maybe_refresh() -> void:
 func fetch_profile() -> void:
 	if not is_logged_in() or not _is_connected():
 		return
-	var response := await GalleryApi.post_json(self, _client_url("profiles/get_user_profile"), _minimal_data(api_key()))
+	var response := await GalleryApi.post_json(self, plugin.client_url("profiles/get_user_profile"), plugin.client_data(api_key()))
 	if not response.ok:
 		plugin.bk_log(plugin.LogLevel.WARNING, "Could not request profile: %s" % response.error)
 
@@ -185,11 +185,11 @@ func fetch_profile() -> void:
 func _fetch_avatar() -> void:
 	if profile.is_empty() or not _is_connected():
 		return
-	var body := _minimal_data()
+	var body: Dictionary = plugin.client_data()
 	body["id"] = int(profile.get("id", 0))
 	body["avatar128"] = str(profile.get("avatar128", "")) if profile.get("avatar128") else ""
 	body["gravatarHash"] = str(profile.get("gravatarHash", "")) if profile.get("gravatarHash") else ""
-	await GalleryApi.post_json(self, _client_url("profiles/download_gravatar_image"), body)
+	await GalleryApi.post_json(self, plugin.client_url("profiles/download_gravatar_image"), body)
 
 
 # MARK: tasks
@@ -350,19 +350,6 @@ func _save() -> void:
 
 func _is_connected() -> bool:
 	return plugin != null and plugin.state == plugin.State.CONNECTED
-
-
-func _client_url(endpoint: String) -> String:
-	return GalleryApi.client_url(plugin.port, plugin.CLIENT_API_VERSION, endpoint)
-
-
-func _minimal_data(key: String = "") -> Dictionary:
-	return {
-		"app_id": OS.get_process_id(),
-		"api_key": key,
-		"addon_version": plugin.get_addon_version(),
-		"platform_version": OS.get_name(),
-	}
 
 
 static func now() -> float:

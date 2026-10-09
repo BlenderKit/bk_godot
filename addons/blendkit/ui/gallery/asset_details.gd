@@ -235,7 +235,7 @@ func refresh_download() -> void:
 	var dl: Dictionary = gallery.get_download(str(asset.get("assetBaseId", "")))
 	var status: String = dl.get("status", "")
 	var same_file: bool = dl.get("file_type", "") == selected_file_type()
-	if status in ["posting", "created", "progress"]:
+	if status in GalleryApi.ACTIVE_DOWNLOAD:
 		ok.text = "Downloading %d %%" % int(dl.get("progress", 0))
 		ok.disabled = true
 		_cancel_download_button.visible = not str(dl.get("task_id", "")).is_empty()
@@ -248,6 +248,8 @@ func refresh_download() -> void:
 		if status == "error":
 			note_label.text = "Download failed: %s" % dl.get("message", "")
 			note_label.add_theme_color_override("font_color", get_theme_color("error_color", "Editor"))
+		elif status == "cancelled":
+			note_label.text = "Download cancelled."
 		elif gallery.is_downloaded(asset):
 			note_label.text = "Already in the project; downloading again reuses the files on disk."
 		elif _gltf_unavailable():

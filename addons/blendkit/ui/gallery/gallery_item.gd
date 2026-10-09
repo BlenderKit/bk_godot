@@ -9,7 +9,6 @@ signal selected(asset: Dictionary)
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const THUMB_SIZE := 160
 const DOWNLOAD_BAR_HEIGHT := 4
-const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
 
 const TYPE_ICONS := {
 	"model": "MeshInstance3D",
@@ -126,13 +125,12 @@ func _update_download() -> void:
 	if not is_node_ready():
 		return
 	var status: String = _download.get("status", "")
-	var active := status in ACTIVE_DOWNLOAD
+	var active := status in GalleryApi.ACTIVE_DOWNLOAD
 	download_track.visible = active
 	download_bar.anchor_right = clampf(_download.get("progress", 0) / 100.0, 0.0, 1.0)
 	var message: String = _download.get("message", "")
 	thumb_button.tooltip_text = "%s\n%s" % [_tooltip, message] if active and message else _tooltip
-	# The gallery marks cancelled downloads as errors with this message.
-	var failed: bool = status == "error" and _download.get("message", "") != "Cancelled"
+	var failed := status == "error"
 	downloaded_icon.visible = failed or (_downloaded and not active)
 	if failed:
 		downloaded_icon.texture = get_theme_icon("StatusError", "EditorIcons")

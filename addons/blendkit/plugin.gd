@@ -35,6 +35,7 @@ const REQUEST_TIMEOUT: int = 3000
 # non-threaded HTTPRequest polls once per frame and a request needs
 # several polls to connect, send and read the response
 const REQUEST_TIMEOUT_MIN_FRAMES: int = 10
+const MAX_FAILED_REQUESTS: int = 3
 
 
 enum LogLevel { ERROR, WARNING, INFO, VERBOSE, DEBUG, TRACE }
@@ -138,7 +139,6 @@ var port: String = CLIENT_PORTS[0]
 var preferred_port: String = CLIENT_PORTS[0]
 var taken_ports: Array[String] = []
 var failed_requests: int = 0
-var max_failed_requests: int = 3
 var request_start_time: int = 0
 var request_start_frame: int = 0
 var starting_since: int = 0
@@ -147,23 +147,22 @@ var unsubscribe_http_request: HTTPRequest
 var timer: Timer
 
 # paths
-var bk_plugin_dir: String
 var client_data_dir: String
 var client_version: String
 var connected_client_version: String = ""
 var client_base_dir: String
 var client_bin_name: String
 var client_bin_path: String
+var addon_version: String
 
 # GUI
 const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")
 const Auth = preload("res://addons/blendkit/auth.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
-# Editor tab icon: true for a monochrome icon matching the built-in editor
-# icons, false for the colored Blendkit logo.
-const MONOCHROME_ICON = true
+# Monochrome editor tab icon, drawn in #e0e0e0 like the built-in editor icons.
 const ICON_PATH = "res://addons/blendkit/logo/blendkit-icon.svg"
 const LOGO_PATH = "res://addons/blendkit/logo/blendkit-logo-hexa_pure.svg"
+const LOGO_SVG_SIZE = 320.0
 var gallery: Control
 var auth: Auth
 var plugin_icon: Texture2D
@@ -204,6 +203,8 @@ func _enter_tree():
 		enter_state(State.EXPLORING)
 
 
+# No unsubscribe here: on editor shutdown the request never reaches the
+# Client, as the HTTPRequest is freed with the plugin before it's sent.
 func _exit_tree():
 	ProjectSettings.settings_changed.disconnect(load_settings)
 	EditorInterface.get_editor_settings().settings_changed.disconnect(load_settings)
@@ -237,28 +238,30 @@ func _get_plugin_name() -> String:
 # light/dark icon colors.
 func _get_plugin_icon() -> Texture2D:
 	var scale := EditorInterface.get_editor_scale()
-	var dark := is_dark_icon_theme()
-	var key := "%s %s %s" % [MONOCHROME_ICON, scale, dark]
+	var key := "%s %s" % [scale, is_dark_icon_theme()]
 	if plugin_icon and plugin_icon_key == key:
 		return plugin_icon
-	var svg: String
-	var svg_size: float
-	if MONOCHROME_ICON:
-		svg = FileAccess.get_file_as_string(ICON_PATH)
-		svg_size = 16.0
-		if not dark:
-			# Same conversion as Godot does for its own icons on light themes.
-			svg = svg.replace("#e0e0e0", "#5a5a5a")
-	else:
-		svg = FileAccess.get_file_as_string(LOGO_PATH)
-		svg_size = 320.0
-	# Render the SVG at the editor's icon size so it stays crisp.
-	var image := Image.new()
-	if svg.is_empty() or image.load_svg_from_string(svg, 16 * scale / svg_size) != OK:
-		return null
-	plugin_icon = ImageTexture.create_from_image(image)
+	plugin_icon = render_svg(ICON_PATH, scale, true)
 	plugin_icon_key = key
 	return plugin_icon
+
+
+## Renders the SVG at [param scale] times its size, e.g. the editor scale for
+## a 16 px icon, so it stays crisp. Monochrome icons turn dark on light themes.
+static func render_svg(path: String, scale: float, monochrome := false) -> Texture2D:
+	var svg := FileAccess.get_file_as_string(path)
+	if monochrome and not is_dark_icon_theme():
+		# Same conversion as Godot does for its own icons on light themes.
+		svg = svg.replace("#e0e0e0", "#5a5a5a")
+	var image := Image.new()
+	if svg.is_empty() or image.load_svg_from_string(svg, scale) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
+
+
+## The colored Blendkit logo, [param px] pixels wide.
+static func render_logo(px: float) -> Texture2D:
+	return render_svg(LOGO_PATH, px / LOGO_SVG_SIZE)
 
 
 # Mirrors EditorThemeManager::is_dark_icon_and_font(): light icons and fonts
@@ -367,7 +370,7 @@ func start_client(port: String):
 		fail("Client binary not found")
 		return
 
-	ensure_dir_structure() # so log's directory exists
+	DirAccess.make_dir_recursive_absolute(client_data_dir) # so the log's directory exists
 	install_shared_client()
 	var log_path = get_client_log_path(port)
 	var godot_pid = str(OS.get_process_id())
@@ -450,7 +453,7 @@ func on_timer_timeout():
 	elif state == State.CONNECTED:
 		update_poll_rate()
 
-	var url = "http://127.0.0.1:" + port + "/" + CLIENT_API_VERSION + "/godot/report"
+	var url := client_url("godot/report")
 	var headers = ["Content-Type: application/json"]
 	var data = {
 		"name": "Godot",
@@ -553,7 +556,7 @@ func request_failed():
 		update_status()
 
 	elif state == State.CONNECTED:
-		if failed_requests >= max_failed_requests:
+		if failed_requests >= MAX_FAILED_REQUESTS:
 			bk_log(LogLevel.WARNING, "Lost connection to Blendkit Client on port %s." % port)
 			enter_state(State.EXPLORING)
 			return
@@ -596,7 +599,7 @@ func choose_start_port() -> String:
 
 
 func send_unsubscribe():
-	var url = "http://127.0.0.1:" + port + "/" + CLIENT_API_VERSION + "/addons/unsubscribe"
+	var url := client_url("addons/unsubscribe")
 	var headers = ["Content-Type: application/json"]
 	var data = JSON.stringify({"app_id": OS.get_process_id()})
 	bk_log(LogLevel.INFO, "Disconnecting from Client on port %s" % port)
@@ -739,8 +742,7 @@ func init_paths():
 	absolute_download_path = ProjectSettings.globalize_path(download_dir)
 	client_bin_name = get_client_binary_name()
 	client_data_dir = get_client_data_dir()
-	bk_plugin_dir = self.get_script().resource_path.get_base_dir()
-	client_base_dir = bk_plugin_dir.path_join("client")
+	client_base_dir = get_script().resource_path.get_base_dir().path_join("client")
 	find_packed_client()
 
 
@@ -831,16 +833,32 @@ func log_download_task(task: Dictionary) -> void:
 			bk_log(LogLevel.INFO, "Download cancelled")
 
 
-func get_addon_version():
-	var config = ConfigFile.new()
-	var err = config.load("res://addons/blendkit/plugin.cfg")
-	if err != OK:
-		return "unknown"
-	return config.get_value("plugin", "version", "unknown")
+## Read once, as it's sent with every Client request.
+func get_addon_version() -> String:
+	if addon_version.is_empty():
+		var config := ConfigFile.new()
+		var err := config.load("res://addons/blendkit/plugin.cfg")
+		addon_version = str(config.get_value("plugin", "version", "unknown")) if err == OK else "unknown"
+	return addon_version
 
 
-func get_godot_version():
-	return str(Engine.get_version_info()["major"]) + "." + str(Engine.get_version_info()["minor"]) + "." + str(Engine.get_version_info()["patch"])
+func get_godot_version() -> String:
+	var info := Engine.get_version_info()
+	return "%d.%d.%d" % [info.major, info.minor, info.patch]
+
+
+func client_url(endpoint: String) -> String:
+	return "http://127.0.0.1:%s/%s/%s" % [port, CLIENT_API_VERSION, endpoint]
+
+
+## Fields most Client requests start with.
+func client_data(api_key: String = "") -> Dictionary:
+	return {
+		"app_id": OS.get_process_id(),
+		"api_key": api_key,
+		"addon_version": get_addon_version(),
+		"platform_version": OS.get_name(),
+	}
 
 
 func get_packed_client_binary_path():
@@ -849,7 +867,6 @@ func get_packed_client_binary_path():
 
 
 func get_client_log_path(log_port: String) -> String:
-	# TODO: create the file if it does not exist
 	if log_port == CLIENT_PORTS[0]:
 		return client_data_dir.path_join("default.log")
 	return client_data_dir.path_join("%s.log" % log_port)
@@ -925,7 +942,3 @@ static func version_lt(a: String, b: String) -> bool:
 		if pa[i] != pb[i]:
 			return pa[i] < pb[i]
 	return pa.size() < pb.size()
-
-
-func ensure_dir_structure():
-	DirAccess.make_dir_recursive_absolute(client_data_dir)

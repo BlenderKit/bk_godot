@@ -18,7 +18,6 @@ const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_ite
 const PAGE_SIZE := 30
 ## How long to keep polling fast for thumbnails after results arrive.
 const THUMBS_WAIT_MS := 20000
-const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
 const SPINNER_SIZE := 128
 ## Spinner turns per second.
 const SPINNER_SPEED := 0.75
@@ -94,6 +93,8 @@ var _fetching_categories := false
 var _message_action := Callable()
 var _updating_theme := false
 var _page_count := 0
+## [page, page count] the page buttons were made for.
+var _pages_made: Array = []
 var _busy := false
 
 ## Project mode shows the downloaded assets instead of the Blendkit search.
@@ -151,7 +152,7 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	if "scroll_hint_mode" in scroll: # Godot 4.6+
 		scroll.set("scroll_hint_mode", 2) # SCROLL_HINT_MODE_TOP_AND_LEFT
-	spinner.texture = _render_logo(SPINNER_SIZE * edscale)
+	spinner.texture = plugin.render_logo(SPINNER_SIZE * edscale)
 	spinner.custom_minimum_size = Vector2.ONE * SPINNER_SIZE * edscale
 	spinner.resized.connect(func(): spinner.pivot_offset = spinner.size / 2)
 
@@ -259,6 +260,9 @@ func _update_theme() -> void:
 	_download_badge.add_theme_color_override("font_color", get_theme_color("base_color", "Editor"))
 	_download_badge.add_theme_font_override("font", get_theme_font("bold", "EditorFonts"))
 	_download_badge.add_theme_font_size_override("font_size", int(10 * edscale))
+	# Page buttons have the theme's icons.
+	_pages_made = []
+	_update_pages()
 
 
 # MARK: plugin interface
@@ -298,7 +302,7 @@ func on_connection_changed() -> void:
 	_lookup_task_id = ""
 	for base_id in downloads:
 		var dl: Dictionary = downloads[base_id]
-		if dl.status in ACTIVE_DOWNLOAD:
+		if dl.status in GalleryApi.ACTIVE_DOWNLOAD:
 			dl.status = "error"
 			dl.message = "Blendkit Client disconnected"
 			_refresh_download(base_id)
@@ -320,7 +324,7 @@ func has_pending_work() -> bool:
 	if _thumbs_missing > 0 and Time.get_ticks_msec() < _thumbs_deadline:
 		return true
 	for base_id in downloads:
-		if downloads[base_id].status in ACTIVE_DOWNLOAD:
+		if downloads[base_id].status in GalleryApi.ACTIVE_DOWNLOAD:
 			return true
 	return false
 
@@ -355,9 +359,9 @@ func drop_vanished_downloads(reported: Dictionary) -> void:
 			plugin.bk_log(plugin.LogLevel.VERBOSE, "Deleted %d unfinished downloads" % cleared)
 	for base_id in downloads:
 		var dl: Dictionary = downloads[base_id]
-		if dl.get("reported", false) and dl.status in ACTIVE_DOWNLOAD and not reported.has(dl.task_id):
-			dl.status = "error"
-			dl.message = "Cancelled"
+		if dl.get("reported", false) and dl.status in GalleryApi.ACTIVE_DOWNLOAD and not reported.has(dl.task_id):
+			dl.status = "cancelled"
+			dl.message = ""
 			_refresh_download(base_id)
 
 
@@ -365,7 +369,7 @@ func drop_vanished_downloads(reported: Dictionary) -> void:
 func active_download_count() -> int:
 	var count := web_downloads.size()
 	for base_id in downloads:
-		if downloads[base_id].status in ACTIVE_DOWNLOAD:
+		if downloads[base_id].status in GalleryApi.ACTIVE_DOWNLOAD:
 			count += 1
 	return count
 
@@ -407,8 +411,7 @@ func _run_search(force: bool = true) -> void:
 	plugin.update_poll_rate()
 
 	var tempdir := GalleryApi.search_temp_dir(plugin.client_data_dir, asset_type)
-	var response: Array = await GalleryApi.search(self, plugin.port, plugin.CLIENT_API_VERSION,
-		url, asset_type, tempdir, PAGE_SIZE, plugin.get_addon_version(), plugin.auth.api_key())
+	var response: Array = await GalleryApi.search(self, plugin, url, asset_type, tempdir, PAGE_SIZE)
 	if seq != _search_seq:
 		return
 	if response[0].is_empty():
@@ -512,17 +515,38 @@ func _show_results() -> void:
 		scroll.scroll_vertical = 0
 
 
+## Show as many page numbers as fit, at most the Asset Store's 11. The
+## buttons are made once per page, resizing only hides some.
 func _update_pages() -> void:
-	# Show as many page numbers as fit, at most the Asset Store's 11.
-	var edscale := EditorInterface.get_editor_scale()
+	var max_window := int(10 / EditorInterface.get_editor_scale())
+	if _pages_made != [page, _page_count]:
+		_pages_made = [page, _page_count]
+		_make_pages(top_pages, _page_count, max_window)
+		_make_pages(bottom_pages, _page_count, max_window)
+	if _page_count < 2:
+		return
 	var available := scroll.size.x - border.get_theme_stylebox("panel").get_minimum_size().x
-	var window := int(10 / edscale)
+	var window := max_window
 	while true:
-		_make_pages(top_pages, _page_count, window)
+		_show_page_numbers(top_pages, window)
 		if window <= 0 or top_pages.get_combined_minimum_size().x <= available:
 			break
 		window -= 2
-	_make_pages(bottom_pages, _page_count, maxi(window, 0))
+	_show_page_numbers(bottom_pages, maxi(window, 0))
+
+
+## First and last page numbers shown for a window around the current page.
+func _page_range(window: int) -> Vector2i:
+	var to := mini(_page_count, maxi(1, page - window / 2) + window)
+	return Vector2i(maxi(1, to - window), to)
+
+
+func _show_page_numbers(container: HBoxContainer, window: int) -> void:
+	var shown := _page_range(window)
+	for child in container.get_children():
+		if child.has_meta("page"):
+			var number: int = child.get_meta("page")
+			child.visible = number >= shown.x and number <= shown.y
 
 
 func _make_pages(container: HBoxContainer, page_count: int, window: int) -> void:
@@ -535,9 +559,7 @@ func _make_pages(container: HBoxContainer, page_count: int, window: int) -> void
 	container.show()
 	var edscale := EditorInterface.get_editor_scale()
 	container.add_theme_constant_override("separation", int(5 * edscale))
-	var from := maxi(1, page - window / 2)
-	var to := mini(page_count, from + window)
-	from = maxi(1, to - window)
+	var shown := _page_range(window)
 
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -545,8 +567,10 @@ func _make_pages(container: HBoxContainer, page_count: int, window: int) -> void
 	container.add_child(_page_button("", "BackStart" if has_theme_icon("BackStart", "EditorIcons") else "PageFirst", "First", 1, page != 1))
 	container.add_child(_page_button("", "Back", "Previous", page - 1, page > 1))
 	container.add_child(VSeparator.new())
-	for i in range(from, to + 1):
-		container.add_child(_page_button(" %d " % i, "", "", i, i != page))
+	for i in range(shown.x, shown.y + 1):
+		var number := _page_button(" %d " % i, "", "", i, i != page)
+		number.set_meta("page", i)
+		container.add_child(number)
 	container.add_child(VSeparator.new())
 	container.add_child(_page_button("", "Forward", "Next", page + 1, page < page_count))
 	container.add_child(_page_button("", "ForwardEnd" if has_theme_icon("ForwardEnd", "EditorIcons") else "PageLast", "Last", page_count, page != page_count))
@@ -593,14 +617,6 @@ func _update_busy() -> void:
 	scroll.modulate = Color(1, 1, 1, 0.5) if busy else Color.WHITE
 	spinner.visible = busy
 	set_process(busy)
-
-
-func _render_logo(px: float) -> Texture2D:
-	var svg := FileAccess.get_file_as_string(plugin.LOGO_PATH)
-	var image := Image.new()
-	if svg.is_empty() or image.load_svg_from_string(svg, px / 320.0) != OK:
-		return null
-	return ImageTexture.create_from_image(image)
 
 
 func _show_message(text: String, button_text: String = "", action: Callable = Callable()) -> void:
@@ -664,7 +680,7 @@ func _fetch_categories() -> void:
 	if _fetching_categories or not _is_connected() or not plugin.categories.is_empty():
 		return
 	_fetching_categories = true
-	var categories: Array = await GalleryApi.fetch_categories(self, plugin.port, plugin.CLIENT_API_VERSION, plugin.SERVER)
+	var categories: Array = await GalleryApi.fetch_categories(self, plugin)
 	_fetching_categories = false
 	if not categories.is_empty() and plugin.categories.is_empty():
 		plugin.categories = categories
@@ -823,7 +839,7 @@ func _download_entries() -> Array:
 	var entries: Array = []
 	for base_id in downloads:
 		var dl: Dictionary = downloads[base_id]
-		if dl.status in ACTIVE_DOWNLOAD:
+		if dl.status in GalleryApi.ACTIVE_DOWNLOAD:
 			entries.append({"id": base_id, "file_path": "", "time": -1, "asset": dl.asset, "known": true,
 				"thumbnail": thumb_cache.get(base_id, {}).get("small", ""), "download": dl,
 				"folder": GalleryApi.asset_download_dir(GalleryApi.staging_path(plugin.absolute_download_path), dl.asset)})
@@ -861,8 +877,7 @@ func _on_downloaded_elsewhere(file_path: String) -> void:
 	for base_id in items:
 		if GalleryApi.asset_download_dir(plugin.absolute_download_path, items[base_id].asset) == folder:
 			items[base_id].set_downloaded(true)
-	if ProjectSettings.localize_path(file_path).begins_with("res://"):
-		EditorInterface.get_resource_filesystem().scan()
+	_scan_download(file_path)
 	_on_project_files_changed()
 
 
@@ -886,8 +901,7 @@ func _next_lookup() -> void:
 	plugin.update_poll_rate()
 	var url := GalleryApi.build_lookup_url(plugin.SERVER, id, plugin.get_addon_version())
 	var tempdir := GalleryApi.search_temp_dir(plugin.client_data_dir, asset_type)
-	var response: Array = await GalleryApi.search(self, plugin.port, plugin.CLIENT_API_VERSION,
-		url, asset_type, tempdir, 1, plugin.get_addon_version(), plugin.auth.api_key())
+	var response: Array = await GalleryApi.search(self, plugin, url, asset_type, tempdir, 1)
 	_lookup_posting = false
 	if _lookup_id != id:
 		return # reset by a disconnect meanwhile
@@ -988,7 +1002,7 @@ func is_downloaded(asset: Dictionary) -> bool:
 
 func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 	var base_id := str(asset.get("assetBaseId", ""))
-	if downloads.has(base_id) and downloads[base_id].status in ACTIVE_DOWNLOAD:
+	if downloads.has(base_id) and downloads[base_id].status in GalleryApi.ACTIVE_DOWNLOAD:
 		return
 	var dl := {"task_id": "", "status": "posting", "progress": 0, "message": "Starting download",
 		"file_type": file_type, "file_path": "", "asset": asset}
@@ -1002,8 +1016,8 @@ func _on_download_requested(asset: Dictionary, file_type: String) -> void:
 	_download_posts += 1
 	plugin.update_poll_rate()
 	GalleryApi.ensure_staging(plugin.absolute_download_path)
-	var response: Array = await GalleryApi.download(self, plugin.port, plugin.CLIENT_API_VERSION,
-		asset, file_type, GalleryApi.staging_path(plugin.absolute_download_path), plugin.get_addon_version(), plugin.auth.api_key())
+	var response: Array = await GalleryApi.download(self, plugin, asset, file_type,
+		GalleryApi.staging_path(plugin.absolute_download_path))
 	_download_posts -= 1
 	if not is_same(downloads.get(base_id), dl) or dl.status != "posting":
 		return # reset by a disconnect meanwhile
@@ -1046,7 +1060,7 @@ func _handle_download_task(task: Dictionary) -> void:
 
 func _apply_download_task(base_id: String, task: Dictionary) -> void:
 	var dl: Dictionary = downloads[base_id]
-	if not dl.status in ACTIVE_DOWNLOAD:
+	if not dl.status in GalleryApi.ACTIVE_DOWNLOAD:
 		return
 	var status: String = task.get("status", "")
 	dl.reported = true
@@ -1068,23 +1082,29 @@ func _apply_download_task(base_id: String, task: Dictionary) -> void:
 			if items.has(base_id):
 				items[base_id].set_downloaded(true)
 			project.store(dl.asset, thumb_cache.get(base_id, {}).get("small", ""))
-			if ProjectSettings.localize_path(dl.file_path).begins_with("res://"):
-				EditorInterface.get_resource_filesystem().scan()
+			_scan_download(dl.file_path)
 			_on_project_files_changed()
 		"error", "cancelled":
-			dl.status = "error"
-			dl.message = "Cancelled" if status == "cancelled" else str(task.get("message", ""))
+			dl.status = status
+			dl.message = str(task.get("message", "")) if status == "error" else ""
 	_refresh_download(base_id)
 
 
+## Let the editor import a finished download in the project. Looking for
+## changed files is much quicker than a full rescan.
+func _scan_download(file_path: String) -> void:
+	if ProjectSettings.localize_path(file_path).begins_with("res://"):
+		EditorInterface.get_resource_filesystem().scan_sources()
+
+
 func _on_cancel_requested(task_id: String) -> void:
-	await GalleryApi.cancel_download(self, plugin.port, plugin.CLIENT_API_VERSION, task_id)
+	await GalleryApi.cancel_download(self, plugin, task_id)
 	# A cancelled task can disappear without a final report.
 	for base_id in downloads:
 		var dl: Dictionary = downloads[base_id]
-		if dl.task_id == task_id and dl.status in ACTIVE_DOWNLOAD:
-			dl.status = "error"
-			dl.message = "Cancelled"
+		if dl.task_id == task_id and dl.status in GalleryApi.ACTIVE_DOWNLOAD:
+			dl.status = "cancelled"
+			dl.message = ""
 			_refresh_download(base_id)
 
 
@@ -1095,7 +1115,7 @@ func _refresh_download(base_id: String) -> void:
 		items[base_id].set_download(dl)
 	if details.visible and str(details.asset.get("assetBaseId", "")) == base_id:
 		details.refresh_download()
-	if _project_download_items.has(base_id) != (dl.get("status", "") in ACTIVE_DOWNLOAD):
+	if _project_download_items.has(base_id) != (dl.get("status", "") in GalleryApi.ACTIVE_DOWNLOAD):
 		_on_project_files_changed()
 	elif _project_download_items.has(base_id):
 		_project_download_items[base_id].set_download(dl)
@@ -1107,7 +1127,7 @@ func _refresh_download(base_id: String) -> void:
 func _handle_web_download_task(task: Dictionary) -> void:
 	var task_id: String = task.get("task_id", "")
 	var status: String = task.get("status", "")
-	if not status in ACTIVE_DOWNLOAD:
+	if not status in GalleryApi.ACTIVE_DOWNLOAD:
 		_drop_web_download(task_id)
 		return
 	var changed := not web_downloads.has(task_id)
