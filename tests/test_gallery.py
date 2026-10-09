@@ -237,7 +237,8 @@ def test_project_assets(godot_executable, tmp_path):
     hour_ago = time.time() - 3600
     for path in (stale / "old.glb", stale):
         os.utime(path, (hour_ago, hour_ago))
-    env = {"BK_TEST_DIR": str(tmp_path / "data"), "BK_STALE_DIR": str(stale)}
+    # Godot paths use "/" on Windows too; finish_download() returns them so.
+    env = {"BK_TEST_DIR": (tmp_path / "data").as_posix(), "BK_STALE_DIR": stale.as_posix()}
     result = run_godot_script(godot_executable, tmp_path, PROJECT_ASSETS_CHECKS, env)
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
@@ -266,7 +267,8 @@ func check_downloads(gallery):
     var folder: String = gallery.plugin.absolute_download_path.path_join(".downloads/models/wooden-chair_" + ID)
     var file := folder.path_join("wooden-chair_gltf_godot.glb")
     DirAccess.make_dir_recursive_absolute(folder)
-    FileAccess.open(file, FileAccess.WRITE).store_string("glb")
+    # A minimal glTF (a .glb may hold JSON), so the editor imports it cleanly.
+    FileAccess.open(file, FileAccess.WRITE).store_string('{"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"name": "Chair"}]}')
     # The project view only scans while the Blendkit tab shows it.
     gallery.project_toggle.button_pressed = true
     await get_tree().process_frame

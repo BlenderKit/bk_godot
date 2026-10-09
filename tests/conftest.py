@@ -25,6 +25,21 @@ CLIENT_CONNECTED_RE = re.compile(
 )
 
 
+def client_log(output: str, lines: int = 80) -> str:
+    """The end of the log of the Client the editor connected to, for failures."""
+    m = CLIENT_CONNECTED_RE.search(output)
+    if not m:
+        return ""
+    # Like ClientConnection.get_client_log_path().
+    name = "default" if m.group("port") == "62485" else m.group("port")
+    path = Path.home() / "blenderkit_data" / "client" / f"{name}.log"
+    try:
+        tail = path.read_text(errors="replace").splitlines()[-lines:]
+    except OSError as e:
+        return f"\nClient log {path}: {e}"
+    return f"\nClient log {path}:\n" + "\n".join(tail)
+
+
 def unsubscribe_client(port: str, app_id: int) -> None:
     """Remove only the test editor's subscription; other plugins may share it."""
     if not port:

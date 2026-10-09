@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from .conftest import make_probe_project, run_editor_probe
+from .conftest import client_log, make_probe_project, run_editor_probe
 
 pytestmark = pytest.mark.e2e
 
@@ -99,7 +99,7 @@ def test_gallery_search_and_download(godot_executable, tmp_path):
         with_client=True,
     )
     stdout, stderr = run_editor_probe(godot_executable, project, timeout=400)
-    output = stdout + stderr
+    output = stdout + stderr + client_log(stdout)
 
     def value(key):
         m = re.search(rf"^{key}=(.*)$", stdout, re.M)
