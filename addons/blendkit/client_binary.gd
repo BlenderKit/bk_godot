@@ -50,6 +50,10 @@ func launch(port: String, server: String, log_path: String) -> String:
 		return "Client binary not found"
 
 	DirAccess.make_dir_recursive_absolute(log_path.get_base_dir())
+	# Keep the log of a Client that stopped, e.g. crashed, as the new one
+	# overwrites it.
+	if FileAccess.file_exists(log_path):
+		DirAccess.rename_absolute(log_path, previous_log_path(log_path))
 	install_shared()
 	var godot_pid = str(OS.get_process_id())
 	var client_pid: int = 0
@@ -103,6 +107,11 @@ static func is_valid_client_version(client_version: String) -> bool:
 ## Requires the supported API series and at least the bundled patch.
 static func is_compatible_client(found: String, required: String) -> bool:
 	return is_valid_client_version(found) and not version_lt(found, required)
+
+
+## Where the log of the Client started before is kept, see launch().
+static func previous_log_path(log_path: String) -> String:
+	return log_path.get_basename() + ".previous.log"
 
 
 static func get_client_data_dir() -> String:

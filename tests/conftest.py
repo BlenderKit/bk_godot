@@ -26,18 +26,25 @@ CLIENT_CONNECTED_RE = re.compile(
 
 
 def client_log(output: str, lines: int = 80) -> str:
-    """The end of the log of the Client the editor connected to, for failures."""
+    """The end of the logs of the Client the editor connected to and the one
+    started before it, e.g. one that crashed, for failures."""
     m = CLIENT_CONNECTED_RE.search(output)
     if not m:
         return ""
-    # Like ClientConnection.get_client_log_path().
+    # Like ClientConnection.get_client_log_path() and ClientBinary.previous_log_path().
     name = "default" if m.group("port") == "62485" else m.group("port")
-    path = Path.home() / "blenderkit_data" / "client" / f"{name}.log"
-    try:
-        tail = path.read_text(errors="replace").splitlines()[-lines:]
-    except OSError as e:
-        return f"\nClient log {path}: {e}"
-    return f"\nClient log {path}:\n" + "\n".join(tail)
+    logs = ""
+    for file in (f"{name}.previous.log", f"{name}.log"):
+        path = Path.home() / "blenderkit_data" / "client" / file
+        if not path.exists():
+            continue
+        try:
+            tail = path.read_text(errors="replace").splitlines()[-lines:]
+        except OSError as e:
+            logs += f"\nClient log {path}: {e}"
+            continue
+        logs += f"\nClient log {path}:\n" + "\n".join(tail)
+    return logs
 
 
 def unsubscribe_client(port: str, app_id: int) -> None:
