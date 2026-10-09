@@ -80,7 +80,7 @@ func active_folders() -> Dictionary:
 # MARK: gallery downloads
 
 func start(asset: Dictionary, file_type: String) -> void:
-	var base_id := str(asset.get("assetBaseId", ""))
+	var base_id := GalleryApi.base_id(asset)
 	if get_download(base_id).get("status", "") in GalleryApi.ACTIVE_DOWNLOAD:
 		return
 	var dl := {"task_id": "", "status": "posting", "progress": 0, "message": "Starting download",

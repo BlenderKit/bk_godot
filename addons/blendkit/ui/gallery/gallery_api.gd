@@ -298,8 +298,12 @@ static func clear_staging(abs_download_path: String, keep: Dictionary) -> int:
 	return cleared
 
 
+static func base_id(asset: Dictionary) -> String:
+	return str(asset.get("assetBaseId", ""))
+
+
 static func web_url(server: String, asset: Dictionary) -> String:
-	return "%s/asset-gallery-detail/%s/" % [server, str(asset.get("assetBaseId", ""))]
+	return "%s/asset-gallery-detail/%s/" % [server, base_id(asset)]
 
 
 static func author_name(asset: Dictionary) -> String:

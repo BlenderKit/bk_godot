@@ -235,7 +235,7 @@ func _show_results() -> void:
 	for asset in results:
 		if not asset is Dictionary:
 			continue
-		var base_id := str(asset.get("assetBaseId", ""))
+		var base_id := GalleryApi.base_id(asset)
 		var item = gallery_item_scene.instantiate()
 		grid.add_child(item)
 		item.setup(asset)
@@ -256,9 +256,9 @@ func _show_results() -> void:
 	# canDownload depends on the account, e.g. after logging in from the dialog.
 	var details = gallery.details
 	if details.visible:
-		var open_id := str(details.asset.get("assetBaseId", ""))
+		var open_id := GalleryApi.base_id(details.asset)
 		for asset in results:
-			if asset is Dictionary and str(asset.get("assetBaseId", "")) == open_id:
+			if asset is Dictionary and GalleryApi.base_id(asset) == open_id:
 				details.asset = asset
 				details.refresh_download()
 	gallery.reset_search_scroll()

@@ -124,7 +124,7 @@ func _download_entries() -> Array:
 		var dl: Dictionary = downloads.gallery_downloads[base_id]
 		if dl.status in GalleryApi.ACTIVE_DOWNLOAD:
 			result.append({"id": base_id, "file_path": "", "time": -1, "asset": dl.asset, "known": true,
-				"thumbnail": gallery.thumb_cache.get(base_id, {}).get("small", ""), "download": dl,
+				"thumbnail": gallery.small_thumbnail(base_id), "download": dl,
 				"folder": GalleryApi.asset_download_dir(staging, dl.asset)})
 	for task_id in downloads.web_downloads:
 		var web: Dictionary = downloads.web_downloads[task_id]
@@ -181,7 +181,7 @@ func _open_details(entry: Dictionary) -> void:
 		if entry.download.has("asset"):
 			gallery.open_details(entry.asset)
 		return
-	var thumbs: Dictionary = gallery.thumb_cache.get(str(entry.asset.get("assetBaseId", "")), {}).duplicate()
+	var thumbs: Dictionary = gallery.thumb_cache.get(GalleryApi.base_id(entry.asset), {}).duplicate()
 	if entry.thumbnail and not thumbs.has("small"):
 		thumbs.small = entry.thumbnail
 	gallery.details.show_asset(entry.asset, thumbs, entry.file_path)
@@ -200,7 +200,7 @@ func _on_download_changed(id: String) -> void:
 
 
 func _on_download_finished(base_id: String) -> void:
-	project.store(gallery.downloads.get_download(base_id).asset, gallery.thumb_cache.get(base_id, {}).get("small", ""))
+	project.store(gallery.downloads.get_download(base_id).asset, gallery.small_thumbnail(base_id))
 	refresh_if_shown()
 
 
@@ -255,7 +255,7 @@ func _finish_lookup(task: Dictionary) -> void:
 	if task.get("status") == "finished" and results is Array and not results.is_empty() \
 			and results[0] is Dictionary and str(results[0].get("id", "")) == id:
 		var asset: Dictionary = results[0]
-		project.store(asset, gallery.thumb_cache.get(str(asset.get("assetBaseId", "")), {}).get("small", ""))
+		project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
 		refresh_if_shown()
 	else:
 		gallery.plugin.log_verbose("Asset %s not found on Blendkit" % id)

@@ -199,7 +199,7 @@ func refresh_download() -> void:
 	_login_button.hide()
 	note_label.text = ""
 	note_label.remove_theme_color_override("font_color")
-	_web_button.visible = not str(asset.get("assetBaseId", "")).is_empty()
+	_web_button.visible = not GalleryApi.base_id(asset).is_empty()
 	file_option.get_parent().visible = local_path.is_empty()
 
 	if not local_path.is_empty():
@@ -232,7 +232,7 @@ func refresh_download() -> void:
 		note_label.text = "No downloadable file for this asset."
 		return
 
-	var dl: Dictionary = gallery.get_download(str(asset.get("assetBaseId", "")))
+	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
 	var status: String = dl.get("status", "")
 	var same_file: bool = dl.get("file_type", "") == selected_file_type()
 	if status in GalleryApi.ACTIVE_DOWNLOAD:
@@ -281,7 +281,7 @@ func _on_ok() -> void:
 		else:
 			OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset))
 		return
-	var dl: Dictionary = gallery.get_download(str(asset.get("assetBaseId", "")))
+	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
 	if dl.get("status") == "finished" and dl.get("file_type", "") == selected_file_type() and dl.get("file_path"):
 		FileReveal.reveal(dl.file_path)
 		hide()
@@ -299,7 +299,7 @@ func _on_custom_action(action: StringName) -> void:
 			gallery.plugin.auth.login()
 			refresh_download()
 		"cancel_download":
-			var dl: Dictionary = gallery.get_download(str(asset.get("assetBaseId", "")))
+			var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
 			if dl.get("task_id"):
 				cancel_requested.emit(dl.task_id)
 

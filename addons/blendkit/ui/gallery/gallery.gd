@@ -346,14 +346,19 @@ func _handle_thumbnail_task(task: Dictionary) -> void:
 	search.on_thumbnail(base_id, type, path)
 	if type == "small":
 		project_view.add_thumbnail(base_id, path)
-	if details.visible and str(details.asset.get("assetBaseId", "")) == base_id:
+	if details.visible and GalleryApi.base_id(details.asset) == base_id:
 		details.on_thumbnail(type, GalleryApi.load_texture(path))
 
 
 # MARK: details and downloads
 
 func open_details(asset: Dictionary) -> void:
-	details.show_asset(asset, thumb_cache.get(str(asset.get("assetBaseId", "")), {}))
+	details.show_asset(asset, thumb_cache.get(GalleryApi.base_id(asset), {}))
+
+
+## Path of the asset's cached small thumbnail, or "".
+func small_thumbnail(base_id: String) -> String:
+	return thumb_cache.get(base_id, {}).get("small", "")
 
 
 func get_download(base_id: String) -> Dictionary:
@@ -367,7 +372,7 @@ func is_downloaded(asset: Dictionary) -> bool:
 
 ## Show the download state in the details when open, and in the badge.
 func _on_download_changed(id: String) -> void:
-	if details.visible and str(details.asset.get("assetBaseId", "")) == id:
+	if details.visible and GalleryApi.base_id(details.asset) == id:
 		details.refresh_download()
 	_update_download_badge()
 
