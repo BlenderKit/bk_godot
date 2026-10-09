@@ -250,6 +250,16 @@ func refresh_download() -> void:
 			note_label.add_theme_color_override("font_color", get_theme_color("error_color", "Editor"))
 		elif gallery.is_downloaded(asset):
 			note_label.text = "Already in the project; downloading again reuses the files on disk."
+		elif _gltf_unavailable():
+			note_label.text = "No glTF for this asset, using %s." % GalleryApi.file_type_label(selected_file_type())
+
+
+## glTF is the Model Format but the model has none, so a .blend is picked.
+func _gltf_unavailable() -> bool:
+	if asset.get("assetType", "") != "model" or gallery.plugin.model_format == "blend":
+		return false
+	var present := GalleryApi.file_types(asset)
+	return not ("gltf_godot" in present or "gltf" in present)
 
 
 ## A Full Plan asset and a logged-in account on the Free plan.

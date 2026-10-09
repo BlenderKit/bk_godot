@@ -108,8 +108,9 @@ text = "Free only"
 [node name="GodotReadyCheck" type="CheckBox" parent="Main/FilterRow/Checks"]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Show only models with a GLB exported for Godot."
-text = "Godot-ready (GLB)"
+tooltip_text = "Show only models with glTF (.glb) exported automatically for Godot. Experimental.
+Defaults to on when Model Format is glTF."
+text = "glTF for Godot"
 
 [node name="LibraryMargin" type="MarginContainer" parent="Main"]
 layout_mode = 2

@@ -1,11 +1,13 @@
 @tool
 extends EditorPlugin
 
+signal model_format_changed
+
 const SERVER = "https://blendkit.com"
 const CLIENT_API_VERSION = "v1.13"
 const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "5152", "1234"]
 # [value, label] pairs for the settings dialog
-const MODEL_FORMATS = [["gltf_godot", "Prefer GLTF (.glb)"], ["blend", "Blender (.blend)"]]
+const MODEL_FORMATS = [["blend", "Blender original (.blend)"], ["gltf_godot", "glTF (.glb) when available"]]
 const RESOLUTIONS = [["", "Auto"], ["ORIGINAL", "Original"], ["resolution_4K", "4K"], ["resolution_2K", "2K"], ["resolution_1K", "1K"], ["resolution_0_5K", "0.5K"]]
 const DOCS_URL = "https://github.com/BlenderKit/bk_godot"
 const ISSUES_URL = "https://github.com/BlenderKit/bk_godot/issues"
@@ -117,7 +119,7 @@ var client_enabled := true
 
 var download_dir: String = "res://bk_assets/"
 var absolute_download_path: String
-var model_format: String = "gltf_godot"
+var model_format: String = "blend"
 var resolution: String = ""
 var port: String = CLIENT_PORTS[0]
 # Port to start the Client on when none is running
@@ -160,7 +162,7 @@ var categories: Array = []
 
 func _enter_tree():
 	bk_log(LogLevel.INFO, "Plugin enabled")
-	model_format = ProjectSettings.get_setting("blendkit/model_format", "gltf_godot")
+	model_format = ProjectSettings.get_setting("blendkit/model_format", "blend")
 	resolution = ProjectSettings.get_setting("blendkit/resolution", "")
 	init_paths()
 	bk_log(LogLevel.INFO, "Download path: %s" % absolute_download_path)
@@ -626,11 +628,14 @@ func set_log_level(level: int):
 func set_model_format(format: String):
 	model_format = format
 	ProjectSettings.set_setting("blendkit/model_format", model_format)
+	ProjectSettings.save()
+	model_format_changed.emit()
 
 
 func set_resolution(new_resolution: String):
 	resolution = new_resolution
 	ProjectSettings.set_setting("blendkit/resolution", resolution)
+	ProjectSettings.save()
 
 
 func init_paths():

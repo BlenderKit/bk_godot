@@ -50,9 +50,10 @@ printed to Godot Output. As of Godot 4.5.1, Blender 3 is required while Blender
 This plugin will get increasingly useful as native Blender -> Godot import
 improves.
 
-Experimental **GLTF** support was introduced in `0.4.0` - there is now an option
-to prefer GLTF (`*.glb`, `*.gltf`) over original Blender (`*.blend`) file. GLTF
-auto-exports are by no means perfect, but they might occassionally work.
+Experimental **glTF** support was introduced in `0.4.0` - set **Model Format**
+to **glTF (.glb) when available** to download glTF instead of the original
+Blender (`*.blend`) file. glTF auto-exports are by no means perfect, but they
+might occasionally work.
 
 
 ## Requirements
@@ -141,8 +142,8 @@ You can also search and download assets without leaving Godot: open the
 **Blendkit** tab in the editor's top bar (next to **Asset Store**).
 
 - Search by text, sort the results, and filter by type (Models, Materials,
-  HDRs, Scenes, Printables), category, **Godot-ready (GLB)** models, and
-  **Free only**.
+  HDRs, Scenes, Printables), category, **glTF for Godot** models (on by
+  default when **Model Format** is glTF), and **Free only**.
 - Click an asset to see its details. Choose a file and click **Download** to
   get it into `bk_assets/`, with the same layout as **Send to Godot**. The file
   defaults to the **Model Format** and **Resolution** settings. A thin bar
@@ -167,7 +168,7 @@ connecting, red when it failed and gray when it's off. The menu has:
   **Sign Up…** open the browser and turn the Client on if it's off, as logging
   in goes through it. **Log Out** when logged in.
 - **Settings…** with the download directory (`res://bk_assets/` by default),
-  **Model Format** (GLTF or `.blend`), **Resolution**, the Client **Port** and
+  **Model Format** (Blender original `.blend` by default, or glTF), **Resolution**, the Client **Port** and
   the plugin's **Log Level**.
 - Links to blendkit.com, the documentation and the issue tracker.
 

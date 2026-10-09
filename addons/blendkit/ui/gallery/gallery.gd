@@ -160,7 +160,7 @@ func _ready() -> void:
 	sort_option.select(maxi(0, GalleryApi.SORTS.map(func(s): return s[0]).find(_get_meta("gallery_sort", "relevance"))))
 	type_option.select(maxi(0, GalleryApi.ASSET_TYPES.find(_get_meta("gallery_type", "model"))))
 	free_check.button_pressed = _get_meta("gallery_free", false)
-	godot_ready_check.button_pressed = _get_meta("gallery_godot_ready", false)
+	godot_ready_check.button_pressed = _get_meta("gallery_godot_ready", plugin.model_format != "blend")
 	_update_type_filters()
 	_fill_categories()
 
@@ -172,6 +172,7 @@ func _ready() -> void:
 	category_option.item_selected.connect(func(_i): request_search())
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
 	godot_ready_check.toggled.connect(_on_filter_toggled.bind("gallery_godot_ready"))
+	plugin.model_format_changed.connect(_on_model_format_changed)
 	menu_button.setup(plugin)
 	plugin.auth.account_changed.connect(_on_account_changed)
 	plugin.auth.changed.connect(func():
@@ -384,7 +385,7 @@ func _run_search(force: bool = true) -> void:
 	var asset_type := _asset_type()
 	var url := GalleryApi.build_search_url(plugin.SERVER, _browse_text(), asset_type,
 		_category_slug(), _sort(), free_check.button_pressed,
-		godot_ready_check.button_pressed and not godot_ready_check.disabled, page, PAGE_SIZE, plugin.get_addon_version())
+		godot_ready_check.button_pressed and godot_ready_check.visible, page, PAGE_SIZE, plugin.get_addon_version())
 	if url == _search_url and _search_error.is_empty() and not force:
 		return
 	_pending_search = false
@@ -666,9 +667,9 @@ func _fetch_categories() -> void:
 		_fill_categories()
 
 
-## Godot-ready applies to models only.
+## glTF for Godot applies to models only.
 func _update_type_filters() -> void:
-	godot_ready_check.disabled = _asset_type() != "model"
+	godot_ready_check.visible = _asset_type() == "model"
 
 
 func _on_sort_selected(index: int) -> void:
@@ -687,6 +688,12 @@ func _on_type_selected(index: int) -> void:
 func _on_filter_toggled(pressed: bool, meta_key: String) -> void:
 	_set_meta(meta_key, pressed)
 	request_search()
+
+
+## The glTF for Godot filter follows the Model Format; toggling it emits
+## toggled, which stores it and searches again.
+func _on_model_format_changed() -> void:
+	godot_ready_check.button_pressed = plugin.model_format != "blend"
 
 
 ## Results depend on the account (canDownload), so search again.

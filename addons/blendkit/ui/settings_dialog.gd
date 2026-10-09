@@ -31,10 +31,10 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_row("Download to", _download_dir, "Directory into which the plugin downloads the assets.")
 	_model_format = _options(plugin.MODEL_FORMATS.map(func(f): return f[1]))
 	_model_format.item_selected.connect(func(i): plugin.set_model_format(plugin.MODEL_FORMATS[i][0]))
-	_row("Model Format", _model_format, "Choose whether to download GLTF files (recommended for Godot) or original .blend files.")
+	_row("Model Format", _model_format, "Blender original downloads .blend files, which Godot imports through Blender.\nglTF downloads glTF for Godot, then glTF, and falls back to Blender original at the selected Resolution. glTF files are exported automatically and experimental.")
 	_resolution = _options(plugin.RESOLUTIONS.map(func(r): return r[1]))
 	_resolution.item_selected.connect(func(i): plugin.set_resolution(plugin.RESOLUTIONS[i][0]))
-	_row("Resolution", _resolution, "Resolution for .blend files. Also used as fallback when GLTF is unavailable.")
+	_row("Resolution", _resolution, "Texture resolution for .blend files, also used when glTF is unavailable.")
 
 	_section("Client")
 	_port = _options(plugin.CLIENT_PORTS)

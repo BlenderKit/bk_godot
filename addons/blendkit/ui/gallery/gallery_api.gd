@@ -47,14 +47,14 @@ const RESOLUTIONS := {
 
 ## Downloadable file types in display order: [fileType, label].
 const FILE_TYPES := [
-	["gltf_godot", "GLB (Godot)"],
-	["gltf", "glTF"],
-	["blend", "Blend (original)"],
-	["resolution_8K", "Blend 8K"],
-	["resolution_4K", "Blend 4K"],
-	["resolution_2K", "Blend 2K"],
-	["resolution_1K", "Blend 1K"],
-	["resolution_0_5K", "Blend 0.5K"],
+	["gltf_godot", "glTF for Godot (.glb)"],
+	["gltf", "glTF (.glb)"],
+	["blend", "Blender original (.blend)"],
+	["resolution_8K", "Blender 8K textures (.blend)"],
+	["resolution_4K", "Blender 4K textures (.blend)"],
+	["resolution_2K", "Blender 2K textures (.blend)"],
+	["resolution_1K", "Blender 1K textures (.blend)"],
+	["resolution_0_5K", "Blender 0.5K textures (.blend)"],
 	["zip_file", "Archive (.zip)"],
 ]
 
