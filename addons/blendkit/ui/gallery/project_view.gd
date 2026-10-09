@@ -241,7 +241,7 @@ func next_lookup() -> void:
 	if response.is_empty():
 		return # reset by a disconnect meanwhile
 	if response[0].is_empty():
-		plugin.bk_log(plugin.LogLevel.DEBUG, "Asset lookup failed: %s" % response[1])
+		plugin.log_debug("Asset lookup failed: %s" % response[1])
 		_finish_lookup({})
 
 
@@ -258,7 +258,7 @@ func _finish_lookup(task: Dictionary) -> void:
 		project.store(asset, gallery.thumb_cache.get(str(asset.get("assetBaseId", "")), {}).get("small", ""))
 		refresh_if_shown()
 	else:
-		gallery.plugin.bk_log(gallery.plugin.LogLevel.VERBOSE, "Asset %s not found on Blendkit" % id)
+		gallery.plugin.log_verbose("Asset %s not found on Blendkit" % id)
 		_lookup_failed[id] = true
 	next_lookup()
 

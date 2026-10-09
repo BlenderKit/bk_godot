@@ -204,7 +204,7 @@ func _on_search_task(task: Dictionary) -> void:
 func _search_failed(message: String) -> void:
 	gallery.set_busy(false)
 	_search_error = message if message else "unknown error"
-	plugin.bk_log(plugin.LogLevel.WARNING, "Search failed: %s" % _search_error)
+	plugin.log_warning("Search failed: %s" % _search_error)
 	_clear_results()
 	_show_message("Search failed: %s" % _search_error, "Retry", func(): request_search(page, true))
 

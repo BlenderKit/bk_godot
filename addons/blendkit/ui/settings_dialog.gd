@@ -59,7 +59,7 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_port = _options(plugin.CLIENT_PORTS)
 	_port.item_selected.connect(func(i): plugin.set_preferred_port(plugin.CLIENT_PORTS[i]))
 	_row("Port", _port, "Port on which the plugin starts the Client when none is running.")
-	_log_level = _options(plugin.LOG_LEVEL_NAMES.values())
+	_log_level = _options(plugin.LogLevel.keys())
 	_log_level.item_selected.connect(plugin.set_log_level)
 	_row("Log Level", _log_level, "Log level for the plugin's output.")
 

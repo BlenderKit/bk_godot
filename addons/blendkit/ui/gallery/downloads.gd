@@ -184,7 +184,7 @@ func drop_vanished(reported: Dictionary) -> void:
 		_staging_cleared = true
 		var cleared := GalleryApi.clear_staging(_plugin.absolute_download_path, active_folders())
 		if cleared > 0:
-			_plugin.bk_log(_plugin.LogLevel.VERBOSE, "Deleted %d unfinished downloads" % cleared)
+			_plugin.log_verbose("Deleted %d unfinished downloads" % cleared)
 	for base_id in gallery_downloads:
 		var dl: Dictionary = gallery_downloads[base_id]
 		if dl.get("reported", false) and dl.status in GalleryApi.ACTIVE_DOWNLOAD and not reported.has(dl.task_id):
@@ -224,7 +224,7 @@ func handle_web_task(task: Dictionary) -> void:
 func _finish_web_download(task: Dictionary) -> void:
 	var path := GalleryApi.finish_download(GalleryApi.task_file_path(task))
 	if path.is_empty():
-		_plugin.bk_log(_plugin.LogLevel.WARNING, "Could not move %s into %s" % [GalleryApi.task_file_path(task), _plugin.download_dir])
+		_plugin.log_warning("Could not move %s into %s" % [GalleryApi.task_file_path(task), _plugin.download_dir])
 		return
 	_scan_download(path)
 	web_download_finished.emit(path)

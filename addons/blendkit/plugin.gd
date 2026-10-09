@@ -45,15 +45,6 @@ static var _digits_regex := RegEx.create_from_string("\\d+")
 
 enum LogLevel { ERROR, WARNING, INFO, VERBOSE, DEBUG, TRACE }
 
-const LOG_LEVEL_NAMES = {
-	LogLevel.ERROR: "ERROR",
-	LogLevel.WARNING: "WARNING",
-	LogLevel.INFO: "INFO",
-	LogLevel.VERBOSE: "VERBOSE",
-	LogLevel.DEBUG: "DEBUG",
-	LogLevel.TRACE: "TRACE",
-}
-
 var log_level: int = LogLevel.INFO
 
 # The Client reports message_level in Python logging values:
@@ -70,7 +61,7 @@ static func client_message_log_level(message_level: int) -> LogLevel:
 func bk_log(level: LogLevel, msg: String) -> void:
 	if level > log_level:
 		return
-	var prefix = "Blendkit: " if level == LogLevel.INFO else "Blendkit %s: " % LOG_LEVEL_NAMES[level]
+	var prefix = "Blendkit: " if level == LogLevel.INFO else "Blendkit %s: " % LogLevel.keys()[level]
 	var log_msg = prefix + msg
 	match level:
 		LogLevel.ERROR:
@@ -80,55 +71,47 @@ func bk_log(level: LogLevel, msg: String) -> void:
 		_:
 			print(log_msg)
 
+func log_error(msg: String) -> void:
+	bk_log(LogLevel.ERROR, msg)
+
+func log_warning(msg: String) -> void:
+	bk_log(LogLevel.WARNING, msg)
+
+func log_info(msg: String) -> void:
+	bk_log(LogLevel.INFO, msg)
+
+func log_verbose(msg: String) -> void:
+	bk_log(LogLevel.VERBOSE, msg)
+
+func log_debug(msg: String) -> void:
+	bk_log(LogLevel.DEBUG, msg)
+
+func log_trace(msg: String) -> void:
+	bk_log(LogLevel.TRACE, msg)
+
 
 enum State { DISABLED, EXPLORING, STARTING, CONNECTED, FAILED }
 
-const STATE_NAMES = {
-	State.DISABLED: "DISABLED",
-	State.EXPLORING: "EXPLORING",
-	State.STARTING: "STARTING",
-	State.CONNECTED: "CONNECTED",
-	State.FAILED: "FAILED",
-}
-
 static func state_name(s: State) -> String:
-	return STATE_NAMES.get(s, str(s))
+	var name = State.find_key(s)
+	return name if name != null else str(s)
 
-
-const HTTP_CLIENT_STATUS_NAMES = {
-	HTTPClient.STATUS_DISCONNECTED: "DISCONNECTED",
-	HTTPClient.STATUS_RESOLVING: "RESOLVING",
-	HTTPClient.STATUS_CANT_RESOLVE: "CANT_RESOLVE",
-	HTTPClient.STATUS_CONNECTING: "CONNECTING",
-	HTTPClient.STATUS_CANT_CONNECT: "CANT_CONNECT",
-	HTTPClient.STATUS_CONNECTED: "CONNECTED",
-	HTTPClient.STATUS_REQUESTING: "REQUESTING",
-	HTTPClient.STATUS_BODY: "BODY",
-	HTTPClient.STATUS_CONNECTION_ERROR: "CONNECTION_ERROR",
-	HTTPClient.STATUS_TLS_HANDSHAKE_ERROR: "TLS_HANDSHAKE_ERROR",
-}
 
 static func http_status_name(status: int) -> String:
-	return HTTP_CLIENT_STATUS_NAMES.get(status, str(status))
+	return engine_enum_name("HTTPClient", "Status", status)
 
-
-const HTTP_REQUEST_RESULT_NAMES = {
-	HTTPRequest.RESULT_SUCCESS: "SUCCESS",
-	HTTPRequest.RESULT_CHUNKED_BODY_SIZE_MISMATCH: "CHUNKED_BODY_SIZE_MISMATCH",
-	HTTPRequest.RESULT_CANT_CONNECT: "CANT_CONNECT",
-	HTTPRequest.RESULT_CANT_RESOLVE: "CANT_RESOLVE",
-	HTTPRequest.RESULT_CONNECTION_ERROR: "CONNECTION_ERROR",
-	HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR: "TLS_HANDSHAKE_ERROR",
-	HTTPRequest.RESULT_NO_RESPONSE: "NO_RESPONSE",
-	HTTPRequest.RESULT_BODY_SIZE_LIMIT_EXCEEDED: "BODY_SIZE_LIMIT_EXCEEDED",
-	HTTPRequest.RESULT_BODY_DECOMPRESS_FAILED: "BODY_DECOMPRESS_FAILED",
-	HTTPRequest.RESULT_REQUEST_FAILED: "REQUEST_FAILED",
-	HTTPRequest.RESULT_REDIRECT_LIMIT_REACHED: "REDIRECT_LIMIT_REACHED",
-	HTTPRequest.RESULT_TIMEOUT: "TIMEOUT",
-}
 
 static func http_result_name(result: int) -> String:
-	return HTTP_REQUEST_RESULT_NAMES.get(result, str(result))
+	return engine_enum_name("HTTPRequest", "Result", result)
+
+
+## Name of an engine enum value without its prefix, e.g. "CANT_CONNECT" for
+## HTTPRequest.RESULT_CANT_CONNECT.
+static func engine_enum_name(engine_class: String, enum_name: String, value: int) -> String:
+	for constant in ClassDB.class_get_enum_constants(engine_class, enum_name):
+		if ClassDB.class_get_integer_constant(engine_class, constant) == value:
+			return constant.substr(constant.find("_") + 1)
+	return str(value)
 
 
 var state: State = State.DISABLED
@@ -178,10 +161,10 @@ var categories: Array = []
 
 func _enter_tree():
 	init_settings()
-	bk_log(LogLevel.INFO, "Plugin enabled")
+	log_info("Plugin enabled")
 	init_paths()
-	bk_log(LogLevel.INFO, "Download path: %s" % absolute_download_path)
-	bk_log(LogLevel.VERBOSE, "Client data dir: %s" % client_data_dir)
+	log_info("Download path: %s" % absolute_download_path)
+	log_verbose("Client data dir: %s" % client_data_dir)
 
 	http_request = HTTPRequest.new()
 	add_child(http_request)
@@ -220,7 +203,7 @@ func _exit_tree():
 		gallery.queue_free()
 		gallery = null
 	auth.queue_free()
-	bk_log(LogLevel.INFO, "Plugin exited")
+	log_info("Plugin exited")
 
 
 # Main screen tab. _has_main_screen() is deprecated in Godot 4.8 in favor of an
@@ -287,7 +270,7 @@ func fail(reason: String):
 	state = State.FAILED
 	timer.stop()
 	http_request.cancel_request()
-	bk_log(LogLevel.ERROR, "Client failed: %s. Please consider reporting this with your Output." % fail_reason)
+	log_error("Client failed: %s. Please consider reporting this with your Output." % fail_reason)
 	auth.on_client_lost()
 	update_status()
 
@@ -301,7 +284,7 @@ func enter_state(new_state: State):
 		State.DISABLED:
 			if prev_state == State.CONNECTED:
 				send_unsubscribe()
-			bk_log(LogLevel.INFO, "Disabled")
+			log_info("Disabled")
 			timer.stop()
 			http_request.cancel_request()
 			auth.on_client_lost()
@@ -310,7 +293,7 @@ func enter_state(new_state: State):
 			taken_ports.clear()
 			timer.wait_time = WAIT_EXPLORING
 			timer.start()
-			bk_log(LogLevel.INFO, "Searching for running Client...")
+			log_info("Searching for running Client...")
 		State.STARTING:
 			starting_since = Time.get_ticks_msec()
 			timer.wait_time = WAIT_STARTING
@@ -321,9 +304,9 @@ func enter_state(new_state: State):
 			timer.start()
 			update_poll_rate()
 			if connected_client_version:
-				bk_log(LogLevel.INFO, "Connected to Client v%s on port %s" % [connected_client_version, port])
+				log_info("Connected to Client v%s on port %s" % [connected_client_version, port])
 			else:
-				bk_log(LogLevel.INFO, "Connected to Client on port %s" % port)
+				log_info("Connected to Client on port %s" % port)
 			auth.on_connected()
 		_:
 			fail("invalid state %s" % state_name(new_state))
@@ -382,8 +365,8 @@ func start_client(port: String):
 	# look for client binaries again in case they were added
 	find_packed_client()
 	if not FileAccess.file_exists(client_bin_path):
-		bk_log(LogLevel.ERROR, "Client binary not found. The plugin cannot work without the Client :(")
-		bk_log(LogLevel.DEBUG, "Expected Client binary path: %s" % client_bin_path)
+		log_error("Client binary not found. The plugin cannot work without the Client :(")
+		log_debug("Expected Client binary path: %s" % client_bin_path)
 		fail("Client binary not found")
 		return
 
@@ -394,7 +377,7 @@ func start_client(port: String):
 	var client_pid: int = 0
 	var command_str: String = ""
 
-	bk_log(LogLevel.INFO, "Starting Client v%s on port %s" % [client_version, port])
+	log_info("Starting Client v%s on port %s" % [client_version, port])
 	# Godot's OS.create_process(), OS.execute() and similar does not support redirecting pipe to file, so we do it via shells
 
 	if OS.has_feature("windows"):
@@ -407,31 +390,31 @@ func start_client(port: String):
 		# Positional arguments keep spaces and shell metacharacters literal.
 		client_pid = OS.create_process("/bin/sh", ["-c", command_str, "bk_client", client_bin_path, port, SERVER, godot_pid, log_path])
 	else:
-		bk_log(LogLevel.ERROR, "Could not start client: Unsupported OS. Only Windows, MacOS and Linux are supported.")
+		log_error("Could not start client: Unsupported OS. Only Windows, MacOS and Linux are supported.")
 		fail("unsupported OS")
 		return
 
 	if client_pid <= 0:
-		bk_log(LogLevel.ERROR, "Failed to start the Blendkit Client.")
-		bk_log(LogLevel.DEBUG, "Failed command: %s" % command_str)
+		log_error("Failed to start the Blendkit Client.")
+		log_debug("Failed command: %s" % command_str)
 		fail("client start failed")
 		return
 
 
 func on_timer_timeout():
 	if state in [State.FAILED, State.DISABLED]:
-		bk_log(LogLevel.WARNING, "Timer fired in %s state - shouldn't happen" % state_name(state))
+		log_warning("Timer fired in %s state - shouldn't happen" % state_name(state))
 		return
 
 	var http_client_status := http_request.get_http_client_status()
 	var prev_request_failed := false
 	if http_client_status != HTTPClient.STATUS_DISCONNECTED:
-		bk_log(LogLevel.TRACE, "HTTP client: %s" % http_status_name(http_client_status))
+		log_trace("HTTP client: %s" % http_status_name(http_client_status))
 
 	match http_client_status:
 		HTTPClient.STATUS_CONNECTING:
 			# Probably no-one listening on that port
-			bk_log(LogLevel.DEBUG, "CONNECTING for too long on port %s" % port)
+			log_debug("CONNECTING for too long on port %s" % port)
 			prev_request_failed = true
 		HTTPClient.STATUS_CONNECTED, HTTPClient.STATUS_BODY, HTTPClient.STATUS_REQUESTING:
 			# Waiting for response - check timeout
@@ -443,12 +426,12 @@ func on_timer_timeout():
 					# to make progress - the main loop was suspended, e.g. by the
 					# compositor hiding the window. Give it a frame to poll the
 					# response that most likely already arrived.
-					bk_log(LogLevel.DEBUG, "Main loop suspended for %d ms (%d frames) - postponing request timeout" % [elapsed, frames_elapsed])
+					log_debug("Main loop suspended for %d ms (%d frames) - postponing request timeout" % [elapsed, frames_elapsed])
 					return
-				bk_log(LogLevel.WARNING, "Request timeout in %s after %d ms (%d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
+				log_warning("Request timeout in %s after %d ms (%d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
 				prev_request_failed = true
 			else:
-				bk_log(LogLevel.DEBUG, "Waiting in %s (%d ms, %d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
+				log_debug("Waiting in %s (%d ms, %d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
 				return
 		HTTPClient.STATUS_DISCONNECTED:
 			# Ready to request
@@ -456,17 +439,17 @@ func on_timer_timeout():
 		_:
 			# Other states are unexpected errors
 			prev_request_failed = true
-			bk_log(LogLevel.WARNING, "HTTP client: %s" % http_status_name(http_client_status))
+			log_warning("HTTP client: %s" % http_status_name(http_client_status))
 
 	if prev_request_failed:
-		bk_log(LogLevel.TRACE, "HTTP request: cancelling request after client fail")
+		log_trace("HTTP request: cancelling request after client fail")
 		http_request.cancel_request()
 		request_failed()
 		if state in [State.FAILED, State.DISABLED]:
 			return
 
 	if state == State.EXPLORING:
-		bk_log(LogLevel.VERBOSE, "Exploring port %s..." % port)
+		log_verbose("Exploring port %s..." % port)
 	elif state == State.CONNECTED:
 		update_poll_rate()
 
@@ -486,10 +469,10 @@ func on_timer_timeout():
 	var json = JSON.stringify(data)
 	request_start_time = Time.get_ticks_msec()
 	request_start_frame = Engine.get_process_frames()
-	bk_log(LogLevel.TRACE, "POST %s  %s" % [url, json])
+	log_trace("POST %s  %s" % [url, json])
 	var error = http_request.request(url, headers, HTTPClient.METHOD_POST, json)
 	if error != OK:
-		bk_log(LogLevel.ERROR, "Error sending request to %s, error=%s" % [url, error])
+		log_error("Error sending request to %s, error=%s" % [url, error])
 		http_request.cancel_request()
 		request_failed()
 
@@ -497,16 +480,16 @@ func on_timer_timeout():
 func on_request_completed(result, response_code, _headers, body):
 	var elapsed := Time.get_ticks_msec() - request_start_time
 	if result != OK:
-		bk_log(LogLevel.DEBUG, "Request %s, response_code=%d, state=%s, port=%s" % [http_result_name(result), response_code, state_name(state), port])
+		log_debug("Request %s, response_code=%d, state=%s, port=%s" % [http_result_name(result), response_code, state_name(state), port])
 	if state in [State.DISABLED, State.FAILED]:
-		bk_log(LogLevel.WARNING, "Ignoring stale request completion in %s state" % state_name(state))
+		log_warning("Ignoring stale request completion in %s state" % state_name(state))
 		return
 
 	var body_text: String = body.get_string_from_utf8()
 	var data = JSON.parse_string(body_text) if response_code == 200 else null
 	if log_level >= LogLevel.TRACE:
 		var logged := JSON.stringify(redact(data)) if data is Dictionary else body_text
-		bk_log(LogLevel.TRACE, "HTTP response (%d ms): %s" % [elapsed, logged])
+		log_trace("HTTP response (%d ms): %s" % [elapsed, logged])
 
 	# Success - only a 200 with a valid JSON body counts as the Client
 	if response_code == 200:
@@ -516,7 +499,7 @@ func on_request_completed(result, response_code, _headers, body):
 				# Require the supported API series and at least the bundled patch.
 				if not is_compatible_client(found_version, client_version):
 					var found_label := found_version if found_version else "(unknown)"
-					bk_log(LogLevel.INFO, "Skipping Client v%s on port %s: incompatible with required v%s" % [found_label, port, client_version])
+					log_info("Skipping Client v%s on port %s: incompatible with required v%s" % [found_label, port, client_version])
 					if not taken_ports.has(port):
 						taken_ports.append(port)
 					request_failed()
@@ -534,15 +517,15 @@ func on_request_completed(result, response_code, _headers, body):
 			var tasks = data.get("tasks", [])
 			handle_tasks(tasks if tasks is Array else [])
 			return
-		bk_log(LogLevel.WARNING, "Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
+		log_warning("Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
 
 	if state == State.EXPLORING:
 		# Any HTTP response means the port is occupied, including a different API series.
 		if response_code > 0 and not taken_ports.has(port):
 			taken_ports.append(port)
-		bk_log(LogLevel.VERBOSE, "Client not found on port %s" % port)
+		log_verbose("Client not found on port %s" % port)
 	elif response_code != 200:
-		bk_log(LogLevel.WARNING, "Request on port %s failed (response_code=%d)" % [port, response_code])
+		log_warning("Request on port %s failed (response_code=%d)" % [port, response_code])
 
 	request_failed()
 
@@ -557,30 +540,30 @@ func request_failed():
 			port = CLIENT_PORTS[port_index]
 		else:
 			port = choose_start_port()
-			bk_log(LogLevel.VERBOSE, "No running Client found")
+			log_verbose("No running Client found")
 			enter_state(State.STARTING)
 
 	elif state == State.STARTING:
 		var starting_elapsed := Time.get_ticks_msec() - starting_since
 		if starting_elapsed >= STARTING_TIMEOUT:
-			bk_log(LogLevel.ERROR, "Failed to connect to Client on port %s after %s tries in %d ms." % [port, failed_requests, starting_elapsed])
+			log_error("Failed to connect to Client on port %s after %s tries in %d ms." % [port, failed_requests, starting_elapsed])
 			fail("connection timeout")
 			return
 		if failed_requests == STARTING_FAST_PROBES:
-			bk_log(LogLevel.VERBOSE, "Client not up after %d fast probes, slowing probes to %ss" % [STARTING_FAST_PROBES, WAIT_STARTING_SLOW])
+			log_verbose("Client not up after %d fast probes, slowing probes to %ss" % [STARTING_FAST_PROBES, WAIT_STARTING_SLOW])
 			timer.wait_time = WAIT_STARTING_SLOW
 			timer.start()
 		update_status()
 
 	elif state == State.CONNECTED:
 		if failed_requests >= MAX_FAILED_REQUESTS:
-			bk_log(LogLevel.WARNING, "Lost connection to Blendkit Client on port %s." % port)
+			log_warning("Lost connection to Blendkit Client on port %s." % port)
 			enter_state(State.EXPLORING)
 			return
 		update_status()
 
 	else:
-		bk_log(LogLevel.ERROR, "Unexpected state: %s" % state_name(state))
+		log_error("Unexpected state: %s" % state_name(state))
 		fail("unexpected state")
 
 
@@ -605,13 +588,13 @@ func choose_start_port() -> String:
 	if not taken_ports.has(desired):
 		return desired
 
-	bk_log(LogLevel.INFO, "Desired port %s is occupied by an incompatible Client, choosing another port..." % desired)
+	log_info("Desired port %s is occupied by an incompatible Client, choosing another port..." % desired)
 	for candidate in CLIENT_PORTS:
 		if not taken_ports.has(candidate):
-			bk_log(LogLevel.INFO, "Selected port %s for the Client" % candidate)
+			log_info("Selected port %s for the Client" % candidate)
 			return candidate
 
-	bk_log(LogLevel.WARNING, "All known ports are occupied, falling back to %s" % desired)
+	log_warning("All known ports are occupied, falling back to %s" % desired)
 	return desired
 
 
@@ -619,17 +602,17 @@ func send_unsubscribe():
 	var url := client_url("addons/unsubscribe")
 	var headers = ["Content-Type: application/json"]
 	var data = JSON.stringify({"app_id": OS.get_process_id()})
-	bk_log(LogLevel.INFO, "Disconnecting from Client on port %s" % port)
+	log_info("Disconnecting from Client on port %s" % port)
 	var error = unsubscribe_http_request.request(url, headers, HTTPClient.METHOD_POST, data)
 	if error != OK:
-		bk_log(LogLevel.WARNING, "Failed to send unsubscribe request: %s" % error)
+		log_warning("Failed to send unsubscribe request: %s" % error)
 
 
 func on_unsubscribe_completed(result, response_code, _headers, _body):
 	if result != OK or response_code != 200:
-		bk_log(LogLevel.WARNING, "Unsubscribe request failed on port %s: result=%s, response_code=%d" % [port, http_result_name(result), response_code])
+		log_warning("Unsubscribe request failed on port %s: result=%s, response_code=%d" % [port, http_result_name(result), response_code])
 	else:
-		bk_log(LogLevel.VERBOSE, "Unsubscribed from Client on port %s" % port)
+		log_verbose("Unsubscribed from Client on port %s" % port)
 
 
 func set_client_enabled(enabled: bool):
@@ -654,7 +637,7 @@ func set_download_dir(dir: String):
 	download_dir = dir
 	save_project_setting(SETTING_DOWNLOAD_DIR, download_dir)
 	absolute_download_path = ProjectSettings.globalize_path(download_dir)
-	bk_log(LogLevel.INFO, "Download path set to: %s" % absolute_download_path)
+	log_info("Download path set to: %s" % absolute_download_path)
 
 
 func set_log_level(level: int):
@@ -662,7 +645,7 @@ func set_log_level(level: int):
 		return
 	log_level = level
 	EditorInterface.get_editor_settings().set_setting(SETTING_LOG_LEVEL, log_level)
-	bk_log(LogLevel.INFO, "Log level set to %s" % LOG_LEVEL_NAMES[log_level])
+	log_info("Log level set to %s" % LogLevel.keys()[log_level])
 
 
 func set_preferred_port(new_port: String):
@@ -699,7 +682,7 @@ func init_settings() -> void:
 		",".join(RESOLUTIONS.map(func(r): return r[0] if r[0] else RESOLUTION_AUTO)))
 	add_editor_setting(SETTING_CLIENT_ENABLED, client_enabled)
 	add_editor_setting(SETTING_PORT, preferred_port, PROPERTY_HINT_ENUM, ",".join(CLIENT_PORTS))
-	add_editor_setting(SETTING_LOG_LEVEL, log_level, PROPERTY_HINT_ENUM, ",".join(LOG_LEVEL_NAMES.values()))
+	add_editor_setting(SETTING_LOG_LEVEL, log_level, PROPERTY_HINT_ENUM, ",".join(LogLevel.keys()))
 	# After registering, so migrated defaults aren't written to project.godot.
 	for old in OLD_SETTINGS:
 		if ProjectSettings.has_setting(old):
@@ -771,7 +754,7 @@ func find_packed_client():
 		if resolved.begins_with("v") and is_valid_client_version(resolved.substr(1)):
 			client_version = resolved.substr(1)
 		else:
-			bk_log(LogLevel.ERROR, "Invalid Client RESOLVED_VERSION: %s" % resolved)
+			log_error("Invalid Client RESOLVED_VERSION: %s" % resolved)
 	else:
 		client_version = pick_highest_version(list_client_versions(client_base_dir))
 	client_bin_path = get_packed_client_binary_path()
@@ -792,7 +775,7 @@ func install_shared_client():
 				client_bin_path = target
 				return
 			DirAccess.remove_absolute(temporary)
-	bk_log(LogLevel.WARNING, "Shared Client installation unavailable; running bundled executable")
+	log_warning("Shared Client installation unavailable; running bundled executable")
 
 
 static func is_valid_client_version(version: String) -> bool:
@@ -841,11 +824,11 @@ func log_download_task(task: Dictionary) -> void:
 	match task.get("status"):
 		"finished":
 			var path := GalleryApi.unstaged_path(GalleryApi.task_file_path(task))
-			bk_log(LogLevel.INFO, "Downloaded %s" % ProjectSettings.localize_path(path))
+			log_info("Downloaded %s" % ProjectSettings.localize_path(path))
 		"error":
-			bk_log(LogLevel.WARNING, "Download failed: %s" % task.get("message", ""))
+			log_warning("Download failed: %s" % task.get("message", ""))
 		"cancelled":
-			bk_log(LogLevel.INFO, "Download cancelled")
+			log_info("Download cancelled")
 
 
 ## Read once, as it's sent with every Client request.

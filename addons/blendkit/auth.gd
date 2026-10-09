@@ -98,7 +98,7 @@ func login(signup := false) -> void:
 	_login_timer.start()
 	changed.emit()
 	if not plugin.client_enabled:
-		plugin.bk_log(plugin.LogLevel.INFO, "Enabling the Client to log in")
+		plugin.log_info("Enabling the Client to log in")
 		plugin.set_client_enabled(true)
 
 
@@ -129,7 +129,7 @@ func _start_login(signup: bool) -> void:
 		_login_failed("Could not start login: %s" % response.error)
 		return
 	var url := authorize_url(plugin.SERVER, plugin.port, state, pkce_challenge(verifier), signup)
-	plugin.bk_log(plugin.LogLevel.INFO, "Opening login page in the browser")
+	plugin.log_info("Opening login page in the browser")
 	OS.shell_open(url)
 	_login_timer.start()
 
@@ -149,14 +149,14 @@ func logout() -> void:
 	var old_access := access_token
 	var old_refresh := refresh_token
 	_clear()
-	plugin.bk_log(plugin.LogLevel.INFO, "Logged out")
+	plugin.log_info("Logged out")
 	if old_refresh.is_empty() or not _is_connected():
 		return
 	var body: Dictionary = plugin.client_data(old_access)
 	body["refresh_token"] = old_refresh
 	var response := await GalleryApi.post_json(self, plugin.client_url("oauth2/logout"), body)
 	if not response.ok:
-		plugin.bk_log(plugin.LogLevel.WARNING, "Could not revoke tokens: %s" % response.error)
+		plugin.log_warning("Could not revoke tokens: %s" % response.error)
 
 
 func maybe_refresh() -> void:
@@ -167,11 +167,11 @@ func maybe_refresh() -> void:
 	_refresh_started = Time.get_ticks_msec()
 	var body: Dictionary = plugin.client_data(access_token)
 	body["refresh_token"] = refresh_token
-	plugin.bk_log(plugin.LogLevel.VERBOSE, "Refreshing login tokens")
+	plugin.log_verbose("Refreshing login tokens")
 	var response := await GalleryApi.post_json(self, plugin.client_url("refresh_token"), body)
 	if not response.ok:
 		_refresh_started = -1
-		plugin.bk_log(plugin.LogLevel.WARNING, "Could not refresh login: %s" % response.error)
+		plugin.log_warning("Could not refresh login: %s" % response.error)
 
 
 func fetch_profile() -> void:
@@ -179,7 +179,7 @@ func fetch_profile() -> void:
 		return
 	var response := await GalleryApi.post_json(self, plugin.client_url("profiles/get_user_profile"), plugin.client_data(api_key()))
 	if not response.ok:
-		plugin.bk_log(plugin.LogLevel.WARNING, "Could not request profile: %s" % response.error)
+		plugin.log_warning("Could not request profile: %s" % response.error)
 
 
 func _fetch_avatar() -> void:
@@ -206,7 +206,7 @@ func handle_task(task: Dictionary) -> void:
 		"oauth2/logout":
 			# Logged out from this or another add-on.
 			if is_logged_in():
-				plugin.bk_log(plugin.LogLevel.INFO, "Logged out: %s" % task.get("message", ""))
+				plugin.log_info("Logged out: %s" % task.get("message", ""))
 				_clear()
 		"profiles/get_user_profile":
 			if status == "finished" and result is Dictionary and result.get("user") is Dictionary:
@@ -220,7 +220,7 @@ func handle_task(task: Dictionary) -> void:
 				changed.emit()
 				_fetch_avatar()
 			elif status == "error":
-				plugin.bk_log(plugin.LogLevel.WARNING, "Could not load profile: %s" % task.get("message", ""))
+				plugin.log_warning("Could not load profile: %s" % task.get("message", ""))
 		"profiles/fetch_gravatar_image":
 			if status == "finished" and result is Dictionary and result.get("gravatar_path"):
 				var data = task.get("data")
@@ -246,7 +246,7 @@ func _on_tokens(result: Dictionary) -> void:
 		profile = {}
 		avatar_path = ""
 	_save()
-	plugin.bk_log(plugin.LogLevel.INFO, "Logged in" if was_pending else ("Login received from another Blendkit add-on" if switched else "Login refreshed"))
+	plugin.log_info("Logged in" if was_pending else ("Login received from another Blendkit add-on" if switched else "Login refreshed"))
 	changed.emit()
 	if switched:
 		account_changed.emit()
@@ -260,14 +260,14 @@ func _on_login_error(message: String) -> void:
 		_login_failed(message)
 		return
 	if _refresh_started < 0:
-		plugin.bk_log(plugin.LogLevel.VERBOSE, "Ignoring login error of another add-on: %s" % message)
+		plugin.log_verbose("Ignoring login error of another add-on: %s" % message)
 		return
 	_refresh_started = -1
 	if is_rejected_refresh(message):
-		plugin.bk_log(plugin.LogLevel.WARNING, "Login expired, logging out: %s" % message)
+		plugin.log_warning("Login expired, logging out: %s" % message)
 		_clear()
 	else:
-		plugin.bk_log(plugin.LogLevel.WARNING, "Could not refresh login: %s" % message)
+		plugin.log_warning("Could not refresh login: %s" % message)
 
 
 func _login_failed(message: String) -> void:
@@ -275,7 +275,7 @@ func _login_failed(message: String) -> void:
 	_queued_login = -1
 	login_error = message
 	_login_timer.stop()
-	plugin.bk_log(plugin.LogLevel.WARNING, "Login failed: %s" % message)
+	plugin.log_warning("Login failed: %s" % message)
 	changed.emit()
 
 
@@ -328,14 +328,14 @@ func _save() -> void:
 		# Restrict access before the tokens are written.
 		var created := FileAccess.open(path, FileAccess.WRITE)
 		if created == null:
-			plugin.bk_log(plugin.LogLevel.WARNING, "Could not save login to %s" % path)
+			plugin.log_warning("Could not save login to %s" % path)
 			return
 		created.close()
 		if not OS.has_feature("windows"):
 			FileAccess.set_unix_permissions(path, FileAccess.UNIX_READ_OWNER | FileAccess.UNIX_WRITE_OWNER)
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
-		plugin.bk_log(plugin.LogLevel.WARNING, "Could not save login to %s" % path)
+		plugin.log_warning("Could not save login to %s" % path)
 		return
 	file.store_string(JSON.stringify({
 		"access_token": access_token,

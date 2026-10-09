@@ -340,7 +340,7 @@ func _handle_thumbnail_task(task: Dictionary) -> void:
 	var base_id := str(data.get("assetBaseId", ""))
 	var type := str(data.get("thumbnail_type", ""))
 	if status == "error":
-		plugin.bk_log(plugin.LogLevel.DEBUG, "Thumbnail failed: %s" % task.get("message", ""))
+		plugin.log_debug("Thumbnail failed: %s" % task.get("message", ""))
 		search.on_thumbnail(base_id, type, "")
 		return
 	var path := str(data.get("image_path", ""))
