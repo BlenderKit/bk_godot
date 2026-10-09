@@ -9,6 +9,18 @@ const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "515
 # [value, label] pairs for the settings dialog
 const MODEL_FORMATS = [["blend", "Blender original (.blend)"], ["gltf_godot", "glTF (.glb) when available"]]
 const RESOLUTIONS = [["", "Auto"], ["ORIGINAL", "Original"], ["resolution_4K", "4K"], ["resolution_2K", "2K"], ["resolution_1K", "1K"], ["resolution_0_5K", "0.5K"]]
+# Project settings live in project.godot and are shared with the team, editor
+# settings stay on this computer. All of them show in Godot's settings dialogs.
+const SETTING_DOWNLOAD_DIR = "blendkit/downloads/directory"
+const SETTING_MODEL_FORMAT = "blendkit/downloads/model_format"
+const SETTING_RESOLUTION = "blendkit/downloads/resolution"
+const SETTING_CLIENT_ENABLED = "blendkit/client/enabled"
+const SETTING_PORT = "blendkit/client/port"
+const SETTING_LOG_LEVEL = "blendkit/client/log_level"
+# Older keys moved to the settings above.
+const OLD_SETTINGS = {"blendkit/model_format": SETTING_MODEL_FORMAT, "blendkit/resolution": SETTING_RESOLUTION}
+# Godot's enum hints can't hold an empty value, so Auto resolution "" is stored as this.
+const RESOLUTION_AUTO = "auto"
 const DOCS_URL = "https://github.com/BlenderKit/bk_godot"
 const ISSUES_URL = "https://github.com/BlenderKit/bk_godot/issues"
 const WAIT_OK: float = 0.8
@@ -161,9 +173,8 @@ var categories: Array = []
 
 
 func _enter_tree():
+	init_settings()
 	bk_log(LogLevel.INFO, "Plugin enabled")
-	model_format = ProjectSettings.get_setting("blendkit/model_format", "blend")
-	resolution = ProjectSettings.get_setting("blendkit/resolution", "")
 	init_paths()
 	bk_log(LogLevel.INFO, "Download path: %s" % absolute_download_path)
 	bk_log(LogLevel.VERBOSE, "Client data dir: %s" % client_data_dir)
@@ -187,11 +198,15 @@ func _enter_tree():
 	add_child(auth)
 
 	init_gallery()
+	ProjectSettings.settings_changed.connect(load_settings)
+	EditorInterface.get_editor_settings().settings_changed.connect(load_settings)
 	if client_enabled:
 		enter_state(State.EXPLORING)
 
 
 func _exit_tree():
+	ProjectSettings.settings_changed.disconnect(load_settings)
+	EditorInterface.get_editor_settings().settings_changed.disconnect(load_settings)
 	timer.queue_free()
 	http_request.queue_free()
 	unsubscribe_http_request.queue_free()
@@ -601,6 +616,7 @@ func set_client_enabled(enabled: bool):
 	if enabled == client_enabled:
 		return
 	client_enabled = enabled
+	EditorInterface.get_editor_settings().set_setting(SETTING_CLIENT_ENABLED, enabled)
 	if enabled:
 		enter_state(State.EXPLORING)
 	else:
@@ -616,25 +632,106 @@ func set_download_dir(dir: String):
 	if dir == download_dir:
 		return
 	download_dir = dir
+	save_project_setting(SETTING_DOWNLOAD_DIR, download_dir)
 	absolute_download_path = ProjectSettings.globalize_path(download_dir)
 	bk_log(LogLevel.INFO, "Download path set to: %s" % absolute_download_path)
 
 
 func set_log_level(level: int):
+	if level == log_level:
+		return
 	log_level = level
+	EditorInterface.get_editor_settings().set_setting(SETTING_LOG_LEVEL, log_level)
 	bk_log(LogLevel.INFO, "Log level set to %s" % LOG_LEVEL_NAMES[log_level])
 
 
+func set_preferred_port(new_port: String):
+	if new_port == preferred_port:
+		return
+	preferred_port = new_port
+	EditorInterface.get_editor_settings().set_setting(SETTING_PORT, preferred_port)
+
+
 func set_model_format(format: String):
+	if format == model_format:
+		return
 	model_format = format
-	ProjectSettings.set_setting("blendkit/model_format", model_format)
-	ProjectSettings.save()
+	save_project_setting(SETTING_MODEL_FORMAT, model_format)
 	model_format_changed.emit()
 
 
 func set_resolution(new_resolution: String):
+	if new_resolution == resolution:
+		return
 	resolution = new_resolution
-	ProjectSettings.set_setting("blendkit/resolution", resolution)
+	save_project_setting(SETTING_RESOLUTION, RESOLUTION_AUTO if resolution.is_empty() else resolution)
+
+
+# MARK: settings
+
+## Registers the settings with Godot and reads them, without side effects
+## so it can run before the plugin is set up.
+func init_settings() -> void:
+	add_project_setting(SETTING_DOWNLOAD_DIR, download_dir, PROPERTY_HINT_DIR)
+	add_project_setting(SETTING_MODEL_FORMAT, model_format, PROPERTY_HINT_ENUM,
+		",".join(MODEL_FORMATS.map(func(f): return f[0])))
+	add_project_setting(SETTING_RESOLUTION, RESOLUTION_AUTO, PROPERTY_HINT_ENUM,
+		",".join(RESOLUTIONS.map(func(r): return r[0] if r[0] else RESOLUTION_AUTO)))
+	add_editor_setting(SETTING_CLIENT_ENABLED, client_enabled)
+	add_editor_setting(SETTING_PORT, preferred_port, PROPERTY_HINT_ENUM, ",".join(CLIENT_PORTS))
+	add_editor_setting(SETTING_LOG_LEVEL, log_level, PROPERTY_HINT_ENUM, ",".join(LOG_LEVEL_NAMES.values()))
+	# After registering, so migrated defaults aren't written to project.godot.
+	for old in OLD_SETTINGS:
+		if ProjectSettings.has_setting(old):
+			var value = ProjectSettings.get_setting(old)
+			ProjectSettings.set_setting(OLD_SETTINGS[old], RESOLUTION_AUTO if str(value).is_empty() else value)
+			ProjectSettings.set_setting(old, null)
+			ProjectSettings.save()
+
+	var editor_settings := EditorInterface.get_editor_settings()
+	download_dir = ProjectSettings.get_setting(SETTING_DOWNLOAD_DIR)
+	model_format = ProjectSettings.get_setting(SETTING_MODEL_FORMAT)
+	resolution = _resolution_setting()
+	client_enabled = editor_settings.get_setting(SETTING_CLIENT_ENABLED)
+	preferred_port = editor_settings.get_setting(SETTING_PORT)
+	log_level = editor_settings.get_setting(SETTING_LOG_LEVEL)
+
+
+## Applies settings changed elsewhere, e.g. in Godot's settings dialogs.
+func load_settings() -> void:
+	var editor_settings := EditorInterface.get_editor_settings()
+	set_log_level(editor_settings.get_setting(SETTING_LOG_LEVEL))
+	set_download_dir(ProjectSettings.get_setting(SETTING_DOWNLOAD_DIR))
+	set_model_format(ProjectSettings.get_setting(SETTING_MODEL_FORMAT))
+	set_resolution(_resolution_setting())
+	set_preferred_port(editor_settings.get_setting(SETTING_PORT))
+	set_client_enabled(editor_settings.get_setting(SETTING_CLIENT_ENABLED))
+
+
+func _resolution_setting() -> String:
+	var value: String = ProjectSettings.get_setting(SETTING_RESOLUTION)
+	return "" if value == RESOLUTION_AUTO else value
+
+
+static func add_project_setting(key: String, default: Variant, hint := PROPERTY_HINT_NONE, hint_string := "") -> void:
+	if not ProjectSettings.has_setting(key):
+		ProjectSettings.set_setting(key, default)
+	ProjectSettings.add_property_info({"name": key, "type": typeof(default), "hint": hint, "hint_string": hint_string})
+	# Values equal to the initial one aren't written to project.godot.
+	ProjectSettings.set_initial_value(key, default)
+	ProjectSettings.set_as_basic(key, true)
+
+
+static func add_editor_setting(key: String, default: Variant, hint := PROPERTY_HINT_NONE, hint_string := "") -> void:
+	var settings := EditorInterface.get_editor_settings()
+	if not settings.has_setting(key):
+		settings.set_setting(key, default)
+	settings.add_property_info({"name": key, "type": typeof(default), "hint": hint, "hint_string": hint_string})
+	settings.set_initial_value(key, default, false)
+
+
+static func save_project_setting(key: String, value: Variant) -> void:
+	ProjectSettings.set_setting(key, value)
 	ProjectSettings.save()
 
 

@@ -1,11 +1,13 @@
 @tool
 extends AcceptDialog
-## Settings opened from the Blendkit menu. Changes apply right away.
+## Settings opened from the Blendkit menu. Changes apply right away. They are
+## also in Godot's Project Settings and Editor Settings under Blendkit.
 
 var plugin: EditorPlugin
 
 var _grid: GridContainer
 var _download_dir: LineEdit
+var _download_dir_dialog: EditorFileDialog
 var _model_format: OptionButton
 var _resolution: OptionButton
 var _port: OptionButton
@@ -24,11 +26,28 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_grid.add_theme_constant_override("v_separation", int(6 * edscale))
 	add_child(_grid)
 
-	_section("Downloads")
+	_section("Project", "Saved in project.godot and shared with everyone working on this project.\nAlso in Project Settings → Blendkit.")
 	_download_dir = LineEdit.new()
 	_download_dir.text_submitted.connect(func(_t): _apply_download_dir())
 	_download_dir.focus_exited.connect(_apply_download_dir)
-	_row("Download to", _download_dir, "Directory into which the plugin downloads the assets.")
+	_download_dir.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Like EditorPropertyPath in Project Settings: path and a browse button.
+	var browse := Button.new()
+	browse.icon = get_theme_icon("FolderBrowse", "EditorIcons")
+	# Godot 4.6+, older versions fall back to the plain Button style.
+	browse.theme_type_variation = "EditorInspectorButton"
+	browse.tooltip_text = "Choose the download folder."
+	browse.pressed.connect(_browse_download_dir)
+	var download_row := HBoxContainer.new()
+	download_row.add_child(_download_dir)
+	download_row.add_child(browse)
+	_download_dir_dialog = EditorFileDialog.new()
+	_download_dir_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_DIR
+	_download_dir_dialog.access = EditorFileDialog.ACCESS_RESOURCES
+	_download_dir_dialog.dir_selected.connect(_on_download_dir_selected)
+	add_child(_download_dir_dialog)
+	_row("Download to", download_row, "Directory into which the plugin downloads the assets.")
+	_download_dir.tooltip_text = download_row.tooltip_text
 	_model_format = _options(plugin.MODEL_FORMATS.map(func(f): return f[1]))
 	_model_format.item_selected.connect(func(i): plugin.set_model_format(plugin.MODEL_FORMATS[i][0]))
 	_row("Model Format", _model_format, "Blender original downloads .blend files, which Godot imports through Blender.\nglTF downloads glTF for Godot, then glTF, and falls back to Blender original at the selected Resolution. glTF files are exported automatically and experimental.")
@@ -36,9 +55,9 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_resolution.item_selected.connect(func(i): plugin.set_resolution(plugin.RESOLUTIONS[i][0]))
 	_row("Resolution", _resolution, "Texture resolution for .blend files, also used when glTF is unavailable.")
 
-	_section("Client")
+	_section("Editor", "Saved in your editor settings and applies to all your projects.\nAlso in Editor Settings → Blendkit.")
 	_port = _options(plugin.CLIENT_PORTS)
-	_port.item_selected.connect(func(i): plugin.preferred_port = plugin.CLIENT_PORTS[i])
+	_port.item_selected.connect(func(i): plugin.set_preferred_port(plugin.CLIENT_PORTS[i]))
 	_row("Port", _port, "Port on which the plugin starts the Client when none is running.")
 	_log_level = _options(plugin.LOG_LEVEL_NAMES.values())
 	_log_level.item_selected.connect(plugin.set_log_level)
@@ -56,16 +75,28 @@ func _load() -> void:
 	_log_level.select(plugin.log_level)
 
 
+func _browse_download_dir() -> void:
+	_download_dir_dialog.current_dir = _download_dir.text.strip_edges()
+	_download_dir_dialog.popup_file_dialog()
+
+
+func _on_download_dir_selected(dir: String) -> void:
+	_download_dir.text = dir
+	_apply_download_dir()
+
+
 func _apply_download_dir() -> void:
 	plugin.set_download_dir(_download_dir.text.strip_edges())
 
 
-func _section(text: String) -> void:
+func _section(text: String, tooltip: String) -> void:
 	var edscale := EditorInterface.get_editor_scale()
 	for i in 2:
 		var label := Label.new()
 		if i == 0:
 			label.text = text
+			label.tooltip_text = tooltip
+			label.mouse_filter = Control.MOUSE_FILTER_PASS
 			label.add_theme_font_override("font", get_theme_font("bold", "EditorFonts"))
 		if _grid.get_child_count() > 0:
 			label.custom_minimum_size.y = 24 * edscale

@@ -22,8 +22,7 @@ config/icon="uid://5n2k0xbtnud2"
 
 [blendkit]
 
-model_format="gltf_godot"
-resolution=""
+downloads/directory="res://bk_assets"
 
 [editor_plugins]
 
