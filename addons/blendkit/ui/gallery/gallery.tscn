@@ -96,6 +96,19 @@ size_flags_horizontal = 3
 clip_text = true
 fit_to_longest_item = false
 
+[node name="Format" type="HBoxContainer" parent="Main/FilterRow"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Main/FilterRow/Format"]
+layout_mode = 2
+text = "Format:"
+
+[node name="FormatOption" type="OptionButton" parent="Main/FilterRow/Format"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Model Format to download, also used by Send to Godot on blendkit.com.
+glTF shows only models with glTF (.glb) exported automatically for Godot. Experimental."
+
 [node name="Checks" type="HBoxContainer" parent="Main/FilterRow"]
 layout_mode = 2
 
@@ -104,13 +117,6 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Show only free assets."
 text = "Free only"
-
-[node name="GodotReadyCheck" type="CheckBox" parent="Main/FilterRow/Checks"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "Show only models with glTF (.glb) exported automatically for Godot. Experimental.
-Defaults to on when Model Format is glTF."
-text = "glTF for Godot"
 
 [node name="LibraryMargin" type="MarginContainer" parent="Main"]
 layout_mode = 2

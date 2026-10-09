@@ -27,6 +27,8 @@ const SPINNER_SPEED := 0.75
 const WEB_FOLDER_SLACK := 5
 const WEB_FOLDER_SEARCH := 30
 const WEB_DOWNLOAD_NAME := "Send to Godot"
+## Short Model Format labels for the filter row.
+const FORMAT_LABELS := {"blend": "Blender (.blend)", "gltf_godot": "glTF (.glb)"}
 
 @onready var main: VBoxContainer = %Main
 @onready var search_edit: LineEdit = %SearchEdit
@@ -37,7 +39,7 @@ const WEB_DOWNLOAD_NAME := "Send to Godot"
 @onready var category_option: OptionButton = %CategoryOption
 @onready var filter_row: HFlowContainer = %FilterRow
 @onready var free_check: CheckBox = %FreeCheck
-@onready var godot_ready_check: CheckBox = %GodotReadyCheck
+@onready var format_option: OptionButton = %FormatOption
 @onready var scroll: ScrollContainer = %Scroll
 @onready var border: PanelContainer = %Border
 @onready var body: VBoxContainer = %Body
@@ -157,10 +159,12 @@ func _ready() -> void:
 		sort_option.add_item(sort[1])
 	for asset_type in GalleryApi.ASSET_TYPES:
 		type_option.add_item(GalleryApi.ASSET_TYPE_LABELS[asset_type])
+	for format in plugin.MODEL_FORMATS:
+		format_option.add_item(FORMAT_LABELS.get(format[0], format[1]))
 	sort_option.select(maxi(0, GalleryApi.SORTS.map(func(s): return s[0]).find(_get_meta("gallery_sort", "relevance"))))
 	type_option.select(maxi(0, GalleryApi.ASSET_TYPES.find(_get_meta("gallery_type", "model"))))
 	free_check.button_pressed = _get_meta("gallery_free", false)
-	godot_ready_check.button_pressed = _get_meta("gallery_godot_ready", plugin.model_format != "blend")
+	_on_model_format_changed()
 	_update_type_filters()
 	_fill_categories()
 
@@ -171,7 +175,7 @@ func _ready() -> void:
 	type_option.item_selected.connect(_on_type_selected)
 	category_option.item_selected.connect(func(_i): request_search())
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
-	godot_ready_check.toggled.connect(_on_filter_toggled.bind("gallery_godot_ready"))
+	format_option.item_selected.connect(func(i): plugin.set_model_format(plugin.MODEL_FORMATS[i][0]))
 	plugin.model_format_changed.connect(_on_model_format_changed)
 	menu_button.setup(plugin)
 	plugin.auth.account_changed.connect(_on_account_changed)
@@ -385,7 +389,7 @@ func _run_search(force: bool = true) -> void:
 	var asset_type := _asset_type()
 	var url := GalleryApi.build_search_url(plugin.SERVER, _browse_text(), asset_type,
 		_category_slug(), _sort(), free_check.button_pressed,
-		godot_ready_check.button_pressed and godot_ready_check.visible, page, PAGE_SIZE, plugin.get_addon_version())
+		asset_type == "model" and plugin.model_format != "blend", page, PAGE_SIZE, plugin.get_addon_version())
 	if url == _search_url and _search_error.is_empty() and not force:
 		return
 	_pending_search = false
@@ -667,9 +671,9 @@ func _fetch_categories() -> void:
 		_fill_categories()
 
 
-## glTF for Godot applies to models only.
+## Only models have glTF.
 func _update_type_filters() -> void:
-	godot_ready_check.visible = _asset_type() == "model"
+	format_option.get_parent().visible = _asset_type() == "model"
 
 
 func _on_sort_selected(index: int) -> void:
@@ -690,10 +694,12 @@ func _on_filter_toggled(pressed: bool, meta_key: String) -> void:
 	request_search()
 
 
-## The glTF for Godot filter follows the Model Format; toggling it emits
-## toggled, which stores it and searches again.
+## The Format dropdown is the Model Format setting. glTF shows only models
+## with glTF, so search again.
 func _on_model_format_changed() -> void:
-	godot_ready_check.button_pressed = plugin.model_format != "blend"
+	format_option.select(maxi(0, plugin.MODEL_FORMATS.map(func(f): return f[0]).find(plugin.model_format)))
+	if _search_started:
+		request_search()
 
 
 ## Results depend on the account (canDownload), so search again.

@@ -142,8 +142,9 @@ You can also search and download assets without leaving Godot: open the
 **Blendkit** tab in the editor's top bar (next to **Asset Store**).
 
 - Search by text, sort the results, and filter by type (Models, Materials,
-  HDRs, Scenes, Printables), category, **glTF for Godot** models (on by
-  default when **Model Format** is glTF), and **Free only**.
+  HDRs, Scenes, Printables), category and **Free only**. For models, the
+  **Format** dropdown is the **Model Format** setting: **glTF (.glb)** shows
+  only models with glTF and downloads it, **Blender (.blend)** shows all.
 - Click an asset to see its details. Choose a file and click **Download** to
   get it into `bk_assets/`, with the same layout as **Send to Godot**. The file
   defaults to the **Model Format** and **Resolution** settings. A thin bar
