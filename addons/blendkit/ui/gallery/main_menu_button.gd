@@ -12,7 +12,7 @@ const SettingsDialog = preload("res://addons/blendkit/ui/settings_dialog.gd")
 
 enum Item {
 	PROFILE, EMAIL, PLAN, LOGIN, SIGNUP, LOGOUT, LOGIN_STATUS, CANCEL_LOGIN, LOGIN_ERROR,
-	STATUS, ENABLE, RESTART, SETTINGS, WEBSITE, DOCS, ISSUES, VERSION,
+	STATUS, ENABLE, RESTART, SETTINGS, WEBSITE, DOCS, ISSUES, VERSION, CLIENT_VERSION,
 }
 
 const USER_ICON_PATH = "res://addons/blendkit/ui/icons/user.svg"
@@ -172,8 +172,11 @@ func _fill_menu() -> void:
 	_menu.add_icon_item(get_theme_icon("Debug", "EditorIcons"), "Report an Issue", Item.ISSUES)
 	_menu.set_item_tooltip(-1, plugin.ISSUES_URL)
 	_menu.add_separator()
-	_menu.add_item("Blendkit v%s" % plugin.get_addon_version(), Item.VERSION)
+	_menu.add_item("Blendkit Plugin v%s" % plugin.get_addon_version(), Item.VERSION)
 	_menu.set_item_disabled(-1, true)
+	if plugin.connection.is_client_connected() and plugin.connection.connected_client_version:
+		_menu.add_item("Blendkit Client v%s" % plugin.connection.connected_client_version, Item.CLIENT_VERSION)
+		_menu.set_item_disabled(-1, true)
 
 
 ## Who is logged in and the plan on top, then logging in or out.
