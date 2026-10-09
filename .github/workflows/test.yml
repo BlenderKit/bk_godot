@@ -105,7 +105,8 @@ jobs:
           BLENDERKIT_API_KEY: ${{ secrets.BLENDERKIT_API_KEY }}
           # The Client skips Windows download paths of 259+ characters, and
           # pytest's default temp folder leaves too little room for them.
-          PYTEST_ADDOPTS: --basetemp=${{ runner.temp }}/t
+          # Quoted because pytest shlex-splits this, eating Windows backslashes.
+          PYTEST_ADDOPTS: "--basetemp='${{ runner.temp }}/t'"
 
       - name: Upload E2E diagnostic screenshot
         if: ${{ !cancelled() }}
