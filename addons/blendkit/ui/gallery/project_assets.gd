@@ -26,6 +26,8 @@ static var _asset_id_regex := RegEx.create_from_string("_([0-9a-f]{8}-[0-9a-f]{4
 ## Absolute path of the index directory.
 var dir: String
 var index := ConfigFile.new()
+## Whether the index changed since it was saved, see save().
+var unsaved := false
 
 
 func _init(index_dir: String = "") -> void:
@@ -56,6 +58,7 @@ func get_asset(id: String) -> Dictionary:
 
 
 ## Add or update the asset, copying its thumbnail into the index directory.
+## Saved by save().
 func store(asset: Dictionary, thumbnail_path: String = "") -> void:
 	var id := str(asset.get("id", ""))
 	if id.is_empty():
@@ -63,20 +66,21 @@ func store(asset: Dictionary, thumbnail_path: String = "") -> void:
 	index.set_value(id, "asset", trim_asset(asset))
 	if not thumbnail_path.is_empty():
 		_copy_thumbnail(id, thumbnail_path)
-	save()
+	unsaved = true
 
 
 ## Set the thumbnail of indexed assets with this base id that have none.
-## Returns whether any changed.
-func add_thumbnail(base_id: String, thumbnail_path: String) -> bool:
-	var changed := false
+## Returns the ids of those that changed. Saved by save().
+func add_thumbnail(base_id: String, thumbnail_path: String) -> PackedStringArray:
+	var changed := PackedStringArray()
 	for id in index.get_sections():
 		if id == META_SECTION or not thumbnail(id).is_empty():
 			continue
-		if str(index.get_value(id, "asset", {}).get("assetBaseId", "")) == base_id:
-			changed = _copy_thumbnail(id, thumbnail_path) or changed
-	if changed:
-		save()
+		if str(index.get_value(id, "asset", {}).get("assetBaseId", "")) == base_id \
+				and _copy_thumbnail(id, thumbnail_path):
+			changed.append(id)
+	if not changed.is_empty():
+		unsaved = true
 	return changed
 
 
@@ -86,7 +90,11 @@ func thumbnail(id: String) -> String:
 	return dir.path_join(THUMBNAILS_DIR).path_join(file) if file else ""
 
 
+## Write the index if it changed.
 func save() -> void:
+	if not unsaved:
+		return
+	unsaved = false
 	DirAccess.make_dir_recursive_absolute(dir)
 	index.set_value(META_SECTION, "version", INDEX_VERSION)
 	var err := index.save(dir.path_join(INDEX_FILE))

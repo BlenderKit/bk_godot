@@ -240,8 +240,10 @@ func _initialize():
     # Looked up later; the thumbnail arrives separately.
     project.store({"id": ID_B, "assetBaseId": "base-b", "name": "Old planks", "assetType": "material"})
     check(project.thumbnail(ID_B) == "", "no thumbnail yet")
-    check(project.add_thumbnail("base-b", thumb), "thumbnail added")
-    check(not project.add_thumbnail("base-b", thumb), "thumbnail kept")
+    check(project.add_thumbnail("base-b", thumb) == PackedStringArray([ID_B]), "thumbnail added")
+    check(project.add_thumbnail("base-b", thumb).is_empty(), "thumbnail kept")
+    check(project.unsaved, "changes not saved yet")
+    project.save()
 
     # The index persists and is read back.
     var reloaded := ProjectAssets.new(index_dir)
@@ -305,7 +307,13 @@ func check_downloads(gallery):
     var file := folder.path_join("wooden-chair_gltf_godot.glb")
     DirAccess.make_dir_recursive_absolute(folder)
     FileAccess.open(file, FileAccess.WRITE).store_string("glb")
+    # The project view only scans while the Blendkit tab shows it.
     gallery.project_toggle.button_pressed = true
+    await get_tree().process_frame
+    print("HIDDEN_SCANNED=%s" % (not gallery.project_view._dirty))
+    gallery.show()
+    await get_tree().process_frame
+    print("SHOWN_SCANNED=%s" % (not gallery.project_view._dirty))
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "created", "message": "Starting download"})
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "progress", "progress": 40, "message": "Downloading 1.0MB (40%)"})
     print("WEB_COUNT=%d" % gallery.downloads.active_count())
@@ -382,6 +390,8 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     assert "GALLERY_HAS_PLUGIN=true" in stdout, output
     assert "GALLERY_ICON=true" in stdout, output
     assert "BADGE_HIDDEN=true" in stdout, output
+    assert "HIDDEN_SCANNED=false" in stdout, output
+    assert "SHOWN_SCANNED=true" in stdout, output
     assert "WEB_COUNT=1" in stdout, output
     assert "BADGE=true 1" in stdout, output
     assert "WEB_ID=17982784-2390-4999-83d7-c72ea929f352" in stdout, output
@@ -413,6 +423,7 @@ func find_gallery():
 func check():
     var gallery = find_gallery()
     var tasks = gallery.tasks
+    gallery.show()
     gallery.project_toggle.button_pressed = true
     var reports := []
     var responses := []

@@ -12,6 +12,9 @@ const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_ite
 
 const WEB_DOWNLOAD_NAME := "Send to Godot"
 const LOOKUP_TASK := "lookup"
+## Seconds the index waits to be saved after it changes, so the lookups of a
+## project's unknown folders save it once or a few times rather than each.
+const SAVE_DELAY := 5.0
 
 @onready var message: Label = %ProjectMessage
 @onready var grid: GridContainer = %ProjectGrid
@@ -29,6 +32,9 @@ var _lookup_type := ""
 ## Asset ids not found on Blendkit; not looked up again this session.
 var _lookup_failed: Dictionary = {}
 var _refresh_queued := false
+## Whether the download directory may have changed since the last scan.
+var _dirty := true
+var _save_queued := false
 
 
 ## Called by the gallery once the plugin is known.
@@ -36,6 +42,7 @@ func setup(new_gallery: Node) -> void:
 	gallery = new_gallery
 	add_theme_constant_override("separation", int(20 * EditorInterface.get_editor_scale()))
 	project = ProjectAssets.new()
+	visibility_changed.connect(_on_visibility_changed)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(refresh_if_shown)
 	gallery.downloads.download_changed.connect(_on_download_changed)
 	gallery.downloads.download_finished.connect(_on_download_finished)
@@ -47,18 +54,31 @@ func has_pending_work() -> bool:
 	return not _lookup_id.is_empty()
 
 
-## Each refresh rescans the download directory, so the requests that come
-## in one frame, e.g. a finished download and its import, share one.
+func _exit_tree() -> void:
+	if project:
+		_save()
+
+
+## Each refresh rescans the download directory, so it waits until the view
+## shows, also when the Blendkit tab is hidden, and the requests that come in
+## one frame, e.g. a finished download and its import, share one.
 func refresh_if_shown() -> void:
-	if visible and not _refresh_queued:
+	_dirty = true
+	if is_visible_in_tree() and not _refresh_queued:
 		_refresh_queued = true
-		_refresh_queued_if_shown.call_deferred()
+		_refresh_if_dirty.call_deferred()
 
 
-func _refresh_queued_if_shown() -> void:
-	if _refresh_queued and visible:
-		refresh()
+func _refresh_if_dirty() -> void:
 	_refresh_queued = false
+	if _dirty and is_visible_in_tree():
+		refresh()
+
+
+## Also emitted when the gallery or the Blendkit tab shows.
+func _on_visibility_changed() -> void:
+	if _dirty:
+		refresh_if_shown()
 
 
 ## Rescan the download directory and update the tiles by entry id, so a
@@ -66,6 +86,7 @@ func _refresh_queued_if_shown() -> void:
 ## progress come first.
 func refresh() -> void:
 	_refresh_queued = false
+	_dirty = false
 	var new_entries := _download_entries()
 	new_entries.append_array(project.scan(gallery.plugin.absolute_download_path))
 	var old := {}
@@ -84,14 +105,7 @@ func refresh() -> void:
 			item = gallery_item_scene.instantiate()
 			grid.add_child(item)
 			item.selected.connect(_on_item_selected.bind(entry.id))
-		if previous.is_empty() or previous.asset != entry.asset:
-			item.setup(entry.asset)
-		if previous.is_empty() or previous.thumbnail != entry.thumbnail:
-			var texture := GalleryApi.load_texture(entry.thumbnail)
-			if texture:
-				item.set_thumbnail(texture)
-			else:
-				item.set_thumbnail_failed()
+		_update_item(item, entry, previous)
 		if entry.has("download"):
 			item.set_download(entry.download)
 			download_items[entry.id] = item
@@ -112,6 +126,37 @@ func refresh() -> void:
 		if not entry.has("download") and not entry.known:
 			_queue_lookup(entry.id, entry.asset.assetType)
 	next_lookup()
+
+
+## Show the entry's asset and thumbnail on its tile where they differ from
+## the [param previous] entry, or {} for a new tile.
+func _update_item(item: Control, entry: Dictionary, previous: Dictionary) -> void:
+	if previous.is_empty() or previous.asset != entry.asset:
+		item.setup(entry.asset)
+	if previous.is_empty() or previous.thumbnail != entry.thumbnail:
+		var texture := GalleryApi.load_texture(entry.thumbnail)
+		if texture:
+			item.set_thumbnail(texture)
+		else:
+			item.set_thumbnail_failed()
+
+
+## Show the indexed asset on the tiles of its folder and of a Send to Godot
+## download into it. Only the index changed, so there's nothing to rescan.
+func _show_indexed(id: String) -> void:
+	var asset := project.get_asset(id)
+	var thumbnail := project.thumbnail(id)
+	for entry in entries:
+		if entry.has("download") and not gallery.downloads.web_downloads.has(entry.id):
+			continue
+		if str(entry.asset.get("id", "")) != id:
+			continue
+		var previous: Dictionary = entry.duplicate()
+		entry.asset = asset
+		entry.known = true
+		entry.thumbnail = thumbnail
+		_update_item(entry.item, entry, previous)
+	filter()
 
 
 ## Project entries for the downloads in progress, like ProjectAssets.scan()
@@ -164,8 +209,25 @@ func filter() -> void:
 
 
 func add_thumbnail(base_id: String, path: String) -> void:
-	if project.add_thumbnail(base_id, path):
-		refresh_if_shown()
+	var ids := project.add_thumbnail(base_id, path)
+	if ids.is_empty():
+		return
+	_queue_save()
+	for id in ids:
+		_show_indexed(id)
+
+
+## Save the index after SAVE_DELAY, or when the view leaves the tree.
+func _queue_save() -> void:
+	if _save_queued:
+		return
+	_save_queued = true
+	get_tree().create_timer(SAVE_DELAY).timeout.connect(_save)
+
+
+func _save() -> void:
+	_save_queued = false
+	project.save()
 
 
 func _on_item_selected(_asset: Dictionary, id: String) -> void:
@@ -201,6 +263,7 @@ func _on_download_changed(id: String) -> void:
 
 func _on_download_finished(base_id: String) -> void:
 	project.store(gallery.downloads.get_download(base_id).asset, gallery.small_thumbnail(base_id))
+	_queue_save()
 	refresh_if_shown()
 
 
@@ -256,7 +319,8 @@ func _finish_lookup(task: Dictionary) -> void:
 			and results[0] is Dictionary and str(results[0].get("id", "")) == id:
 		var asset: Dictionary = results[0]
 		project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
-		refresh_if_shown()
+		_queue_save()
+		_show_indexed(id)
 	else:
 		gallery.plugin.log_verbose("Asset %s not found on Blendkit" % id)
 		_lookup_failed[id] = true

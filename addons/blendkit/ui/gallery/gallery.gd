@@ -314,10 +314,9 @@ func _on_project_toggled(pressed: bool) -> void:
 	search_edit.placeholder_text = "Search downloaded project assets" if pressed else "Search Blendkit assets (ENTER to search)"
 	filter_row.visible = not pressed
 	search.visible = not pressed
+	# Shown, the project view rescans if anything changed meanwhile.
 	project_view.visible = pressed
 	_update_busy()
-	if pressed:
-		project_view.refresh()
 	search_edit.grab_focus()
 	# The scroll range follows the new content after layout.
 	var restore := _other_scroll
