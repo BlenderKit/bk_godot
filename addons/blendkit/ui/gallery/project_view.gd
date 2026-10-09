@@ -28,6 +28,7 @@ var _lookup_id := ""
 var _lookup_type := ""
 ## Asset ids not found on Blendkit; not looked up again this session.
 var _lookup_failed: Dictionary = {}
+var _refresh_queued := false
 
 
 ## Called by the gallery once the plugin is known.
@@ -46,15 +47,25 @@ func has_pending_work() -> bool:
 	return not _lookup_id.is_empty()
 
 
+## Each refresh rescans the download directory, so the requests that come
+## in one frame, e.g. a finished download and its import, share one.
 func refresh_if_shown() -> void:
-	if visible:
+	if visible and not _refresh_queued:
+		_refresh_queued = true
+		_refresh_queued_if_shown.call_deferred()
+
+
+func _refresh_queued_if_shown() -> void:
+	if _refresh_queued and visible:
 		refresh()
+	_refresh_queued = false
 
 
 ## Rescan the download directory and update the tiles by entry id, so a
 ## lookup or thumbnail arriving only touches its own tile. Downloads in
 ## progress come first.
 func refresh() -> void:
+	_refresh_queued = false
 	var new_entries := _download_entries()
 	new_entries.append_array(project.scan(gallery.plugin.absolute_download_path))
 	var old := {}

@@ -294,7 +294,7 @@ func check():
         print("GALLERY_HIDDEN=%s" % (not gallery.visible))
         print("GALLERY_HAS_PLUGIN=%s" % (gallery.plugin != null))
         print("GALLERY_ICON=%s" % (gallery.plugin._get_plugin_icon() != null))
-        check_downloads(gallery)
+        await check_downloads(gallery)
     get_tree().quit()
 
 func check_downloads(gallery):
@@ -311,6 +311,8 @@ func check_downloads(gallery):
     print("WEB_COUNT=%d" % gallery.downloads.active_count())
     print("BADGE=%s %s" % [badge.visible, badge.text])
     print("WEB_ID=%s" % gallery.downloads.web_downloads["web-1"].id)
+    # The project view refreshes once at the end of the frame.
+    await get_tree().process_frame
     var entries: Array = gallery.project_view.entries
     print("PROJECT_TILES=%s" % [entries.map(func(e): return [e.id, e.asset.name])])
     var item = gallery.project_view.download_items["web-1"]
@@ -321,8 +323,10 @@ func check_downloads(gallery):
     # Finished, it moves into the project.
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "finished", "result": {"file_path": file}})
     print("FINISHED=%d BADGE_HIDDEN=%s" % [gallery.downloads.active_count(), not badge.visible])
+    await get_tree().process_frame
     print("PROJECT_TILES=%s" % [gallery.project_view.entries.map(func(e): return [e.id, e.asset.name])])
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-2", "status": "created"})
+    await get_tree().process_frame
     print("WEB_NAME=%s" % gallery.project_view.entries[0].asset.name)
     gallery.drop_vanished_downloads({})
     print("DROPPED=%d" % gallery.downloads.active_count())
@@ -430,6 +434,7 @@ func check():
     print("RESPONSE=%s" % [responses[0]])
     print("REPORTS=%s POSTING=%s RUNNING=%s" % [reports, tasks.is_posting(), tasks.has("race")])
     print("WEB=%s" % [gallery.downloads.web_downloads.keys()])
+    await get_tree().process_frame
     print("TILES=%s" % [gallery.project_view.entries.map(func(e): return e.id)])
 
     # A newer request with the same key supersedes the running one.
