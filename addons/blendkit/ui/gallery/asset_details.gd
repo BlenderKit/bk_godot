@@ -129,6 +129,7 @@ func _rebuild_strip() -> void:
 
 func _fill_params() -> void:
 	for child in params_grid.get_children():
+		params_grid.remove_child(child)
 		child.queue_free()
 	var p = asset.get("dictParameters", {})
 	if not p is Dictionary:
@@ -162,6 +163,7 @@ func _fill_params() -> void:
 
 func _fill_tags() -> void:
 	for child in tags_flow.get_children():
+		tags_flow.remove_child(child)
 		child.queue_free()
 	for tag in asset.get("tags", []):
 		var button := Button.new()

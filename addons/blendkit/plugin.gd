@@ -159,7 +159,7 @@ var plugin_icon_key: String
 var categories: Array = []
 
 
-func _enter_tree():
+func _enter_tree() -> void:
 	init_settings()
 	log_info("Plugin enabled")
 	init_paths()
@@ -193,7 +193,7 @@ func _enter_tree():
 
 # No unsubscribe here: on editor shutdown the request never reaches the
 # Client, as the HTTPRequest is freed with the plugin before it's sent.
-func _exit_tree():
+func _exit_tree() -> void:
 	ProjectSettings.settings_changed.disconnect(load_settings)
 	EditorInterface.get_editor_settings().settings_changed.disconnect(load_settings)
 	timer.queue_free()
@@ -263,12 +263,12 @@ static func is_dark_icon_theme() -> bool:
 	return base_color.get_luminance() < 0.5
 
 
-func fail(reason: String):
+func fail(reason: String) -> void:
 	fail_reason = reason
 	enter_state(State.FAILED)
 
 
-func enter_state(new_state: State):
+func enter_state(new_state: State) -> void:
 	# Centralized state transition code
 	var prev_state := state
 	state = new_state
@@ -320,7 +320,7 @@ static func redact(value: Variant) -> Variant:
 	return value
 
 
-func update_status():
+func update_status() -> void:
 	if gallery:
 		gallery.on_connection_changed()
 
@@ -359,7 +359,7 @@ func get_state_icon() -> Texture2D:
 	return EditorInterface.get_editor_theme().get_icon(icon_name, "EditorIcons")
 
 
-func start_client(port: String):
+func start_client(client_port: String) -> void:
 	# look for client binaries again in case they were added
 	find_packed_client()
 	if not FileAccess.file_exists(client_bin_path):
@@ -370,23 +370,23 @@ func start_client(port: String):
 
 	DirAccess.make_dir_recursive_absolute(client_data_dir) # so the log's directory exists
 	install_shared_client()
-	var log_path = get_client_log_path(port)
+	var log_path = get_client_log_path(client_port)
 	var godot_pid = str(OS.get_process_id())
 	var client_pid: int = 0
 	var command_str: String = ""
 
-	log_info("Starting Client v%s on port %s" % [client_version, port])
+	log_info("Starting Client v%s on port %s" % [client_version, client_port])
 	# Godot's OS.create_process(), OS.execute() and similar does not support redirecting pipe to file, so we do it via shells
 
 	if OS.has_feature("windows"):
 		var win_log_path = log_path.replace("/", "\\")
-		command_str = 'start /B "" "%s" -port %s -server %s -software Godot -pid %s > "%s" 2>&1' % [client_bin_path, port, SERVER, godot_pid, win_log_path]
+		command_str = 'start /B "" "%s" -port %s -server %s -software Godot -pid %s > "%s" 2>&1' % [client_bin_path, client_port, SERVER, godot_pid, win_log_path]
 		client_pid = OS.create_process("cmd.exe", ["/C", command_str])
 	elif OS.has_feature("macos") or OS.has_feature("linux"):
 		# The executable bit may be lost on extraction (e.g. when installed via the Godot Asset Store), so ensure it is set before launching
 		command_str = 'chmod u+x "$1" && exec "$1" -port "$2" -server "$3" -software Godot -pid "$4" > "$5" 2>&1'
 		# Positional arguments keep spaces and shell metacharacters literal.
-		client_pid = OS.create_process("/bin/sh", ["-c", command_str, "bk_client", client_bin_path, port, SERVER, godot_pid, log_path])
+		client_pid = OS.create_process("/bin/sh", ["-c", command_str, "bk_client", client_bin_path, client_port, SERVER, godot_pid, log_path])
 	else:
 		log_error("Could not start client: Unsupported OS. Only Windows, MacOS and Linux are supported.")
 		fail("unsupported OS")
@@ -399,7 +399,7 @@ func start_client(port: String):
 		return
 
 
-func on_timer_timeout():
+func on_timer_timeout() -> void:
 	if state in [State.FAILED, State.DISABLED]:
 		log_warning("Timer fired in %s state - shouldn't happen" % state_name(state))
 		return
@@ -475,7 +475,7 @@ func on_timer_timeout():
 		request_failed()
 
 
-func on_request_completed(result, response_code, _headers, body):
+func on_request_completed(result, response_code, _headers, body) -> void:
 	var elapsed := Time.get_ticks_msec() - request_start_time
 	if result != OK:
 		log_debug("Request %s, response_code=%d, state=%s, port=%s" % [http_result_name(result), response_code, state_name(state), port])
@@ -528,7 +528,7 @@ func on_request_completed(result, response_code, _headers, body):
 	request_failed()
 
 
-func request_failed():
+func request_failed() -> void:
 	failed_requests += 1
 
 	if state == State.EXPLORING:
@@ -567,7 +567,7 @@ func request_failed():
 
 # Poll faster while the gallery waits for search results, thumbnails or
 # downloads, which all arrive through /godot/report.
-func update_poll_rate():
+func update_poll_rate() -> void:
 	if state != State.CONNECTED:
 		return
 	var wait := WAIT_EXPLORING if gallery and gallery.has_pending_work() else WAIT_OK
@@ -596,7 +596,7 @@ func choose_start_port() -> String:
 	return desired
 
 
-func send_unsubscribe():
+func send_unsubscribe() -> void:
 	var url := client_url("addons/unsubscribe")
 	var headers = ["Content-Type: application/json"]
 	var data = JSON.stringify({"app_id": OS.get_process_id()})
@@ -606,14 +606,14 @@ func send_unsubscribe():
 		log_warning("Failed to send unsubscribe request: %s" % error)
 
 
-func on_unsubscribe_completed(result, response_code, _headers, _body):
+func on_unsubscribe_completed(result, response_code, _headers, _body) -> void:
 	if result != OK or response_code != 200:
 		log_warning("Unsubscribe request failed on port %s: result=%s, response_code=%d" % [port, http_result_name(result), response_code])
 	else:
 		log_verbose("Unsubscribed from Client on port %s" % port)
 
 
-func set_client_enabled(enabled: bool):
+func set_client_enabled(enabled: bool) -> void:
 	if enabled == client_enabled:
 		return
 	client_enabled = enabled
@@ -624,12 +624,12 @@ func set_client_enabled(enabled: bool):
 		enter_state(State.DISABLED)
 
 
-func restart_client():
+func restart_client() -> void:
 	set_client_enabled(false)
 	set_client_enabled(true)
 
 
-func set_download_dir(dir: String):
+func set_download_dir(dir: String) -> void:
 	if dir == download_dir:
 		return
 	download_dir = dir
@@ -638,7 +638,7 @@ func set_download_dir(dir: String):
 	log_info("Download path set to: %s" % absolute_download_path)
 
 
-func set_log_level(level: int):
+func set_log_level(level: int) -> void:
 	if level == log_level:
 		return
 	log_level = level
@@ -646,14 +646,14 @@ func set_log_level(level: int):
 	log_info("Log level set to %s" % LogLevel.keys()[log_level])
 
 
-func set_preferred_port(new_port: String):
+func set_preferred_port(new_port: String) -> void:
 	if new_port == preferred_port:
 		return
 	preferred_port = new_port
 	EditorInterface.get_editor_settings().set_setting(SETTING_PORT, preferred_port)
 
 
-func set_model_format(format: String):
+func set_model_format(format: String) -> void:
 	if format == model_format:
 		return
 	model_format = format
@@ -661,7 +661,7 @@ func set_model_format(format: String):
 	model_format_changed.emit()
 
 
-func set_resolution(new_resolution: String):
+func set_resolution(new_resolution: String) -> void:
 	if new_resolution == resolution:
 		return
 	resolution = new_resolution
@@ -736,7 +736,7 @@ static func save_project_setting(key: String, value: Variant) -> void:
 	ProjectSettings.save()
 
 
-func init_paths():
+func init_paths() -> void:
 	absolute_download_path = ProjectSettings.globalize_path(download_dir)
 	client_bin_name = get_client_binary_name()
 	client_data_dir = get_client_data_dir()
@@ -744,7 +744,7 @@ func init_paths():
 	find_packed_client()
 
 
-func find_packed_client():
+func find_packed_client() -> void:
 	client_version = ""
 	var marker := client_base_dir.path_join("RESOLVED_VERSION")
 	if FileAccess.file_exists(marker):
@@ -758,7 +758,7 @@ func find_packed_client():
 	client_bin_path = get_packed_client_binary_path()
 
 
-func install_shared_client():
+func install_shared_client() -> void:
 	# Run outside the project so a running executable does not block plugin updates.
 	var target_dir := client_data_dir.path_join("bin").path_join("v" + client_version)
 	var target := target_dir.path_join(client_bin_name)
@@ -785,7 +785,7 @@ static func is_compatible_client(found: String, required: String) -> bool:
 	return is_valid_client_version(found) and not version_lt(found, required)
 
 
-func init_gallery():
+func init_gallery() -> void:
 	gallery = gallery_scene.instantiate()
 	gallery.plugin = self
 	gallery.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -857,7 +857,7 @@ func client_data(api_key: String = "") -> Dictionary:
 	}
 
 
-func get_packed_client_binary_path():
+func get_packed_client_binary_path() -> String:
 	var bin_path = client_base_dir.path_join("v" + client_version).path_join(client_bin_name)
 	return ProjectSettings.globalize_path(bin_path)
 
@@ -868,7 +868,7 @@ func get_client_log_path(log_port: String) -> String:
 	return client_data_dir.path_join("%s.log" % log_port)
 
 
-static func get_client_data_dir():
+static func get_client_data_dir() -> String:
 	var home_path := ""
 	if OS.has_feature("windows"):
 		home_path = OS.get_environment("USERPROFILE")
