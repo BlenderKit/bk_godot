@@ -114,7 +114,7 @@ func has_pending_work() -> bool:
 # MARK: Client connection
 
 func on_connected() -> void:
-	if plugin.categories.is_empty():
+	if gallery.categories.is_empty():
 		# categories_update comes once per subscription; fetch it if missed
 		categories_timer.start()
 	if _pending_search:
@@ -406,7 +406,7 @@ func fill_categories() -> void:
 	category_option.clear()
 	category_option.add_item("All")
 	category_option.set_item_metadata(0, "")
-	for top in plugin.categories:
+	for top in gallery.categories:
 		if not top is Dictionary or top.get("slug") != _asset_type():
 			continue
 		for child in top.get("children", []):
@@ -421,13 +421,13 @@ func fill_categories() -> void:
 
 
 func _fetch_categories() -> void:
-	if _fetching_categories or not plugin.is_client_connected() or not plugin.categories.is_empty():
+	if _fetching_categories or not plugin.is_client_connected() or not gallery.categories.is_empty():
 		return
 	_fetching_categories = true
 	var categories: Array = await GalleryApi.fetch_categories(self, plugin)
 	_fetching_categories = false
-	if not categories.is_empty() and plugin.categories.is_empty():
-		plugin.categories = categories
+	if not categories.is_empty() and gallery.categories.is_empty():
+		gallery.categories = categories
 		fill_categories()
 
 

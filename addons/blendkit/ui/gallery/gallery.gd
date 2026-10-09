@@ -6,10 +6,9 @@ extends PanelContainer
 ## project. The parts are the search (SearchView on %Body), the project
 ## assets (ProjectView on %ProjectBody) and the Downloads model.
 ##
-## The plugin owns the Client connection. It calls handle_task() for search,
-## thumbnail and download tasks from its /godot/report poll,
-## drop_vanished_downloads() after each report, and on_connection_changed() /
-## on_categories_changed() on updates.
+## The plugin owns the Client connection. The gallery follows its
+## connection_changed and tasks_reported signals, and asks it to poll faster
+## while waiting for task reports.
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const GalleryItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
@@ -41,6 +40,8 @@ var tasks: ClientTasks
 var downloads: Downloads
 ## assetBaseId -> {thumbnail_type: image_path}, kept across searches.
 var thumb_cache: Dictionary = {}
+## Category tree from the Client's categories_update task.
+var categories: Array = []
 
 var _was_connected := false
 var _updating_theme := false
@@ -80,7 +81,7 @@ func _ready() -> void:
 	spinner.resized.connect(func(): spinner.pivot_offset = spinner.size / 2)
 
 	tasks = ClientTasks.new()
-	tasks.started.connect(plugin.update_poll_rate)
+	tasks.started.connect(_update_poll_rate)
 	tasks.unclaimed.connect(_on_unclaimed_task)
 	downloads = Downloads.new(self, plugin, tasks)
 	downloads.download_changed.connect(_on_download_changed)
@@ -120,7 +121,9 @@ func _ready() -> void:
 	_updating_theme = true
 	_update_theme()
 	_updating_theme = false
-	on_connection_changed()
+	plugin.connection_changed.connect(_on_connection_changed)
+	plugin.tasks_reported.connect(_on_tasks_reported)
+	_on_connection_changed()
 
 
 func _process(delta: float) -> void:
@@ -167,11 +170,9 @@ func _update_theme() -> void:
 	search.update_theme()
 
 
-# MARK: plugin interface
+# MARK: Client connection
 
-func on_connection_changed() -> void:
-	if not is_node_ready():
-		return
+func _on_connection_changed() -> void:
 	menu_button.refresh()
 	var connected: bool = plugin.is_client_connected()
 	if connected == _was_connected:
@@ -188,18 +189,25 @@ func on_connection_changed() -> void:
 	project_view.on_disconnected()
 	downloads.on_disconnected()
 	tasks.cancel_all()
-
-
-func on_categories_changed() -> void:
-	if is_node_ready():
-		search.fill_categories()
+	_update_poll_rate()
 
 
 func has_pending_work() -> bool:
-	if tasks == null:
-		return false
 	return tasks.is_posting() or search.has_pending_work() or project_view.has_pending_work() \
 		or downloads.has_pending_work()
+
+
+func _update_poll_rate() -> void:
+	plugin.set_fast_poll(has_pending_work())
+
+
+func _on_tasks_reported(reported_tasks: Array) -> void:
+	var reported := {}
+	for task in reported_tasks:
+		handle_task(task)
+		reported[task.get("task_id", "")] = true
+	drop_vanished_downloads(reported)
+	_update_poll_rate()
 
 
 func handle_task(task: Dictionary) -> void:
@@ -209,11 +217,15 @@ func handle_task(task: Dictionary) -> void:
 				_on_unclaimed_task(task)
 		"thumbnail_download":
 			_handle_thumbnail_task(task)
+		"categories_update":
+			if task.get("status") == "finished" and task.get("result") is Array:
+				categories = task["result"]
+				search.fill_categories()
 
 
+## Forgets Send to Godot downloads missing from a report, keyed by task_id.
 func drop_vanished_downloads(reported: Dictionary) -> void:
-	if downloads:
-		downloads.drop_vanished(reported)
+	downloads.drop_vanished(reported)
 
 
 ## A task the gallery didn't start: an asset_download is Send to Godot on
@@ -374,6 +386,7 @@ func _on_download_changed(id: String) -> void:
 	if details.visible and GalleryApi.base_id(details.asset) == id:
 		details.refresh_download()
 	_update_download_badge()
+	_update_poll_rate()
 
 
 func _update_download_badge() -> void:

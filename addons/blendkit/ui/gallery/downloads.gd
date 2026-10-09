@@ -205,7 +205,6 @@ func handle_web_task(task: Dictionary) -> void:
 			"since": int(Time.get_unix_time_from_system()) - WEB_FOLDER_SLACK}
 		# The Client made the staging folder, but not its .gitignore.
 		GalleryApi.ensure_staging(_plugin.absolute_download_path)
-		_plugin.update_poll_rate()
 	var web: Dictionary = web_downloads[task_id]
 	web.status = status
 	web.progress = int(task.get("progress", 0))

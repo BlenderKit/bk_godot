@@ -2,6 +2,10 @@
 extends EditorPlugin
 
 signal model_format_changed
+## The connection state changed, or a request failed or recovered.
+signal connection_changed
+## Each /godot/report response with its tasks, also when there are none.
+signal tasks_reported(tasks: Array)
 
 const SERVER = "https://blendkit.com"
 const CLIENT_API_VERSION = "v1.13"
@@ -127,6 +131,8 @@ var port: String = CLIENT_PORTS[0]
 var preferred_port: String = CLIENT_PORTS[0]
 var taken_ports: Array[String] = []
 var failed_requests: int = 0
+# Poll faster while someone waits for task reports, see set_fast_poll().
+var fast_poll := false
 var request_start_time: int = 0
 var request_start_frame: int = 0
 var starting_since: int = 0
@@ -155,8 +161,6 @@ var gallery: Control
 var auth: Auth
 var plugin_icon: Texture2D
 var plugin_icon_key: String
-# Category tree from the Client's categories_update task, used by the gallery
-var categories: Array = []
 
 
 func _enter_tree() -> void:
@@ -302,7 +306,7 @@ func enter_state(new_state: State) -> void:
 				log_info("Connected to Client on port %s" % port)
 			auth.on_connected()
 
-	update_status()
+	connection_changed.emit()
 
 
 ## A copy of the JSON value with the SECRET_KEYS values replaced.
@@ -315,11 +319,6 @@ static func redact(value: Variant) -> Variant:
 	if value is Array:
 		return value.map(redact)
 	return value
-
-
-func update_status() -> void:
-	if gallery:
-		gallery.on_connection_changed()
 
 
 func is_client_connected() -> bool:
@@ -445,8 +444,6 @@ func on_timer_timeout() -> void:
 
 	if state == State.EXPLORING:
 		log_verbose("Exploring port %s..." % port)
-	elif state == State.CONNECTED:
-		update_poll_rate()
 
 	var url := client_url("godot/report")
 	var headers = ["Content-Type: application/json"]
@@ -501,7 +498,7 @@ func on_request_completed(result: int, response_code: int, _headers: PackedStrin
 				enter_state(State.CONNECTED)
 			elif failed_requests > 0:
 				failed_requests = 0
-				update_status()
+				connection_changed.emit()
 
 			var msg = data.get("message", "")
 			if msg:
@@ -551,26 +548,31 @@ func request_failed() -> void:
 			log_verbose("Client not up after %d fast probes, slowing probes to %ss" % [STARTING_FAST_PROBES, WAIT_STARTING_SLOW])
 			timer.wait_time = WAIT_STARTING_SLOW
 			timer.start()
-		update_status()
+		connection_changed.emit()
 
 	elif state == State.CONNECTED:
 		if failed_requests >= MAX_FAILED_REQUESTS:
 			log_warning("Lost connection to Blendkit Client on port %s." % port)
 			enter_state(State.EXPLORING)
 			return
-		update_status()
+		connection_changed.emit()
 
 	else:
 		log_error("Unexpected state: %s" % state_name(state))
 		fail("unexpected state")
 
 
-# Poll faster while the gallery waits for search results, thumbnails or
-# downloads, which all arrive through /godot/report.
+## Poll faster while waiting for search results, thumbnails or downloads,
+## which all arrive through /godot/report.
+func set_fast_poll(fast: bool) -> void:
+	fast_poll = fast
+	update_poll_rate()
+
+
 func update_poll_rate() -> void:
 	if state != State.CONNECTED:
 		return
-	var wait := WAIT_EXPLORING if gallery and gallery.has_pending_work() else WAIT_OK
+	var wait := WAIT_EXPLORING if fast_poll else WAIT_OK
 	if is_equal_approx(timer.wait_time, wait):
 		return
 	timer.wait_time = wait
@@ -798,23 +800,9 @@ func handle_tasks(tasks: Array) -> void:
 		match task.get("task_type"):
 			"asset_download":
 				log_download_task(task)
-				if gallery:
-					gallery.handle_task(task)
-			"search", "thumbnail_download":
-				if gallery:
-					gallery.handle_task(task)
 			"login", "oauth2/logout", "profiles/get_user_profile", "profiles/fetch_gravatar_image":
 				auth.handle_task(task)
-			"categories_update":
-				if task.get("status") == "finished" and task.get("result") is Array:
-					categories = task["result"]
-					if gallery:
-						gallery.on_categories_changed()
-	if gallery:
-		var reported := {}
-		for task in tasks:
-			reported[task.get("task_id", "")] = true
-		gallery.drop_vanished_downloads(reported)
+	tasks_reported.emit(tasks)
 
 
 # Failed downloads from Send to Godot on blendkit.com show only here.
