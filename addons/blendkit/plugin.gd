@@ -36,6 +36,8 @@ const REQUEST_TIMEOUT: int = 3000
 # several polls to connect, send and read the response
 const REQUEST_TIMEOUT_MIN_FRAMES: int = 10
 const MAX_FAILED_REQUESTS: int = 3
+# Values of these keys never go to the Output, e.g. the tokens in login tasks.
+const SECRET_KEYS = ["access_token", "refresh_token", "api_key", "code_verifier"]
 
 
 enum LogLevel { ERROR, WARNING, INFO, VERBOSE, DEBUG, TRACE }
@@ -326,6 +328,18 @@ func enter_state(new_state: State):
 	update_status()
 
 
+## A copy of the JSON value with the SECRET_KEYS values replaced.
+static func redact(value: Variant) -> Variant:
+	if value is Dictionary:
+		var result := {}
+		for key in value:
+			result[key] = "<redacted>" if str(key) in SECRET_KEYS and value[key] else redact(value[key])
+		return result
+	if value is Array:
+		return value.map(redact)
+	return value
+
+
 func update_status():
 	if gallery:
 		gallery.on_connection_changed()
@@ -486,11 +500,13 @@ func on_request_completed(result, response_code, _headers, body):
 		return
 
 	var body_text: String = body.get_string_from_utf8()
-	bk_log(LogLevel.TRACE, "HTTP response (%d ms): %s" % [elapsed, body_text])
+	var data = JSON.parse_string(body_text) if response_code == 200 else null
+	if log_level >= LogLevel.TRACE:
+		var logged := JSON.stringify(redact(data)) if data is Dictionary else body_text
+		bk_log(LogLevel.TRACE, "HTTP response (%d ms): %s" % [elapsed, logged])
 
 	# Success - only a 200 with a valid JSON body counts as the Client
 	if response_code == 200:
-		var data = JSON.parse_string(body_text)
 		if typeof(data) == TYPE_DICTIONARY:
 			if state != State.CONNECTED:
 				var found_version := str(data.get("client_version", ""))
@@ -524,8 +540,6 @@ func on_request_completed(result, response_code, _headers, body):
 		bk_log(LogLevel.VERBOSE, "Client not found on port %s" % port)
 	elif response_code != 200:
 		bk_log(LogLevel.WARNING, "Request on port %s failed (response_code=%d)" % [port, response_code])
-	if body_text != "":
-		bk_log(LogLevel.TRACE, "Response body: %s" % body_text)
 
 	request_failed()
 

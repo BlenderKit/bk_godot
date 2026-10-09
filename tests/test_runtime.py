@@ -20,6 +20,10 @@ func _initialize():
     assert(not plugin.is_compatible_client("2.13.0", "1.13.13"))
     assert(not plugin.is_compatible_client("", "1.13.13"))
     assert(not plugin.is_valid_client_version("1.13.13/../bad"))
+    var report = {"tasks": [{"task_type": "login", "result": {"access_token": "a", "refresh_token": "r", "expires_in": 5}}]}
+    var redacted = JSON.stringify(plugin.redact(report))
+    assert(not redacted.contains('"a"') and not redacted.contains('"r"') and redacted.contains("expires_in"))
+    assert(report.tasks[0].result.access_token == "a")
     var base = %s
     var binary = plugin.get_client_binary_name()
     assert(binary.begins_with("bk_client-"))

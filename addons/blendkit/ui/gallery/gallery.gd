@@ -108,7 +108,6 @@ var _search_mouse_edit := false
 var project: ProjectAssets
 ## Scanned asset folders with their tiles, see ProjectAssets.scan().
 var _project_entries: Array = []
-var _project_signature := ""
 ## assetBaseId or task_id -> project tile of a download in progress.
 var _project_download_items: Dictionary = {}
 var _download_badge: Label
@@ -798,33 +797,50 @@ func _on_project_files_changed() -> void:
 		_refresh_project()
 
 
-## Rescan the download directory and rebuild the tiles if anything changed.
-## Downloads in progress come first.
+## Rescan the download directory and update the tiles by entry id, so a
+## lookup or thumbnail arriving only touches its own tile. Downloads in
+## progress come first.
 func _refresh_project() -> void:
 	var entries := _download_entries()
 	entries.append_array(project.scan(plugin.absolute_download_path))
-	var signature := str(entries.map(func(e): return [e.id, e.time, e.known, e.thumbnail, e.asset.get("name", "")]))
-	if signature != _project_signature:
-		_project_signature = signature
-		for child in project_grid.get_children():
-			project_grid.remove_child(child)
-			child.queue_free()
-		_project_entries = entries
-		_project_download_items.clear()
-		for entry in entries:
-			var item = gallery_item_scene.instantiate()
+	var old := {}
+	for entry in _project_entries:
+		old[entry.id] = entry
+	var current := {}
+	var added := false
+	_project_download_items.clear()
+	for entry in entries:
+		if current.has(entry.id):
+			continue
+		var previous: Dictionary = old.get(entry.id, {})
+		var item = previous.get("item")
+		if item == null:
+			added = true
+			item = gallery_item_scene.instantiate()
 			project_grid.add_child(item)
+			item.selected.connect(_on_project_item_selected.bind(entry.id))
+		if previous.is_empty() or previous.asset != entry.asset:
 			item.setup(entry.asset)
-			item.selected.connect(func(_asset): _open_project_details(entry))
+		if previous.is_empty() or previous.thumbnail != entry.thumbnail:
 			var texture := GalleryApi.load_texture(entry.thumbnail)
 			if texture:
 				item.set_thumbnail(texture)
 			else:
 				item.set_thumbnail_failed()
-			if entry.has("download"):
-				item.set_download(entry.download)
-				_project_download_items[entry.id] = item
-			entry.item = item
+		if entry.has("download"):
+			item.set_download(entry.download)
+			_project_download_items[entry.id] = item
+		elif previous.has("download"):
+			item.set_download({})
+		project_grid.move_child(item, current.size())
+		entry.item = item
+		current[entry.id] = entry
+	for id in old:
+		if not current.has(id):
+			project_grid.remove_child(old[id].item)
+			old[id].item.queue_free()
+	_project_entries = current.values()
+	if added:
 		_update_columns()
 	_filter_project()
 	for entry in _project_entries:
@@ -977,6 +993,13 @@ func _handle_thumbnail_task(task: Dictionary) -> void:
 
 func _open_details(asset: Dictionary) -> void:
 	details.show_asset(asset, thumb_cache.get(str(asset.get("assetBaseId", "")), {}))
+
+
+func _on_project_item_selected(_asset: Dictionary, id: String) -> void:
+	for entry in _project_entries:
+		if entry.id == id:
+			_open_project_details(entry)
+			return
 
 
 func _open_project_details(entry: Dictionary) -> void:
