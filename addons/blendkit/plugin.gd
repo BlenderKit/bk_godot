@@ -264,15 +264,8 @@ static func is_dark_icon_theme() -> bool:
 
 
 func fail(reason: String):
-	if state == State.CONNECTED:
-		send_unsubscribe()
 	fail_reason = reason
-	state = State.FAILED
-	timer.stop()
-	http_request.cancel_request()
-	log_error("Client failed: %s. Please consider reporting this with your Output." % fail_reason)
-	auth.on_client_lost()
-	update_status()
+	enter_state(State.FAILED)
 
 
 func enter_state(new_state: State):
@@ -281,12 +274,15 @@ func enter_state(new_state: State):
 	state = new_state
 	failed_requests = 0
 	match new_state:
-		State.DISABLED:
+		State.DISABLED, State.FAILED:
 			if prev_state == State.CONNECTED:
 				send_unsubscribe()
-			log_info("Disabled")
 			timer.stop()
 			http_request.cancel_request()
+			if new_state == State.FAILED:
+				log_error("Client failed: %s. Please consider reporting this with your Output." % fail_reason)
+			else:
+				log_info("Disabled")
 			auth.on_client_lost()
 		State.EXPLORING:
 			port = CLIENT_PORTS[0]
@@ -308,8 +304,6 @@ func enter_state(new_state: State):
 			else:
 				log_info("Connected to Client on port %s" % port)
 			auth.on_connected()
-		_:
-			fail("invalid state %s" % state_name(new_state))
 
 	update_status()
 
