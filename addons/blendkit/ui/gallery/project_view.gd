@@ -16,6 +16,8 @@ const LOOKUP_TASK := "lookup"
 ## Seconds the index waits to be saved after it changes, so the lookups of a
 ## project's unknown folders save it once or a few times rather than each.
 const SAVE_DELAY := 5.0
+## Thumbnails decoded per frame, so a large project shows its tiles at once.
+const THUMBNAILS_PER_FRAME := 8
 
 @onready var message: Label = %ProjectMessage
 @onready var grid: GridContainer = %ProjectGrid
@@ -36,6 +38,8 @@ var _refresh_queued := false
 ## Whether the download directory may have changed since the last scan.
 var _dirty := true
 var _save_queued := false
+## Tile -> thumbnail path still to decode, see _decode_thumbnails().
+var _thumbnail_queue: Dictionary = {}
 
 
 ## Called by the gallery once the plugin is known.
@@ -49,6 +53,7 @@ func setup(new_gallery: Node) -> void:
 	gallery.downloads.download_finished.connect(_on_download_finished)
 	gallery.downloads.web_download_finished.connect(func(_path): refresh_if_shown())
 	gallery.downloads.web_asset_found.connect(_on_web_asset_found)
+	gallery.plugin.download_dir_changed.connect(refresh_if_shown)
 
 
 func has_pending_work() -> bool:
@@ -117,6 +122,7 @@ func refresh() -> void:
 		current[entry.id] = entry
 	for id in old:
 		if not current.has(id):
+			_thumbnail_queue.erase(old[id].item)
 			grid.remove_child(old[id].item)
 			old[id].item.queue_free()
 	entries = current.values()
@@ -135,11 +141,27 @@ func _update_item(item: Control, entry: Dictionary, previous: Dictionary) -> voi
 	if previous.is_empty() or previous.asset != entry.asset:
 		item.setup(entry.asset)
 	if previous.is_empty() or previous.thumbnail != entry.thumbnail:
-		var texture := GalleryApi.load_texture(entry.thumbnail)
-		if texture:
-			item.set_thumbnail(texture)
-		else:
+		if entry.thumbnail.is_empty():
+			_thumbnail_queue.erase(item)
 			item.set_thumbnail_failed()
+		else:
+			var decoding := not _thumbnail_queue.is_empty()
+			_thumbnail_queue[item] = entry.thumbnail
+			if not decoding:
+				_decode_thumbnails()
+
+
+## Decode the queued thumbnails a few per frame, in tile order.
+func _decode_thumbnails() -> void:
+	while not _thumbnail_queue.is_empty():
+		for item in _thumbnail_queue.keys().slice(0, THUMBNAILS_PER_FRAME):
+			var texture := GalleryApi.cached_texture(_thumbnail_queue[item])
+			_thumbnail_queue.erase(item)
+			if texture:
+				item.set_thumbnail(texture)
+			else:
+				item.set_thumbnail_failed()
+		await get_tree().process_frame
 
 
 ## Show the indexed asset on the tiles of its folder and of a Send to Godot

@@ -212,6 +212,8 @@ func _initialize():
     check(FileAccess.file_exists(moved + ".import"), "import kept")
     check(not DirAccess.dir_exists_absolute(staged_a), "staging folder removed")
     check(Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot.glb")) == moved, "moved twice")
+    check(not FileAccess.file_exists(moved + ".bk_old"), "older copy deleted")
+    check(Api.finish_download(staging.path_join("models/gone_" + ID_B + "/gone.glb")) == "", "nothing to move")
     # A new asset gets its folder.
     var staged_c := staging.path_join("models/new-one_" + ID_B)
     write(staged_c.path_join("new-one.glb"), "glb")
@@ -242,6 +244,8 @@ func _initialize():
     check(project.thumbnail(ID_B) == "", "no thumbnail yet")
     check(project.add_thumbnail("base-b", thumb) == PackedStringArray([ID_B]), "thumbnail added")
     check(project.add_thumbnail("base-b", thumb).is_empty(), "thumbnail kept")
+    project.store({"id": "later-id", "assetBaseId": "base-later", "name": "Later", "assetType": "model"})
+    check(project.add_thumbnail("base-later", thumb) == PackedStringArray(["later-id"]), "thumbnail of an asset stored later")
     check(project.unsaved, "changes not saved yet")
     project.save()
 

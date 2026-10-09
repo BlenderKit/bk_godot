@@ -28,6 +28,9 @@ var dir: String
 var index := ConfigFile.new()
 ## Whether the index changed since it was saved, see save().
 var unsaved := false
+## assetBaseId -> ids of indexed assets without a thumbnail, so a thumbnail
+## from browsing doesn't search the whole index. Built on first use.
+var _no_thumbnail = null
 
 
 func _init(index_dir: String = "") -> void:
@@ -64,24 +67,38 @@ func store(asset: Dictionary, thumbnail_path: String = "") -> void:
 	if id.is_empty():
 		return
 	index.set_value(id, "asset", trim_asset(asset))
-	if not thumbnail_path.is_empty():
-		_copy_thumbnail(id, thumbnail_path)
+	if thumbnail_path.is_empty() or not _copy_thumbnail(id, thumbnail_path):
+		_note_no_thumbnail(id)
 	unsaved = true
 
 
 ## Set the thumbnail of indexed assets with this base id that have none.
 ## Returns the ids of those that changed. Saved by save().
 func add_thumbnail(base_id: String, thumbnail_path: String) -> PackedStringArray:
+	if _no_thumbnail == null:
+		_no_thumbnail = {}
+		for id in index.get_sections():
+			if id != META_SECTION:
+				_note_no_thumbnail(id)
 	var changed := PackedStringArray()
-	for id in index.get_sections():
-		if id == META_SECTION or not thumbnail(id).is_empty():
-			continue
-		if str(index.get_value(id, "asset", {}).get("assetBaseId", "")) == base_id \
-				and _copy_thumbnail(id, thumbnail_path):
+	for id in _no_thumbnail.get(base_id, []).duplicate():
+		if _copy_thumbnail(id, thumbnail_path):
 			changed.append(id)
 	if not changed.is_empty():
 		unsaved = true
 	return changed
+
+
+## Keep track of the asset if it has no thumbnail, see _no_thumbnail.
+func _note_no_thumbnail(id: String) -> void:
+	if _no_thumbnail == null or not thumbnail(id).is_empty():
+		return
+	var base_id := str(get_asset(id).get("assetBaseId", ""))
+	if base_id.is_empty():
+		return
+	var ids: Array = _no_thumbnail.get_or_add(base_id, [])
+	if not id in ids:
+		ids.append(id)
 
 
 ## Absolute path of the asset's thumbnail, or "".
@@ -111,6 +128,12 @@ func _copy_thumbnail(id: String, source: String) -> bool:
 	if DirAccess.copy_absolute(source, thumbs.path_join(file)) != OK:
 		return false
 	index.set_value(id, "thumbnail", file)
+	if _no_thumbnail != null:
+		var base_id := str(get_asset(id).get("assetBaseId", ""))
+		var ids: Array = _no_thumbnail.get(base_id, [])
+		ids.erase(id)
+		if ids.is_empty():
+			_no_thumbnail.erase(base_id)
 	return true
 
 

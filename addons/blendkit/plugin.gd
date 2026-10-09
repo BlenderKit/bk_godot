@@ -4,6 +4,7 @@ extends EditorPlugin
 ## connection is ClientConnection, the tab is the gallery.
 
 signal model_format_changed
+signal download_dir_changed
 
 const SERVER = "https://blendkit.com"
 # [value, label] pairs for the settings dialog
@@ -196,6 +197,7 @@ func set_download_dir(dir: String) -> void:
 	save_project_setting(SETTING_DOWNLOAD_DIR, download_dir)
 	absolute_download_path = ProjectSettings.globalize_path(download_dir)
 	log_info("Download path set to: %s" % absolute_download_path)
+	download_dir_changed.emit()
 
 
 func set_log_level(level: int) -> void:

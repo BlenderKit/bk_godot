@@ -62,7 +62,12 @@ const FILE_TYPES := [
 	["zip_file", "Archive (.zip)"],
 ]
 
+## Small thumbnails kept decoded, about 5 pages of search results.
+const TEXTURE_CACHE_SIZE := 150
+
 static var _slug_regex := RegEx.create_from_string("[^a-z0-9]+")
+## Path -> {texture, time}, least recently used first, see cached_texture().
+static var _texture_cache: Dictionary = {}
 
 
 ## Index of [param value] in [code][value, label][/code] [param options],
@@ -254,18 +259,26 @@ static func unstaged_path(path: String) -> String:
 
 ## Move a finished download from the staging folder to its place, replacing
 ## an older copy there, whose .import and .uid stay so references keep
-## working. Returns the new path; "" if the move failed.
+## working. The older copy is restored if the move fails. Returns the new
+## path; "" if there's no file to move or the move failed.
 static func finish_download(path: String) -> String:
 	path = path.replace("\\", "/")
 	var target := unstaged_path(path)
 	# Not staged, or moved already (a task can be handled twice).
 	if target == path or not FileAccess.file_exists(path):
-		return target
+		return target if FileAccess.file_exists(target) else ""
 	DirAccess.make_dir_recursive_absolute(target.get_base_dir())
-	if FileAccess.file_exists(target) and DirAccess.remove_absolute(target) != OK:
-		return ""
+	var backup := ""
+	if FileAccess.file_exists(target):
+		backup = target + ".bk_old"
+		if DirAccess.rename_absolute(target, backup) != OK:
+			return ""
 	if DirAccess.rename_absolute(path, target) != OK:
+		if backup:
+			DirAccess.rename_absolute(backup, target)
 		return ""
+	if backup:
+		DirAccess.remove_absolute(backup)
 	DirAccess.remove_absolute(path.get_base_dir()) # only if empty
 	return target
 
@@ -465,6 +478,26 @@ static func fetch_categories(parent: Node, plugin: EditorPlugin) -> Array:
 static func load_texture(path: String) -> Texture2D:
 	var image := load_image(path)
 	return ImageTexture.create_from_image(image) if image else null
+
+
+## Like load_texture(), but reuses the texture while the file is unchanged,
+## so tiles showing a small thumbnail again, e.g. paging back or the project
+## view, don't decode it again.
+static func cached_texture(path: String) -> Texture2D:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return null
+	var time := FileAccess.get_modified_time(path)
+	var hit = _texture_cache.get(path)
+	_texture_cache.erase(path)
+	if hit and hit.time == time:
+		_texture_cache[path] = hit # most recently used last
+		return hit.texture
+	var texture := load_texture(path)
+	if texture:
+		_texture_cache[path] = {"texture": texture, "time": time}
+		if _texture_cache.size() > TEXTURE_CACHE_SIZE:
+			_texture_cache.erase(_texture_cache.keys()[0])
+	return texture
 
 
 ## Image.load() picks the decoder by extension, but the client's cached files

@@ -133,20 +133,30 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 	download_changed.emit(base_id)
 
 
+## The Client cancels asynchronously and answers once it got the request,
+## so the download runs on if the request fails.
 func cancel(task_id: String) -> void:
-	await GalleryApi.cancel_download(_parent, _plugin, task_id)
-	# A cancelled task can disappear without a final report.
+	var response := await GalleryApi.cancel_download(_parent, _plugin, task_id)
 	for base_id in gallery_downloads:
 		var dl: Dictionary = gallery_downloads[base_id]
-		if dl.task_id == task_id and dl.status in GalleryApi.ACTIVE_DOWNLOAD:
+		if dl.task_id != task_id or not dl.status in GalleryApi.ACTIVE_DOWNLOAD:
+			continue
+		if response.ok:
+			# A cancelled task can disappear without a final report.
 			_end(base_id, "cancelled")
+		else:
+			_plugin.log_warning("Could not cancel the download: %s" % response.error)
+			dl.message = "Could not cancel: %s" % response.error
+			download_changed.emit(base_id)
 
 
-## End a gallery download that isn't reported anymore.
+## End a gallery download that isn't reported anymore, and stop waiting for
+## its reports.
 func _end(base_id: String, status: String, message: String = "") -> void:
 	var dl: Dictionary = gallery_downloads[base_id]
 	dl.status = status
 	dl.message = message
+	_tasks.forget("download:" + base_id)
 	download_changed.emit(base_id)
 
 

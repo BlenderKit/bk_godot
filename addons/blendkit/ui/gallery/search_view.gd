@@ -92,6 +92,7 @@ func setup(new_gallery: Node) -> void:
 	gallery.downloads.download_changed.connect(_on_download_changed)
 	gallery.downloads.download_finished.connect(_on_download_finished)
 	gallery.downloads.web_download_finished.connect(_on_web_download_finished)
+	plugin.download_dir_changed.connect(_on_download_dir_changed)
 
 
 ## Page buttons have the theme's icons.
@@ -247,7 +248,7 @@ func _show_results() -> void:
 		items[base_id] = item
 		var thumbs: Dictionary = gallery.thumb_cache.get(base_id, {})
 		if thumbs.has("small"):
-			item.set_thumbnail(GalleryApi.load_texture(thumbs.small))
+			item.set_thumbnail(GalleryApi.cached_texture(thumbs.small))
 		else:
 			_thumbs_missing += 1
 		if not thumbs.has("full"):
@@ -275,7 +276,7 @@ func on_thumbnail(base_id: String, type: String, path: String) -> void:
 	if type != "small":
 		return
 	if path:
-		items[base_id].set_thumbnail(GalleryApi.load_texture(path))
+		items[base_id].set_thumbnail(GalleryApi.cached_texture(path))
 	else:
 		items[base_id].set_thumbnail_failed()
 
@@ -488,6 +489,13 @@ func _on_download_changed(id: String) -> void:
 func _on_download_finished(base_id: String) -> void:
 	if items.has(base_id):
 		items[base_id].set_downloaded(true)
+
+
+func _on_download_dir_changed() -> void:
+	for base_id in items:
+		items[base_id].set_downloaded(gallery.is_downloaded(items[base_id].asset))
+	if gallery.details.visible:
+		gallery.details.refresh_download()
 
 
 ## A finished download this gallery didn't start, e.g. Send to Godot.

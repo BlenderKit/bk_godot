@@ -218,10 +218,16 @@ func handle_task(task: Dictionary) -> void:
 					return
 				var old_id = profile.get("id")
 				profile = result.user
-				if old_id != profile.get("id"):
+				var switched: bool = old_id != profile.get("id")
+				if switched:
 					avatar_path = ""
 				_save()
 				changed.emit()
+				# Tokens from another add-on look like a refresh, so a different
+				# user shows only here. After a fresh login old_id is null and
+				# account_changed was emitted already.
+				if switched and old_id != null:
+					account_changed.emit()
 				_fetch_avatar()
 			elif status == "error":
 				plugin.log_warning("Could not load profile: %s" % task.get("message", ""))

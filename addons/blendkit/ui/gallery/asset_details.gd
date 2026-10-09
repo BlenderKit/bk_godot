@@ -81,7 +81,7 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_local_path: S
 		if thumbnails.has(type):
 			on_thumbnail(type, GalleryApi.load_texture(thumbnails[type]))
 	if preview.texture == null and thumbnails.has("small"):
-		preview.texture = GalleryApi.load_texture(thumbnails["small"])
+		preview.texture = GalleryApi.cached_texture(thumbnails["small"])
 
 	refresh_download()
 	var edscale := EditorInterface.get_editor_scale()
