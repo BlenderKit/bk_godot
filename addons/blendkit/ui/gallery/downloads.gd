@@ -87,9 +87,7 @@ func start(asset: Dictionary, file_type: String) -> void:
 		"file_type": file_type, "file_path": "", "asset": asset}
 	gallery_downloads[base_id] = dl
 	if not _plugin.is_client_connected():
-		dl.status = "error"
-		dl.message = "Blendkit Client is not connected"
-		download_changed.emit(base_id)
+		_end(base_id, "error", "Blendkit Client is not connected")
 		return
 	download_changed.emit(base_id)
 	GalleryApi.ensure_staging(_plugin.absolute_download_path)
@@ -100,9 +98,7 @@ func start(asset: Dictionary, file_type: String) -> void:
 	if response.is_empty():
 		return # reset by a disconnect meanwhile
 	if response[0].is_empty():
-		dl.status = "error"
-		dl.message = response[1]
-		download_changed.emit(base_id)
+		_end(base_id, "error", response[1])
 	elif dl.status == "posting": # unless an early report was applied already
 		dl.task_id = response[0]
 		dl.status = "created"
@@ -124,9 +120,7 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 		"finished":
 			dl.file_path = GalleryApi.finish_download(GalleryApi.task_file_path(task))
 			if dl.file_path.is_empty():
-				dl.status = "error"
-				dl.message = "Could not move the download into %s" % _plugin.download_dir
-				download_changed.emit(base_id)
+				_end(base_id, "error", "Could not move the download into %s" % _plugin.download_dir)
 				return
 			dl.status = "finished"
 			dl.progress = 100
@@ -145,9 +139,15 @@ func cancel(task_id: String) -> void:
 	for base_id in gallery_downloads:
 		var dl: Dictionary = gallery_downloads[base_id]
 		if dl.task_id == task_id and dl.status in GalleryApi.ACTIVE_DOWNLOAD:
-			dl.status = "cancelled"
-			dl.message = ""
-			download_changed.emit(base_id)
+			_end(base_id, "cancelled")
+
+
+## End a gallery download that isn't reported anymore.
+func _end(base_id: String, status: String, message: String = "") -> void:
+	var dl: Dictionary = gallery_downloads[base_id]
+	dl.status = status
+	dl.message = message
+	download_changed.emit(base_id)
 
 
 ## Let the editor import a finished download in the project. Looking for
@@ -162,11 +162,8 @@ static func _scan_download(file_path: String) -> void:
 ## The Client cancels the app's tasks when it unsubscribes.
 func on_disconnected() -> void:
 	for base_id in gallery_downloads:
-		var dl: Dictionary = gallery_downloads[base_id]
-		if dl.status in GalleryApi.ACTIVE_DOWNLOAD:
-			dl.status = "error"
-			dl.message = "Blendkit Client disconnected"
-			download_changed.emit(base_id)
+		if gallery_downloads[base_id].status in GalleryApi.ACTIVE_DOWNLOAD:
+			_end(base_id, "error", "Blendkit Client disconnected")
 	for task_id in web_downloads.keys():
 		_drop_web_download(task_id)
 	_staging_cleared = false
@@ -188,9 +185,7 @@ func drop_vanished(reported: Dictionary) -> void:
 	for base_id in gallery_downloads:
 		var dl: Dictionary = gallery_downloads[base_id]
 		if dl.get("reported", false) and dl.status in GalleryApi.ACTIVE_DOWNLOAD and not reported.has(dl.task_id):
-			dl.status = "cancelled"
-			dl.message = ""
-			download_changed.emit(base_id)
+			_end(base_id, "cancelled")
 
 
 # MARK: Send to Godot downloads
