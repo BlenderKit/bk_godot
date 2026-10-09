@@ -1,15 +1,11 @@
 @tool
 extends EditorPlugin
+## The Blendkit plugin: settings, logging and the main screen tab. The Client
+## connection is ClientConnection, the tab is the gallery.
 
 signal model_format_changed
-## The connection state changed, or a request failed or recovered.
-signal connection_changed
-## Each /godot/report response with its tasks, also when there are none.
-signal tasks_reported(tasks: Array)
 
 const SERVER = "https://blendkit.com"
-const CLIENT_API_VERSION = "v1.13"
-const CLIENT_PORTS = ["62485", "65425", "55428", "49452", "35452", "25152", "5152", "1234"]
 # [value, label] pairs for the settings dialog
 const MODEL_FORMATS = [["blend", "Blender original (.blend)"], ["gltf_godot", "glTF (.glb) when available"]]
 const RESOLUTIONS = [["", "Auto"], ["ORIGINAL", "Original"], ["resolution_4K", "4K"], ["resolution_2K", "2K"], ["resolution_1K", "1K"], ["resolution_0_5K", "0.5K"]]
@@ -27,24 +23,13 @@ const OLD_SETTINGS = {"blendkit/model_format": SETTING_MODEL_FORMAT, "blendkit/r
 const RESOLUTION_AUTO = "auto"
 const DOCS_URL = "https://github.com/BlenderKit/bk_godot"
 const ISSUES_URL = "https://github.com/BlenderKit/bk_godot/issues"
-const WAIT_OK: float = 0.8
-const WAIT_EXPLORING: float = 0.2
-const WAIT_STARTING: float = 1
-const WAIT_STARTING_SLOW: float = 3
-const STARTING_FAST_PROBES: int = 5
-const STARTING_TIMEOUT: int = 30000
-const REQUEST_TIMEOUT: int = 3000
-# minimum process frames before a request can be considered timed out
-# (guards against false timeouts when the main loop is suspended);
-# non-threaded HTTPRequest polls once per frame and a request needs
-# several polls to connect, send and read the response
-const REQUEST_TIMEOUT_MIN_FRAMES: int = 10
-const MAX_FAILED_REQUESTS: int = 3
-# Values of these keys never go to the Output, e.g. the tokens in login tasks.
-const SECRET_KEYS = ["access_token", "refresh_token", "api_key", "code_verifier"]
-# Client versions of the supported API series, e.g. "1.13.6" for v1.13.
-static var _client_version_regex := RegEx.create_from_string("^" + CLIENT_API_VERSION.substr(1).replace(".", "\\.") + "\\.[0-9]+$")
-static var _digits_regex := RegEx.create_from_string("\\d+")
+
+const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")
+const Auth = preload("res://addons/blendkit/auth.gd")
+const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
+const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const Icons = preload("res://addons/blendkit/ui/icons.gd")
 
 
 enum LogLevel { ERROR, WARNING, INFO, VERBOSE, DEBUG, TRACE }
@@ -94,71 +79,18 @@ func log_trace(msg: String) -> void:
 	bk_log(LogLevel.TRACE, msg)
 
 
-enum State { DISABLED, EXPLORING, STARTING, CONNECTED, FAILED }
-
-static func state_name(s: State) -> String:
-	var name = State.find_key(s)
-	return name if name != null else str(s)
-
-
-static func http_status_name(status: int) -> String:
-	return engine_enum_name("HTTPClient", "Status", status)
-
-
-static func http_result_name(result: int) -> String:
-	return engine_enum_name("HTTPRequest", "Result", result)
-
-
-## Name of an engine enum value without its prefix, e.g. "CANT_CONNECT" for
-## HTTPRequest.RESULT_CANT_CONNECT.
-static func engine_enum_name(engine_class: String, enum_name: String, value: int) -> String:
-	for constant in ClassDB.class_get_enum_constants(engine_class, enum_name):
-		if ClassDB.class_get_integer_constant(engine_class, constant) == value:
-			return constant.substr(constant.find("_") + 1)
-	return str(value)
-
-
-var state: State = State.DISABLED
-var fail_reason: String = ""
 var client_enabled := true
-
 var download_dir: String = "res://bk_assets/"
 var absolute_download_path: String
 var model_format: String = "blend"
 var resolution: String = ""
-var port: String = CLIENT_PORTS[0]
 # Port to start the Client on when none is running
-var preferred_port: String = CLIENT_PORTS[0]
-var taken_ports: Array[String] = []
-var failed_requests: int = 0
-# Poll faster while someone waits for task reports, see set_fast_poll().
-var fast_poll := false
-var request_start_time: int = 0
-var request_start_frame: int = 0
-var starting_since: int = 0
-var http_request: HTTPRequest
-var unsubscribe_http_request: HTTPRequest
-var timer: Timer
-
-# paths
-var client_data_dir: String
-var client_version: String
-var connected_client_version: String = ""
-var client_base_dir: String
-var client_bin_name: String
-var client_bin_path: String
+var preferred_port: String = ClientConnection.CLIENT_PORTS[0]
 var addon_version: String
 
-# GUI
-const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")
-const Auth = preload("res://addons/blendkit/auth.gd")
-const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
-# Monochrome editor tab icon, drawn in #e0e0e0 like the built-in editor icons.
-const ICON_PATH = "res://addons/blendkit/logo/blendkit-icon.svg"
-const LOGO_PATH = "res://addons/blendkit/logo/blendkit-logo-hexa_pure.svg"
-const LOGO_SVG_SIZE = 320.0
-var gallery: Control
+var connection: ClientConnection
 var auth: Auth
+var gallery: Control
 var plugin_icon: Texture2D
 var plugin_icon_key: String
 
@@ -166,23 +98,13 @@ var plugin_icon_key: String
 func _enter_tree() -> void:
 	init_settings()
 	log_info("Plugin enabled")
-	init_paths()
+	absolute_download_path = ProjectSettings.globalize_path(download_dir)
 	log_info("Download path: %s" % absolute_download_path)
-	log_verbose("Client data dir: %s" % client_data_dir)
+	log_verbose("Client data dir: %s" % ClientBinary.get_client_data_dir())
 
-	http_request = HTTPRequest.new()
-	add_child(http_request)
-	http_request.request_completed.connect(on_request_completed)
-
-	unsubscribe_http_request = HTTPRequest.new()
-	add_child(unsubscribe_http_request)
-	unsubscribe_http_request.request_completed.connect(on_unsubscribe_completed)
-
-	timer = Timer.new()
-	timer.one_shot = false
-	timer.autostart = false
-	add_child(timer)
-	timer.timeout.connect(on_timer_timeout)
+	connection = ClientConnection.new(self)
+	add_child(connection)
+	connection.tasks_reported.connect(_on_tasks_reported)
 
 	auth = Auth.new()
 	auth.plugin = self
@@ -192,7 +114,7 @@ func _enter_tree() -> void:
 	ProjectSettings.settings_changed.connect(load_settings)
 	EditorInterface.get_editor_settings().settings_changed.connect(load_settings)
 	if client_enabled:
-		enter_state(State.EXPLORING)
+		connection.start()
 
 
 # No unsubscribe here: on editor shutdown the request never reaches the
@@ -227,393 +149,29 @@ func _get_plugin_name() -> String:
 # light/dark icon colors.
 func _get_plugin_icon() -> Texture2D:
 	var scale := EditorInterface.get_editor_scale()
-	var key := "%s %s" % [scale, is_dark_icon_theme()]
+	var key := "%s %s" % [scale, Icons.is_dark_icon_theme()]
 	if plugin_icon and plugin_icon_key == key:
 		return plugin_icon
-	plugin_icon = render_svg(ICON_PATH, scale, true)
+	plugin_icon = Icons.render_svg(Icons.ICON_PATH, scale, true)
 	plugin_icon_key = key
 	return plugin_icon
 
 
-## Renders the SVG at [param scale] times its size, e.g. the editor scale for
-## a 16 px icon, so it stays crisp. Monochrome icons turn dark on light themes.
-static func render_svg(path: String, scale: float, monochrome := false) -> Texture2D:
-	var svg := FileAccess.get_file_as_string(path)
-	if monochrome and not is_dark_icon_theme():
-		# Same conversion as Godot does for its own icons on light themes.
-		svg = svg.replace("#e0e0e0", "#5a5a5a")
-	var image := Image.new()
-	if svg.is_empty() or image.load_svg_from_string(svg, scale) != OK:
-		return null
-	return ImageTexture.create_from_image(image)
+func init_gallery() -> void:
+	gallery = gallery_scene.instantiate()
+	gallery.plugin = self
+	gallery.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gallery.hide()
+	EditorInterface.get_editor_main_screen().add_child(gallery)
 
 
-## The colored Blendkit logo, [param px] pixels wide.
-static func render_logo(px: float) -> Texture2D:
-	return render_svg(LOGO_PATH, px / LOGO_SVG_SIZE)
+func _on_tasks_reported(tasks: Array) -> void:
+	for task in tasks:
+		if task.get("task_type") == "asset_download":
+			log_download_task(task)
 
 
-# Mirrors EditorThemeManager::is_dark_icon_and_font(): light icons and fonts
-# on a dark theme.
-static func is_dark_icon_theme() -> bool:
-	var settings := EditorInterface.get_editor_settings()
-	match settings.get_setting("interface/theme/icon_and_font_color"):
-		1: return false # dark icons
-		2: return true # light icons
-	var base_color: Color = settings.get_setting("interface/theme/base_color")
-	return base_color.get_luminance() < 0.5
-
-
-func fail(reason: String) -> void:
-	fail_reason = reason
-	enter_state(State.FAILED)
-
-
-func enter_state(new_state: State) -> void:
-	# Centralized state transition code
-	var prev_state := state
-	state = new_state
-	failed_requests = 0
-	match new_state:
-		State.DISABLED, State.FAILED:
-			if prev_state == State.CONNECTED:
-				send_unsubscribe()
-			timer.stop()
-			http_request.cancel_request()
-			if new_state == State.FAILED:
-				log_error("Client failed: %s. Please consider reporting this with your Output." % fail_reason)
-			else:
-				log_info("Disabled")
-			auth.on_client_lost()
-		State.EXPLORING:
-			port = CLIENT_PORTS[0]
-			taken_ports.clear()
-			timer.wait_time = WAIT_EXPLORING
-			timer.start()
-			log_info("Searching for running Client...")
-		State.STARTING:
-			starting_since = Time.get_ticks_msec()
-			timer.wait_time = WAIT_STARTING
-			timer.start()
-			start_client(port)
-		State.CONNECTED:
-			timer.wait_time = WAIT_OK
-			timer.start()
-			update_poll_rate()
-			if connected_client_version:
-				log_info("Connected to Client v%s on port %s" % [connected_client_version, port])
-			else:
-				log_info("Connected to Client on port %s" % port)
-			auth.on_connected()
-
-	connection_changed.emit()
-
-
-## A copy of the JSON value with the SECRET_KEYS values replaced.
-static func redact(value: Variant) -> Variant:
-	if value is Dictionary:
-		var result := {}
-		for key in value:
-			result[key] = "<redacted>" if str(key) in SECRET_KEYS and value[key] else redact(value[key])
-		return result
-	if value is Array:
-		return value.map(redact)
-	return value
-
-
-func is_client_connected() -> bool:
-	return state == State.CONNECTED
-
-
-func status_text() -> String:
-	match state:
-		State.DISABLED:
-			return "Disabled"
-		State.EXPLORING:
-			return "Looking for Client…"
-		State.STARTING:
-			var starting_elapsed := (Time.get_ticks_msec() - starting_since) / 1000
-			return "Starting (%d / %d s)…" % [starting_elapsed, STARTING_TIMEOUT / 1000]
-		State.CONNECTED:
-			if failed_requests > 0:
-				return "Reconnecting (#%s)…" % failed_requests
-			return "Connected (port %s)" % port
-		State.FAILED:
-			return "Failed (%s)" % fail_reason
-	return state_name(state)
-
-
-func get_state_icon() -> Texture2D:
-	var icon_name: String
-	match state:
-		State.DISABLED: icon_name = "NodeDisabled"
-		State.EXPLORING: icon_name = "Search"
-		State.STARTING: icon_name = "Timer"
-		State.CONNECTED: icon_name = "StatusSuccess"
-		State.FAILED: icon_name = "StatusError"
-		_: return null
-	return EditorInterface.get_editor_theme().get_icon(icon_name, "EditorIcons")
-
-
-func start_client(client_port: String) -> void:
-	# look for client binaries again in case they were added
-	find_packed_client()
-	if not FileAccess.file_exists(client_bin_path):
-		log_error("Client binary not found. The plugin cannot work without the Client :(")
-		log_debug("Expected Client binary path: %s" % client_bin_path)
-		fail("Client binary not found")
-		return
-
-	DirAccess.make_dir_recursive_absolute(client_data_dir) # so the log's directory exists
-	install_shared_client()
-	var log_path = get_client_log_path(client_port)
-	var godot_pid = str(OS.get_process_id())
-	var client_pid: int = 0
-	var command_str: String = ""
-
-	log_info("Starting Client v%s on port %s" % [client_version, client_port])
-	# Godot's OS.create_process(), OS.execute() and similar does not support redirecting pipe to file, so we do it via shells
-
-	if OS.has_feature("windows"):
-		var win_log_path = log_path.replace("/", "\\")
-		command_str = 'start /B "" "%s" -port %s -server %s -software Godot -pid %s > "%s" 2>&1' % [client_bin_path, client_port, SERVER, godot_pid, win_log_path]
-		client_pid = OS.create_process("cmd.exe", ["/C", command_str])
-	elif OS.has_feature("macos") or OS.has_feature("linux"):
-		# The executable bit may be lost on extraction (e.g. when installed via the Godot Asset Store), so ensure it is set before launching
-		command_str = 'chmod u+x "$1" && exec "$1" -port "$2" -server "$3" -software Godot -pid "$4" > "$5" 2>&1'
-		# Positional arguments keep spaces and shell metacharacters literal.
-		client_pid = OS.create_process("/bin/sh", ["-c", command_str, "bk_client", client_bin_path, client_port, SERVER, godot_pid, log_path])
-	else:
-		log_error("Could not start client: Unsupported OS. Only Windows, MacOS and Linux are supported.")
-		fail("unsupported OS")
-		return
-
-	if client_pid <= 0:
-		log_error("Failed to start the Blendkit Client.")
-		log_debug("Failed command: %s" % command_str)
-		fail("client start failed")
-		return
-
-
-func on_timer_timeout() -> void:
-	if state in [State.FAILED, State.DISABLED]:
-		log_warning("Timer fired in %s state - shouldn't happen" % state_name(state))
-		return
-
-	var http_client_status := http_request.get_http_client_status()
-	var prev_request_failed := false
-	if http_client_status != HTTPClient.STATUS_DISCONNECTED:
-		log_trace("HTTP client: %s" % http_status_name(http_client_status))
-
-	match http_client_status:
-		HTTPClient.STATUS_CONNECTING:
-			# Probably no-one listening on that port
-			log_debug("CONNECTING for too long on port %s" % port)
-			prev_request_failed = true
-		HTTPClient.STATUS_CONNECTED, HTTPClient.STATUS_BODY, HTTPClient.STATUS_REQUESTING:
-			# Waiting for response - check timeout
-			var elapsed := Time.get_ticks_msec() - request_start_time
-			var frames_elapsed := Engine.get_process_frames() - request_start_frame
-			if elapsed >= REQUEST_TIMEOUT:
-				if frames_elapsed < REQUEST_TIMEOUT_MIN_FRAMES:
-					# Wall-clock time passed but the request had (almost) no frames
-					# to make progress - the main loop was suspended, e.g. by the
-					# compositor hiding the window. Give it a frame to poll the
-					# response that most likely already arrived.
-					log_debug("Main loop suspended for %d ms (%d frames) - postponing request timeout" % [elapsed, frames_elapsed])
-					return
-				log_warning("Request timeout in %s after %d ms (%d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
-				prev_request_failed = true
-			else:
-				log_debug("Waiting in %s (%d ms, %d frames)" % [http_status_name(http_client_status), elapsed, frames_elapsed])
-				return
-		HTTPClient.STATUS_DISCONNECTED:
-			# Ready to request
-			pass
-		_:
-			# Other states are unexpected errors
-			prev_request_failed = true
-			log_warning("HTTP client: %s" % http_status_name(http_client_status))
-
-	if prev_request_failed:
-		log_trace("HTTP request: cancelling request after client fail")
-		http_request.cancel_request()
-		request_failed()
-		if state in [State.FAILED, State.DISABLED]:
-			return
-
-	if state == State.EXPLORING:
-		log_verbose("Exploring port %s..." % port)
-
-	var url := client_url("godot/report")
-	var headers = ["Content-Type: application/json"]
-	var data = {
-		"name": "Godot",
-		"appID": OS.get_process_id(),
-		"version": get_godot_version(),
-		"addonVersion": get_addon_version(),
-		# Send to Godot downloads there, see GalleryApi.STAGING_DIR.
-		"assetsPath": GalleryApi.staging_path(absolute_download_path),
-		"projectName": ProjectSettings.get_setting("application/config/name"),
-		"modelFormat": model_format,
-		"resolution": resolution,
-	}
-	var json = JSON.stringify(data)
-	request_start_time = Time.get_ticks_msec()
-	request_start_frame = Engine.get_process_frames()
-	log_trace("POST %s  %s" % [url, json])
-	var error = http_request.request(url, headers, HTTPClient.METHOD_POST, json)
-	if error != OK:
-		log_error("Error sending request to %s, error=%s" % [url, error])
-		http_request.cancel_request()
-		request_failed()
-
-
-func on_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	var elapsed := Time.get_ticks_msec() - request_start_time
-	if result != OK:
-		log_debug("Request %s, response_code=%d, state=%s, port=%s" % [http_result_name(result), response_code, state_name(state), port])
-	if state in [State.DISABLED, State.FAILED]:
-		log_warning("Ignoring stale request completion in %s state" % state_name(state))
-		return
-
-	var body_text: String = body.get_string_from_utf8()
-	var data = JSON.parse_string(body_text) if response_code == 200 else null
-	if log_level >= LogLevel.TRACE:
-		var logged := JSON.stringify(redact(data)) if data is Dictionary else body_text
-		log_trace("HTTP response (%d ms): %s" % [elapsed, logged])
-
-	# Success - only a 200 with a valid JSON body counts as the Client
-	if response_code == 200:
-		if typeof(data) == TYPE_DICTIONARY:
-			if state != State.CONNECTED:
-				var found_version := str(data.get("client_version", ""))
-				if not is_compatible_client(found_version, client_version):
-					var found_label := found_version if found_version else "(unknown)"
-					log_info("Skipping Client v%s on port %s: incompatible with required v%s" % [found_label, port, client_version])
-					mark_port_taken()
-					request_failed()
-					return
-				connected_client_version = found_version
-				enter_state(State.CONNECTED)
-			elif failed_requests > 0:
-				failed_requests = 0
-				connection_changed.emit()
-
-			var msg = data.get("message", "")
-			if msg:
-				var level := client_message_log_level(int(data.get("message_level", 10)))
-				bk_log(level, "Client: %s" % msg)
-			var tasks = data.get("tasks", [])
-			handle_tasks(tasks if tasks is Array else [])
-			return
-		log_warning("Got 200 on port %s but body is not a valid JSON object - not the Client?" % port)
-
-	if state == State.EXPLORING:
-		# Any HTTP response means the port is occupied, including a different API series.
-		if response_code > 0:
-			mark_port_taken()
-		log_verbose("Client not found on port %s" % port)
-	elif response_code != 200:
-		log_warning("Request on port %s failed (response_code=%d)" % [port, response_code])
-
-	request_failed()
-
-
-func mark_port_taken() -> void:
-	if not taken_ports.has(port):
-		taken_ports.append(port)
-
-
-func request_failed() -> void:
-	failed_requests += 1
-
-	if state == State.EXPLORING:
-		var port_index = CLIENT_PORTS.find(port)
-		port_index += 1
-		if port_index < CLIENT_PORTS.size():
-			port = CLIENT_PORTS[port_index]
-		else:
-			port = choose_start_port()
-			log_verbose("No running Client found")
-			enter_state(State.STARTING)
-
-	elif state == State.STARTING:
-		var starting_elapsed := Time.get_ticks_msec() - starting_since
-		if starting_elapsed >= STARTING_TIMEOUT:
-			log_error("Failed to connect to Client on port %s after %s tries in %d ms." % [port, failed_requests, starting_elapsed])
-			fail("connection timeout")
-			return
-		if failed_requests == STARTING_FAST_PROBES:
-			log_verbose("Client not up after %d fast probes, slowing probes to %ss" % [STARTING_FAST_PROBES, WAIT_STARTING_SLOW])
-			timer.wait_time = WAIT_STARTING_SLOW
-			timer.start()
-		connection_changed.emit()
-
-	elif state == State.CONNECTED:
-		if failed_requests >= MAX_FAILED_REQUESTS:
-			log_warning("Lost connection to Blendkit Client on port %s." % port)
-			enter_state(State.EXPLORING)
-			return
-		connection_changed.emit()
-
-	else:
-		log_error("Unexpected state: %s" % state_name(state))
-		fail("unexpected state")
-
-
-## Poll faster while waiting for search results, thumbnails or downloads,
-## which all arrive through /godot/report.
-func set_fast_poll(fast: bool) -> void:
-	fast_poll = fast
-	update_poll_rate()
-
-
-func update_poll_rate() -> void:
-	if state != State.CONNECTED:
-		return
-	var wait := WAIT_EXPLORING if fast_poll else WAIT_OK
-	if is_equal_approx(timer.wait_time, wait):
-		return
-	timer.wait_time = wait
-	if timer.time_left > wait:
-		timer.start()
-
-
-func choose_start_port() -> String:
-	# The preferred port is the desired port, but discovery may have found an
-	# unusable Client already running on it. In that case start on another known
-	# port that we did not find occupied.
-	var desired := preferred_port
-	if not taken_ports.has(desired):
-		return desired
-
-	log_info("Desired port %s is occupied by an incompatible Client, choosing another port..." % desired)
-	for candidate in CLIENT_PORTS:
-		if not taken_ports.has(candidate):
-			log_info("Selected port %s for the Client" % candidate)
-			return candidate
-
-	log_warning("All known ports are occupied, falling back to %s" % desired)
-	return desired
-
-
-func send_unsubscribe() -> void:
-	var url := client_url("addons/unsubscribe")
-	var headers = ["Content-Type: application/json"]
-	var data = JSON.stringify({"app_id": OS.get_process_id()})
-	log_info("Disconnecting from Client on port %s" % port)
-	var error = unsubscribe_http_request.request(url, headers, HTTPClient.METHOD_POST, data)
-	if error != OK:
-		log_warning("Failed to send unsubscribe request: %s" % error)
-
-
-func on_unsubscribe_completed(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
-	if result != OK or response_code != 200:
-		log_warning("Unsubscribe request failed on port %s: result=%s, response_code=%d" % [port, http_result_name(result), response_code])
-	else:
-		log_verbose("Unsubscribed from Client on port %s" % port)
-
+# MARK: settings
 
 func set_client_enabled(enabled: bool) -> void:
 	if enabled == client_enabled:
@@ -621,9 +179,9 @@ func set_client_enabled(enabled: bool) -> void:
 	client_enabled = enabled
 	EditorInterface.get_editor_settings().set_setting(SETTING_CLIENT_ENABLED, enabled)
 	if enabled:
-		enter_state(State.EXPLORING)
+		connection.start()
 	else:
-		enter_state(State.DISABLED)
+		connection.stop()
 
 
 func restart_client() -> void:
@@ -670,8 +228,6 @@ func set_resolution(new_resolution: String) -> void:
 	save_project_setting(SETTING_RESOLUTION, RESOLUTION_AUTO if resolution.is_empty() else resolution)
 
 
-# MARK: settings
-
 ## Registers the settings with Godot and reads them, without side effects
 ## so it can run before the plugin is set up.
 func init_settings() -> void:
@@ -681,7 +237,7 @@ func init_settings() -> void:
 	add_project_setting(SETTING_RESOLUTION, RESOLUTION_AUTO, PROPERTY_HINT_ENUM,
 		",".join(RESOLUTIONS.map(func(r): return r[0] if r[0] else RESOLUTION_AUTO)))
 	add_editor_setting(SETTING_CLIENT_ENABLED, client_enabled)
-	add_editor_setting(SETTING_PORT, preferred_port, PROPERTY_HINT_ENUM, ",".join(CLIENT_PORTS))
+	add_editor_setting(SETTING_PORT, preferred_port, PROPERTY_HINT_ENUM, ",".join(ClientConnection.CLIENT_PORTS))
 	add_editor_setting(SETTING_LOG_LEVEL, log_level, PROPERTY_HINT_ENUM, ",".join(LogLevel.keys()))
 	# After registering, so migrated defaults aren't written to project.godot.
 	for old in OLD_SETTINGS:
@@ -738,73 +294,6 @@ static func save_project_setting(key: String, value: Variant) -> void:
 	ProjectSettings.save()
 
 
-func init_paths() -> void:
-	absolute_download_path = ProjectSettings.globalize_path(download_dir)
-	client_bin_name = get_client_binary_name()
-	client_data_dir = get_client_data_dir()
-	client_base_dir = get_script().resource_path.get_base_dir().path_join("client")
-	find_packed_client()
-
-
-func find_packed_client() -> void:
-	client_version = ""
-	var marker := client_base_dir.path_join("RESOLVED_VERSION")
-	if FileAccess.file_exists(marker):
-		var resolved := FileAccess.get_file_as_string(marker).strip_edges()
-		if resolved.begins_with("v") and is_valid_client_version(resolved.substr(1)):
-			client_version = resolved.substr(1)
-		else:
-			log_error("Invalid Client RESOLVED_VERSION: %s" % resolved)
-	else:
-		client_version = pick_highest_version(list_client_versions(client_base_dir))
-	client_bin_path = get_packed_client_binary_path()
-
-
-func install_shared_client() -> void:
-	# Run outside the project so a running executable does not block plugin updates.
-	var target_dir := client_data_dir.path_join("bin").path_join("v" + client_version)
-	var target := target_dir.path_join(client_bin_name)
-	if FileAccess.file_exists(target) and FileAccess.get_sha256(target) == FileAccess.get_sha256(client_bin_path):
-		client_bin_path = target
-		return
-	if DirAccess.make_dir_recursive_absolute(target_dir) == OK:
-		# Stage per process before replacing an outdated shared copy.
-		var temporary := target + "." + str(OS.get_process_id()) + ".tmp"
-		if DirAccess.copy_absolute(client_bin_path, temporary) == OK:
-			if DirAccess.rename_absolute(temporary, target) == OK:
-				client_bin_path = target
-				return
-			DirAccess.remove_absolute(temporary)
-	log_warning("Shared Client installation unavailable; running bundled executable")
-
-
-static func is_valid_client_version(version: String) -> bool:
-	return _client_version_regex.search(version) != null
-
-
-static func is_compatible_client(found: String, required: String) -> bool:
-	# Require the supported API series and at least the bundled patch.
-	return is_valid_client_version(found) and not version_lt(found, required)
-
-
-func init_gallery() -> void:
-	gallery = gallery_scene.instantiate()
-	gallery.plugin = self
-	gallery.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	gallery.hide()
-	EditorInterface.get_editor_main_screen().add_child(gallery)
-
-
-func handle_tasks(tasks: Array) -> void:
-	for task in tasks:
-		match task.get("task_type"):
-			"asset_download":
-				log_download_task(task)
-			"login", "oauth2/logout", "profiles/get_user_profile", "profiles/fetch_gravatar_image":
-				auth.handle_task(task)
-	tasks_reported.emit(tasks)
-
-
 # Failed downloads from Send to Godot on blendkit.com show only here.
 func log_download_task(task: Dictionary) -> void:
 	match task.get("status"):
@@ -824,103 +313,3 @@ func get_addon_version() -> String:
 		var err := config.load("res://addons/blendkit/plugin.cfg")
 		addon_version = str(config.get_value("plugin", "version", "unknown")) if err == OK else "unknown"
 	return addon_version
-
-
-func get_godot_version() -> String:
-	var info := Engine.get_version_info()
-	return "%d.%d.%d" % [info.major, info.minor, info.patch]
-
-
-func client_url(endpoint: String) -> String:
-	return "http://127.0.0.1:%s/%s/%s" % [port, CLIENT_API_VERSION, endpoint]
-
-
-## Fields most Client requests start with.
-func client_data(api_key: String = "") -> Dictionary:
-	return {
-		"app_id": OS.get_process_id(),
-		"api_key": api_key,
-		"addon_version": get_addon_version(),
-		"platform_version": OS.get_name(),
-	}
-
-
-func get_packed_client_binary_path() -> String:
-	var bin_path = client_base_dir.path_join("v" + client_version).path_join(client_bin_name)
-	return ProjectSettings.globalize_path(bin_path)
-
-
-func get_client_log_path(log_port: String) -> String:
-	if log_port == CLIENT_PORTS[0]:
-		return client_data_dir.path_join("default.log")
-	return client_data_dir.path_join("%s.log" % log_port)
-
-
-static func get_client_data_dir() -> String:
-	var home_path := ""
-	if OS.has_feature("windows"):
-		home_path = OS.get_environment("USERPROFILE")
-	else:
-		home_path = OS.get_environment("HOME")
-	return home_path.path_join("blenderkit_data").path_join("client")
-
-
-static func get_client_binary_name() -> String:
-	var arch = Engine.get_architecture_name()
-	if OS.has_feature("windows"):
-		return "bk_client-windows-" + arch + ".exe"
-	if OS.has_feature("macos"):
-		return "bk_client-macos-" + arch
-	if OS.has_feature("linux"):
-		return "bk_client-linux-" + arch
-	return ""
-
-
-static func list_client_versions(base_dir: String) -> Array:
-	# Collect the version string of every "vX.Y.Z" client folder in base_dir.
-	var versions: Array[String] = []
-	var dir = DirAccess.open(base_dir)
-	if not dir:
-		return versions
-
-	dir.list_dir_begin()
-	var file_name = dir.get_next()
-	while file_name != "":
-		if dir.current_is_dir() and file_name.begins_with("v") and is_valid_client_version(file_name.substr(1)) and FileAccess.file_exists(base_dir.path_join(file_name).path_join(get_client_binary_name())):
-			versions.append(file_name.substr(1)) # Remove 'v'
-		file_name = dir.get_next()
-
-	dir.list_dir_end()
-	return versions
-
-
-static func pick_highest_version(versions: Array) -> String:
-	# Return the highest version using the tolerant comparator, or "" if none.
-	var highest := ""
-	for v in versions:
-		if highest == "" or version_lt(highest, v):
-			highest = v
-	return highest
-
-
-static func parse_version_parts(version: String) -> Array:
-	# Extract the numeric components of a version string, e.g.
-	# "1.9.1-260127" -> [1, 9, 1, 260127]. Mirrors the Client's
-	# tolerant comparator (BlenderKit/version_compare.py).
-	var parts: Array[int] = []
-	for m in _digits_regex.search_all(version):
-		parts.append(int(m.get_string()))
-	return parts
-
-
-static func version_lt(a: String, b: String) -> bool:
-	# True if version `a` is strictly older than version `b`, comparing
-	# numeric parts left to right. A missing/shorter prefix sorts lower,
-	# so an empty/unparseable version counts as older than any real one.
-	var pa := parse_version_parts(a)
-	var pb := parse_version_parts(b)
-	var n := mini(pa.size(), pb.size())
-	for i in n:
-		if pa[i] != pb[i]:
-			return pa[i] < pb[i]
-	return pa.size() < pb.size()

@@ -15,7 +15,7 @@ import pytest
 # Project root (where project.godot lives) - tests/ sits directly under it.
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Logged by plugin.gd when the addon connects to the Blendkit Client.
+# Logged by client_connection.gd when the addon connects to the Blendkit Client.
 CLIENT_CONNECTED_RE = re.compile(
     r"Connected to Client(?: v(?P<version>[\d.]+))? on port (?P<port>\d+)"
 )

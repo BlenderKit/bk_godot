@@ -3,6 +3,8 @@ extends VBoxContainer
 ## The Blendkit search of the gallery: filters, paged results and their
 ## thumbnails. Works like the Asset Store.
 
+const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
+const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
@@ -136,10 +138,10 @@ func on_disconnected() -> void:
 func update_connection_message() -> void:
 	if not _pending_search:
 		return
-	if plugin.state == plugin.State.DISABLED:
+	if plugin.connection.state == ClientConnection.State.DISABLED:
 		_show_message("Blendkit Client is disabled.", "Enable", plugin.set_client_enabled.bind(true))
-	elif plugin.state == plugin.State.FAILED:
-		_show_message("Blendkit Client failed: %s" % plugin.fail_reason, "Retry", plugin.restart_client)
+	elif plugin.connection.state == ClientConnection.State.FAILED:
+		_show_message("Blendkit Client failed: %s" % plugin.connection.fail_reason, "Retry", plugin.restart_client)
 	else:
 		_show_message("Connecting to Blendkit Client…")
 
@@ -148,7 +150,7 @@ func update_connection_message() -> void:
 
 func request_search(new_page: int = 1, force: bool = false) -> void:
 	page = new_page
-	if not plugin.is_client_connected():
+	if not plugin.connection.is_client_connected():
 		_pending_search = true
 		gallery.tasks.forget(SEARCH_TASK)
 		gallery.set_busy(false)
@@ -174,7 +176,7 @@ func _run_search(force: bool = true) -> void:
 	message_box.hide()
 	gallery.set_busy(true)
 
-	var tempdir := GalleryApi.search_temp_dir(plugin.client_data_dir, asset_type)
+	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
 	var post := func() -> Array:
 		return await GalleryApi.search(self, plugin, url, asset_type, tempdir, PAGE_SIZE)
 	var response: Array = await gallery.tasks.start(SEARCH_TASK, post, _on_search_task)
@@ -421,7 +423,7 @@ func fill_categories() -> void:
 
 
 func _fetch_categories() -> void:
-	if _fetching_categories or not plugin.is_client_connected() or not gallery.categories.is_empty():
+	if _fetching_categories or not plugin.connection.is_client_connected() or not gallery.categories.is_empty():
 		return
 	_fetching_categories = true
 	var categories: Array = await GalleryApi.fetch_categories(self, plugin)

@@ -86,7 +86,7 @@ func start(asset: Dictionary, file_type: String) -> void:
 	var dl := {"task_id": "", "status": "posting", "progress": 0, "message": "Starting download",
 		"file_type": file_type, "file_path": "", "asset": asset}
 	gallery_downloads[base_id] = dl
-	if not _plugin.is_client_connected():
+	if not _plugin.connection.is_client_connected():
 		_end(base_id, "error", "Blendkit Client is not connected")
 		return
 	download_changed.emit(base_id)

@@ -117,12 +117,12 @@ def github_request(url):
 
 def client_api_version():
     """Use the runtime's supported API series as the build pin."""
-    with open(os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR, "plugin.gd")) as f:
+    with open(os.path.join(PLUGIN_SRC_DIR, PLUGIN_DIR, "client_binary.gd")) as f:
         match = re.search(
             r'^const CLIENT_API_VERSION = "(v\d+\.\d+)"', f.read(), re.MULTILINE
         )
     if not match:
-        raise ValueError("Missing CLIENT_API_VERSION in plugin.gd")
+        raise ValueError("Missing CLIENT_API_VERSION in client_binary.gd")
     return match[1]
 
 

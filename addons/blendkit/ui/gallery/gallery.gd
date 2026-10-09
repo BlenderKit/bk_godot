@@ -6,11 +6,12 @@ extends PanelContainer
 ## project. The parts are the search (SearchView on %Body), the project
 ## assets (ProjectView on %ProjectBody) and the Downloads model.
 ##
-## The plugin owns the Client connection. The gallery follows its
-## connection_changed and tasks_reported signals, and asks it to poll faster
+## The plugin owns the Client connection (ClientConnection). The gallery
+## follows its changed and tasks_reported signals, and asks it to poll faster
 ## while waiting for task reports.
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const Icons = preload("res://addons/blendkit/ui/icons.gd")
 const GalleryItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const Downloads = preload("res://addons/blendkit/ui/gallery/downloads.gd")
@@ -76,7 +77,7 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	if "scroll_hint_mode" in scroll: # Godot 4.6+
 		scroll.set("scroll_hint_mode", 2) # SCROLL_HINT_MODE_TOP_AND_LEFT
-	spinner.texture = plugin.render_logo(SPINNER_SIZE * edscale)
+	spinner.texture = Icons.render_logo(SPINNER_SIZE * edscale)
 	spinner.custom_minimum_size = Vector2.ONE * SPINNER_SIZE * edscale
 	spinner.resized.connect(func(): spinner.pivot_offset = spinner.size / 2)
 
@@ -121,8 +122,8 @@ func _ready() -> void:
 	_updating_theme = true
 	_update_theme()
 	_updating_theme = false
-	plugin.connection_changed.connect(_on_connection_changed)
-	plugin.tasks_reported.connect(_on_tasks_reported)
+	plugin.connection.changed.connect(_on_connection_changed)
+	plugin.connection.tasks_reported.connect(_on_tasks_reported)
 	_on_connection_changed()
 
 
@@ -174,7 +175,7 @@ func _update_theme() -> void:
 
 func _on_connection_changed() -> void:
 	menu_button.refresh()
-	var connected: bool = plugin.is_client_connected()
+	var connected: bool = plugin.connection.is_client_connected()
 	if connected == _was_connected:
 		if not connected:
 			search.update_connection_message()
@@ -198,7 +199,7 @@ func has_pending_work() -> bool:
 
 
 func _update_poll_rate() -> void:
-	plugin.set_fast_poll(has_pending_work())
+	plugin.connection.set_fast_poll(has_pending_work())
 
 
 func _on_tasks_reported(reported_tasks: Array) -> void:

@@ -410,7 +410,7 @@ static func task_id_from(response: Dictionary) -> Array:
 ## under [param parent], which they don't outlive.
 static func search(parent: Node, plugin: EditorPlugin, url_query: String, asset_type: String, tempdir: String, page_size: int) -> Array:
 	DirAccess.make_dir_recursive_absolute(tempdir)
-	var body: Dictionary = plugin.client_data(plugin.auth.api_key())
+	var body: Dictionary = plugin.connection.client_data(plugin.auth.api_key())
 	body.merge({
 		"asset_type": asset_type,
 		"urlquery": url_query,
@@ -418,12 +418,12 @@ static func search(parent: Node, plugin: EditorPlugin, url_query: String, asset_
 		"page_size": page_size,
 		"scene_uuid": project_scene_uuid(),
 	})
-	return task_id_from(await post_json(parent, plugin.client_url("assets/search"), body))
+	return task_id_from(await post_json(parent, plugin.connection.client_url("assets/search"), body))
 
 
 static func download(parent: Node, plugin: EditorPlugin, asset: Dictionary, file_type: String, abs_download_path: String) -> Array:
 	var api_key: String = plugin.auth.api_key()
-	var body: Dictionary = plugin.client_data(api_key)
+	var body: Dictionary = plugin.connection.client_data(api_key)
 	body.merge({
 		"download_dirs": [type_download_dir(abs_download_path, str(asset.get("assetType", "")))],
 		"resolution": file_type,
@@ -441,20 +441,20 @@ static func download(parent: Node, plugin: EditorPlugin, asset: Dictionary, file
 			"create_asset_library": false,
 		},
 	})
-	return task_id_from(await post_json(parent, plugin.client_url("assets/download"), body))
+	return task_id_from(await post_json(parent, plugin.connection.client_url("assets/download"), body))
 
 
 static func cancel_download(parent: Node, plugin: EditorPlugin, task_id: String) -> Dictionary:
-	var body: Dictionary = plugin.client_data()
+	var body: Dictionary = plugin.connection.client_data()
 	body["task_id"] = task_id
-	return await post_json(parent, plugin.client_url("assets/cancel_download"), body)
+	return await post_json(parent, plugin.connection.client_url("assets/cancel_download"), body)
 
 
 ## Fallback for a missed categories_update task. Returns the category tree
 ## (top-level entries per asset type) or [].
 static func fetch_categories(parent: Node, plugin: EditorPlugin) -> Array:
 	var body := {"url": plugin.SERVER + "/api/v1/categories/", "method": "GET", "headers": {}}
-	var response := await post_json(parent, plugin.client_url("wrappers/blocking_request"), body, 30.0)
+	var response := await post_json(parent, plugin.connection.client_url("wrappers/blocking_request"), body, 30.0)
 	if response.ok and response.data is Dictionary and response.data.get("results") is Array:
 		return response.data.results
 	return []

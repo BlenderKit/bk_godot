@@ -5,7 +5,9 @@ extends Button
 ## the Client status and switch, the account and plan, settings and links.
 
 const Auth = preload("res://addons/blendkit/auth.gd")
+const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const Icons = preload("res://addons/blendkit/ui/icons.gd")
 const SettingsDialog = preload("res://addons/blendkit/ui/settings_dialog.gd")
 
 enum Item {
@@ -89,7 +91,7 @@ func refresh() -> void:
 	var key := str(edscale)
 	if key != _logo_key:
 		_logo_key = key
-		_logo.texture = plugin.render_logo(LOGO_SIZE * edscale)
+		_logo.texture = Icons.render_logo(LOGO_SIZE * edscale)
 	# Bottom right corner of the logo, half outside like a badge.
 	var dot_size := Vector2.ONE * (DOT_RADIUS + 1.5) * 2 * edscale
 	_dot.position = logo_size - dot_size * 0.6
@@ -98,8 +100,8 @@ func refresh() -> void:
 	_dots.texture = get_theme_icon("GuiTabMenuHl", "EditorIcons")
 	_content.add_theme_constant_override("separation", int(4 * edscale))
 	# Only the logo dims, the dot stays readable.
-	_logo.self_modulate.a = 0.5 if plugin.state == plugin.State.DISABLED else 1.0
-	tooltip_text = "Blendkit menu\nClient: %s" % plugin.status_text()
+	_logo.self_modulate.a = 0.5 if plugin.connection.state == ClientConnection.State.DISABLED else 1.0
+	tooltip_text = "Blendkit menu\nClient: %s" % plugin.connection.status_text()
 
 	var style := get_theme_stylebox("normal", "Button")
 	custom_minimum_size = _content.get_combined_minimum_size() + style.get_minimum_size()
@@ -114,11 +116,11 @@ func refresh() -> void:
 
 
 func status_color() -> Color:
-	if plugin.is_client_connected() and plugin.failed_requests == 0:
+	if plugin.connection.is_client_connected() and plugin.connection.failed_requests == 0:
 		return get_theme_color("success_color", "Editor")
-	if plugin.state == plugin.State.FAILED:
+	if plugin.connection.state == ClientConnection.State.FAILED:
 		return get_theme_color("error_color", "Editor")
-	if plugin.state == plugin.State.DISABLED:
+	if plugin.connection.state == ClientConnection.State.DISABLED:
 		return get_theme_color("font_disabled_color", "Editor")
 	# Looking for, starting or reconnecting to the Client
 	return get_theme_color("warning_color", "Editor")
@@ -151,12 +153,12 @@ func _on_toggled(pressed: bool) -> void:
 
 func _fill_menu() -> void:
 	_menu.clear()
-	_menu.add_icon_item(plugin.get_state_icon(), "Client: %s" % plugin.status_text(), Item.STATUS)
+	_menu.add_icon_item(plugin.connection.get_state_icon(), "Client: %s" % plugin.connection.status_text(), Item.STATUS)
 	_menu.set_item_disabled(-1, true)
 	_menu.add_check_item("Enable Blendkit Client", Item.ENABLE)
 	_menu.set_item_checked(-1, plugin.client_enabled)
 	_menu.set_item_tooltip(-1, "The Blendkit Client searches and downloads assets and connects Send to Godot on blendkit.com.")
-	if plugin.state == plugin.State.FAILED:
+	if plugin.connection.state == ClientConnection.State.FAILED:
 		_menu.add_icon_item(get_theme_icon("Reload", "EditorIcons"), "Restart Client", Item.RESTART)
 	_menu.add_separator("Account")
 	_fill_account()
@@ -253,9 +255,9 @@ func _on_id_pressed(id: int) -> void:
 ## Monochrome user icon matching the editor icons, rendered like the
 ## plugin's tab icon. size is in unscaled pixels.
 func _user_icon(size := 16) -> Texture2D:
-	var key := "%s %s %s" % [size, EditorInterface.get_editor_scale(), plugin.is_dark_icon_theme()]
+	var key := "%s %s %s" % [size, EditorInterface.get_editor_scale(), Icons.is_dark_icon_theme()]
 	if not _user_icons.has(key):
-		_user_icons[key] = plugin.render_svg(USER_ICON_PATH, size * EditorInterface.get_editor_scale() / 16.0, true)
+		_user_icons[key] = Icons.render_svg(USER_ICON_PATH, size * EditorInterface.get_editor_scale() / 16.0, true)
 	return _user_icons[key]
 
 

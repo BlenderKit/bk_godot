@@ -3,6 +3,7 @@ extends AcceptDialog
 ## Settings opened from the Blendkit menu. Changes apply right away. They are
 ## also in Godot's Project Settings and Editor Settings under Blendkit.
 
+const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 
 var plugin: EditorPlugin
@@ -58,8 +59,8 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_row("Resolution", _resolution, "Texture resolution for .blend files, also used when glTF is unavailable.")
 
 	_section("Editor", "Saved in your editor settings and applies to all your projects.\nAlso in Editor Settings → Blendkit.")
-	_port = _options(plugin.CLIENT_PORTS)
-	_port.item_selected.connect(func(i): plugin.set_preferred_port(plugin.CLIENT_PORTS[i]))
+	_port = _options(ClientConnection.CLIENT_PORTS)
+	_port.item_selected.connect(func(i): plugin.set_preferred_port(ClientConnection.CLIENT_PORTS[i]))
 	_row("Port", _port, "Port on which the plugin starts the Client when none is running.")
 	_log_level = _options(plugin.LogLevel.keys())
 	_log_level.item_selected.connect(plugin.set_log_level)
@@ -73,7 +74,7 @@ func _load() -> void:
 	_download_dir.text = plugin.download_dir
 	_model_format.select(GalleryApi.option_index(plugin.MODEL_FORMATS, plugin.model_format))
 	_resolution.select(GalleryApi.option_index(plugin.RESOLUTIONS, plugin.resolution))
-	_port.select(maxi(0, plugin.CLIENT_PORTS.find(plugin.preferred_port)))
+	_port.select(maxi(0, ClientConnection.CLIENT_PORTS.find(plugin.preferred_port)))
 	_log_level.select(plugin.log_level)
 
 

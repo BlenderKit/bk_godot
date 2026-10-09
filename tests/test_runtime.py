@@ -12,20 +12,21 @@ def test_client_compatibility_and_discovery(godot_executable, tmp_path):
         """extends SceneTree
 
 func _initialize():
-    var plugin = load("res://addons/blendkit/plugin.gd")
-    assert(plugin.is_compatible_client("1.13.13", "1.13.13"))
-    assert(plugin.is_compatible_client("1.13.23", "1.13.13"))
-    assert(not plugin.is_compatible_client("1.13.9", "1.13.13"))
-    assert(not plugin.is_compatible_client("1.14.0", "1.13.13"))
-    assert(not plugin.is_compatible_client("2.13.0", "1.13.13"))
-    assert(not plugin.is_compatible_client("", "1.13.13"))
-    assert(not plugin.is_valid_client_version("1.13.13/../bad"))
+    var binary_script = load("res://addons/blendkit/client_binary.gd")
+    var connection_script = load("res://addons/blendkit/client_connection.gd")
+    assert(binary_script.is_compatible_client("1.13.13", "1.13.13"))
+    assert(binary_script.is_compatible_client("1.13.23", "1.13.13"))
+    assert(not binary_script.is_compatible_client("1.13.9", "1.13.13"))
+    assert(not binary_script.is_compatible_client("1.14.0", "1.13.13"))
+    assert(not binary_script.is_compatible_client("2.13.0", "1.13.13"))
+    assert(not binary_script.is_compatible_client("", "1.13.13"))
+    assert(not binary_script.is_valid_client_version("1.13.13/../bad"))
     var report = {"tasks": [{"task_type": "login", "result": {"access_token": "a", "refresh_token": "r", "expires_in": 5}}]}
-    var redacted = JSON.stringify(plugin.redact(report))
+    var redacted = JSON.stringify(connection_script.redact(report))
     assert(not redacted.contains('"a"') and not redacted.contains('"r"') and redacted.contains("expires_in"))
     assert(report.tasks[0].result.access_token == "a")
     var base = %s
-    var binary = plugin.get_client_binary_name()
+    var binary = binary_script.get_client_binary_name()
     assert(binary.begins_with("bk_client-"))
     for version in ["v1.13.9", "v1.13.13", "v1.14.0", "v1.13.999", "vgarbage"]:
         var directory = base.path_join(version)
@@ -34,9 +35,9 @@ func _initialize():
             var file = FileAccess.open(directory.path_join(binary), FileAccess.WRITE)
             file.store_string("test")
             file.close()
-    var versions = plugin.list_client_versions(base)
+    var versions = binary_script.list_client_versions(base)
     assert(versions.size() == 2)
-    assert(plugin.pick_highest_version(versions) == "1.13.13")
+    assert(binary_script.pick_highest_version(versions) == "1.13.13")
     print("CLIENT_RUNTIME_CHECKS_PASSED")
     quit()
 """

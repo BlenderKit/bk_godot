@@ -5,6 +5,7 @@ extends VBoxContainer
 ## ProjectAssets. Folders the index doesn't know are looked up on Blendkit
 ## for their name and thumbnail.
 
+const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
@@ -285,7 +286,7 @@ func _queue_lookup(id: String, asset_type: String) -> void:
 ## Look up the next unknown asset folder on Blendkit, one at a time. The
 ## search task also downloads the thumbnail, see add_thumbnail().
 func next_lookup() -> void:
-	if not _lookup_id.is_empty() or _lookup_queue.is_empty() or not gallery.plugin.is_client_connected():
+	if not _lookup_id.is_empty() or _lookup_queue.is_empty() or not gallery.plugin.connection.is_client_connected():
 		return
 	var id: String = _lookup_queue.keys()[0]
 	var asset_type: String = _lookup_queue[id]
@@ -297,7 +298,7 @@ func next_lookup() -> void:
 	_lookup_type = asset_type
 	var plugin: EditorPlugin = gallery.plugin
 	var url := GalleryApi.build_lookup_url(plugin.SERVER, id, plugin.get_addon_version())
-	var tempdir := GalleryApi.search_temp_dir(plugin.client_data_dir, asset_type)
+	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
 	var post := func() -> Array:
 		return await GalleryApi.search(self, plugin, url, asset_type, tempdir, 1)
 	var response: Array = await gallery.tasks.start(LOOKUP_TASK, post, _finish_lookup)

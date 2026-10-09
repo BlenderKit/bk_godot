@@ -264,7 +264,7 @@ the exact version in `addons/blendkit/client/RESOLVED_VERSION`
 - creates a distributable ZIP archive (`./dev.py build-archive`)
 
 Pin an exact supported client release with `./dev.py build --tag vX.Y.Z`.
-The API series is defined once in `plugin.gd` as `CLIENT_API_VERSION`.
+The API series is defined once in `client_binary.gd` as `CLIENT_API_VERSION`.
 
 Use an already downloaded bundle with
 `./dev.py build --client-bundle /path/to/bk_client.zip`. Published Windows binaries

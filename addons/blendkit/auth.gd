@@ -52,6 +52,11 @@ func _ready() -> void:
 	_login_timer.timeout.connect(_on_login_timeout)
 	add_child(_login_timer)
 	_load()
+	plugin.connection.connected.connect(_on_client_connected)
+	plugin.connection.stopped.connect(_on_client_stopped)
+	plugin.connection.tasks_reported.connect(func(tasks: Array):
+		for task in tasks:
+			handle_task(task))
 
 
 func is_logged_in() -> bool:
@@ -70,8 +75,7 @@ func api_key() -> String:
 	return access_token
 
 
-## Called by the plugin when it connects to a Client.
-func on_connected() -> void:
+func _on_client_connected() -> void:
 	if _queued_login >= 0:
 		var signup := _queued_login == 1
 		_queued_login = -1
@@ -88,7 +92,7 @@ func on_connected() -> void:
 ## Log in through the browser. Without a Client connection, turn the Client
 ## on and log in once it connects.
 func login(signup := false) -> void:
-	if plugin.is_client_connected():
+	if plugin.connection.is_client_connected():
 		_start_login(signup)
 		return
 	_queued_login = 1 if signup else 0
@@ -107,8 +111,8 @@ func is_waiting_for_client() -> bool:
 	return login_pending and _queued_login >= 0
 
 
-## Called by the plugin when the Client fails or is turned off.
-func on_client_lost() -> void:
+## The Client failed or was turned off.
+func _on_client_stopped() -> void:
 	if is_waiting_for_client():
 		_login_failed("Blendkit Client is not connected.")
 
@@ -119,16 +123,16 @@ func _start_login(signup: bool) -> void:
 	login_pending = true
 	login_error = ""
 	changed.emit()
-	var body: Dictionary = plugin.client_data()
+	var body: Dictionary = plugin.connection.client_data()
 	body["code_verifier"] = verifier
 	body["state"] = state
-	var response := await GalleryApi.post_json(self, plugin.client_url("oauth2/verification_data"), body)
+	var response := await GalleryApi.post_json(self, plugin.connection.client_url("oauth2/verification_data"), body)
 	if not login_pending:
 		return # cancelled meanwhile
 	if not response.ok:
 		_login_failed("Could not start login: %s" % response.error)
 		return
-	var url := authorize_url(plugin.SERVER, plugin.port, state, pkce_challenge(verifier), signup)
+	var url := authorize_url(plugin.SERVER, plugin.connection.port, state, pkce_challenge(verifier), signup)
 	plugin.log_info("Opening login page in the browser")
 	OS.shell_open(url)
 	_login_timer.start()
@@ -150,46 +154,46 @@ func logout() -> void:
 	var old_refresh := refresh_token
 	_clear()
 	plugin.log_info("Logged out")
-	if old_refresh.is_empty() or not plugin.is_client_connected():
+	if old_refresh.is_empty() or not plugin.connection.is_client_connected():
 		return
-	var body: Dictionary = plugin.client_data(old_access)
+	var body: Dictionary = plugin.connection.client_data(old_access)
 	body["refresh_token"] = old_refresh
-	var response := await GalleryApi.post_json(self, plugin.client_url("oauth2/logout"), body)
+	var response := await GalleryApi.post_json(self, plugin.connection.client_url("oauth2/logout"), body)
 	if not response.ok:
 		plugin.log_warning("Could not revoke tokens: %s" % response.error)
 
 
 func maybe_refresh() -> void:
-	if refresh_token.is_empty() or not needs_refresh(expires_at, now()) or not plugin.is_client_connected():
+	if refresh_token.is_empty() or not needs_refresh(expires_at, now()) or not plugin.connection.is_client_connected():
 		return
 	if _refresh_started >= 0 and Time.get_ticks_msec() - _refresh_started < REFRESH_RETRY_MS:
 		return
 	_refresh_started = Time.get_ticks_msec()
-	var body: Dictionary = plugin.client_data(access_token)
+	var body: Dictionary = plugin.connection.client_data(access_token)
 	body["refresh_token"] = refresh_token
 	plugin.log_verbose("Refreshing login tokens")
-	var response := await GalleryApi.post_json(self, plugin.client_url("refresh_token"), body)
+	var response := await GalleryApi.post_json(self, plugin.connection.client_url("refresh_token"), body)
 	if not response.ok:
 		_refresh_started = -1
 		plugin.log_warning("Could not refresh login: %s" % response.error)
 
 
 func fetch_profile() -> void:
-	if not is_logged_in() or not plugin.is_client_connected():
+	if not is_logged_in() or not plugin.connection.is_client_connected():
 		return
-	var response := await GalleryApi.post_json(self, plugin.client_url("profiles/get_user_profile"), plugin.client_data(api_key()))
+	var response := await GalleryApi.post_json(self, plugin.connection.client_url("profiles/get_user_profile"), plugin.connection.client_data(api_key()))
 	if not response.ok:
 		plugin.log_warning("Could not request profile: %s" % response.error)
 
 
 func _fetch_avatar() -> void:
-	if profile.is_empty() or not plugin.is_client_connected():
+	if profile.is_empty() or not plugin.connection.is_client_connected():
 		return
-	var body: Dictionary = plugin.client_data()
+	var body: Dictionary = plugin.connection.client_data()
 	body["id"] = int(profile.get("id", 0))
 	body["avatar128"] = str(profile.get("avatar128", "")) if profile.get("avatar128") else ""
 	body["gravatarHash"] = str(profile.get("gravatarHash", "")) if profile.get("gravatarHash") else ""
-	await GalleryApi.post_json(self, plugin.client_url("profiles/download_gravatar_image"), body)
+	await GalleryApi.post_json(self, plugin.connection.client_url("profiles/download_gravatar_image"), body)
 
 
 # MARK: tasks

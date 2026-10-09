@@ -494,7 +494,7 @@ SERVER = "https://blendkit.com"
 
 
 def client_api_version() -> str:
-    text = (ROOT / "addons" / "blendkit" / "plugin.gd").read_text()
+    text = (ROOT / "addons" / "blendkit" / "client_binary.gd").read_text()
     return re.search(r'^const CLIENT_API_VERSION = "(v\d+\.\d+)"', text, re.M)[1]
 
 

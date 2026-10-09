@@ -22,7 +22,7 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     plugin = tmp_path / "addons/blendkit"
     plugin.mkdir(parents=True)
-    (plugin / "plugin.gd").write_text('const CLIENT_API_VERSION = "v1.12"\n')
+    (plugin / "client_binary.gd").write_text('const CLIENT_API_VERSION = "v1.12"\n')
     (plugin / "plugin.cfg").write_text('[plugin]\nversion="1.0.0"\n')
     (tmp_path / "LICENSE").write_text("License\n")
     return plugin
