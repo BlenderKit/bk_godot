@@ -101,7 +101,7 @@ func refresh() -> void:
 	_content.add_theme_constant_override("separation", int(4 * edscale))
 	# Only the logo dims, the dot stays readable.
 	_logo.self_modulate.a = 0.5 if plugin.connection.state == ClientConnection.State.DISABLED else 1.0
-	tooltip_text = "Blendkit menu\nClient: %s" % plugin.connection.status_text()
+	tooltip_text = "Blendkit menu\n" + _hint()
 
 	var style := get_theme_stylebox("normal", "Button")
 	custom_minimum_size = _content.get_combined_minimum_size() + style.get_minimum_size()
@@ -113,6 +113,29 @@ func refresh() -> void:
 	_content.offset_right = -style.get_margin(SIDE_RIGHT)
 	if _menu.visible:
 		_fill_menu()
+
+
+## What to do next, or who is logged in when all is well. The status dot
+## already shows the Client state.
+func _hint() -> String:
+	var connection: ClientConnection = plugin.connection
+	match connection.state:
+		ClientConnection.State.DISABLED:
+			return "Client is disabled, click to enable"
+		ClientConnection.State.FAILED:
+			return "Client failed, click to restart"
+	if not connection.is_client_connected() or connection.failed_requests > 0:
+		return "Client: %s" % connection.status_text()
+	var auth = plugin.auth
+	if auth.login_pending:
+		return "Finish logging in in your browser…"
+	if not auth.is_logged_in():
+		return "Click to log in"
+	var who: String = Auth.display_name(auth.profile)
+	var plan: String = Auth.plan_label(auth.profile)
+	if who.is_empty():
+		return "Logged in"
+	return "Logged in as %s · %s" % [who, plan] if plan else "Logged in as %s" % who
 
 
 func status_color() -> Color:
@@ -155,6 +178,9 @@ func _fill_menu() -> void:
 	_menu.clear()
 	_menu.add_icon_item(plugin.connection.get_state_icon(), "Client: %s" % plugin.connection.status_text(), Item.STATUS)
 	_menu.set_item_disabled(-1, true)
+	if plugin.connection.is_client_connected():
+		var version: String = plugin.connection.connected_client_version
+		_menu.set_item_tooltip(-1, "Client %son port %s" % ["v%s " % version if version else "", plugin.connection.port])
 	_menu.add_check_item("Enable Blendkit Client", Item.ENABLE)
 	_menu.set_item_checked(-1, plugin.client_enabled)
 	_menu.set_item_tooltip(-1, "The Blendkit Client searches and downloads assets and connects Send to Godot on blendkit.com.")

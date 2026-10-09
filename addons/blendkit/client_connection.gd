@@ -180,7 +180,7 @@ func status_text() -> String:
 		State.CONNECTED:
 			if failed_requests > 0:
 				return "Reconnecting (#%s)…" % failed_requests
-			return "Connected (port %s)" % port
+			return "Connected"
 		State.FAILED:
 			return "Failed (%s)" % fail_reason
 	return state_name(state)
