@@ -3,6 +3,8 @@
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/gallery.gd" id="1_gallery"]
 [ext_resource type="PackedScene" path="res://addons/blendkit/ui/gallery/asset_details.tscn" id="2_details"]
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/main_menu_button.gd" id="4_menu"]
+[ext_resource type="Script" path="res://addons/blendkit/ui/gallery/search_view.gd" id="5_search"]
+[ext_resource type="Script" path="res://addons/blendkit/ui/gallery/project_view.gd" id="6_project"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_border"]
 content_margin_left = 15.0
@@ -139,6 +141,7 @@ theme_override_styles/panel = SubResource("StyleBoxEmpty_border")
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+script = ExtResource("5_search")
 
 [node name="MessageBox" type="VBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
 unique_name_in_owner = true
@@ -180,6 +183,7 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
+script = ExtResource("6_project")
 
 [node name="ProjectMessage" type="Label" parent="Main/LibraryMargin/Scroll/Border/ProjectBody"]
 unique_name_in_owner = true

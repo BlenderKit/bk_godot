@@ -308,29 +308,32 @@ func check_downloads(gallery):
     gallery.project_toggle.button_pressed = true
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "created", "message": "Starting download"})
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "progress", "progress": 40, "message": "Downloading 1.0MB (40%)"})
-    print("WEB_COUNT=%d" % gallery.active_download_count())
+    print("WEB_COUNT=%d" % gallery.downloads.active_count())
     print("BADGE=%s %s" % [badge.visible, badge.text])
-    print("WEB_ID=%s" % gallery.web_downloads["web-1"].id)
-    var entries: Array = gallery._project_entries
+    print("WEB_ID=%s" % gallery.downloads.web_downloads["web-1"].id)
+    var entries: Array = gallery.project_view.entries
     print("PROJECT_TILES=%s" % [entries.map(func(e): return [e.id, e.asset.name])])
-    var item = gallery._project_download_items["web-1"]
+    var item = gallery.project_view.download_items["web-1"]
     print("TILE_TOOLTIP=%s" % item.thumb_button.tooltip_text.replace("\n", "|"))
     # Unfinished tasks are reported every poll; a missing one is gone.
     gallery.drop_vanished_downloads({"web-1": true})
-    print("KEPT=%d STAGED=%s" % [gallery.active_download_count(), FileAccess.file_exists(file)])
+    print("KEPT=%d STAGED=%s" % [gallery.downloads.active_count(), FileAccess.file_exists(file)])
     # Finished, it moves into the project.
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "finished", "result": {"file_path": file}})
-    print("FINISHED=%d BADGE_HIDDEN=%s" % [gallery.active_download_count(), not badge.visible])
-    print("PROJECT_TILES=%s" % [gallery._project_entries.map(func(e): return [e.id, e.asset.name])])
+    print("FINISHED=%d BADGE_HIDDEN=%s" % [gallery.downloads.active_count(), not badge.visible])
+    print("PROJECT_TILES=%s" % [gallery.project_view.entries.map(func(e): return [e.id, e.asset.name])])
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-2", "status": "created"})
-    print("WEB_NAME=%s" % gallery._project_entries[0].asset.name)
+    print("WEB_NAME=%s" % gallery.project_view.entries[0].asset.name)
     gallery.drop_vanished_downloads({})
-    print("DROPPED=%d" % gallery.active_download_count())
+    print("DROPPED=%d" % gallery.downloads.active_count())
 """
 
 
-def test_gallery_main_screen(godot_executable, tmp_path):
-    """Enabling the plugin adds the gallery to the editor's main screen."""
+def run_editor_probe(godot_executable, tmp_path, probe_source):
+    """Run the editor with the plugin (without the Client) and a probe plugin.
+
+    Returns stdout and stderr.
+    """
     project = tmp_path / "project"
     shutil.copytree(
         ROOT / "addons" / "blendkit",
@@ -342,7 +345,7 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     (probe / "plugin.cfg").write_text(
         '[plugin]\nname="probe"\ndescription=""\nauthor=""\nversion="0"\nscript="probe.gd"\n'
     )
-    (probe / "probe.gd").write_text(MAIN_SCREEN_PROBE)
+    (probe / "probe.gd").write_text(probe_source)
     (project / "project.godot").write_text(
         "config_version=5\n\n[application]\n\nconfig/name=\"Gallery test\"\n\n"
         "[editor_plugins]\n\nenabled=PackedStringArray("
@@ -363,6 +366,12 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     m = re.search(r"Connected to Client(?: v[\d.]+)? on port (\d+)", stdout)
     if m:
         unsubscribe_client(m.group(1), proc.pid)
+    return stdout, stderr
+
+
+def test_gallery_main_screen(godot_executable, tmp_path):
+    """Enabling the plugin adds the gallery to the editor's main screen."""
+    stdout, stderr = run_editor_probe(godot_executable, tmp_path, MAIN_SCREEN_PROBE)
     output = stdout + stderr
     assert "GALLERY_FOUND=true" in stdout, output
     assert "GALLERY_HIDDEN=true" in stdout, output
@@ -383,6 +392,83 @@ def test_gallery_main_screen(godot_executable, tmp_path):
         'PROJECT_TILES=[["17982784-2390-4999-83d7-c72ea929f352", "Wooden Chair"]]'
         in stdout
     ), output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
+RACE_PROBE = r"""@tool
+extends EditorPlugin
+
+func _enter_tree():
+    check.call_deferred()
+
+func find_gallery():
+    for child in EditorInterface.get_editor_main_screen().get_children():
+        if child.name == "BlendkitGallery":
+            return child
+
+func check():
+    var gallery = find_gallery()
+    var tasks = gallery.tasks
+    gallery.project_toggle.button_pressed = true
+    var reports := []
+    var responses := []
+    # A fast task is reported finished before the POST that started it returns.
+    var post := func() -> Array:
+        await get_tree().process_frame
+        return ["race-1", ""]
+    var run := func():
+        responses.append(await tasks.start("race", post, func(task): reports.append(task.status)))
+    run.call()
+    print("POSTING=%s PENDING=%s" % [tasks.is_posting(), gallery.has_pending_work()])
+    gallery.handle_task({"task_type": "asset_download", "task_id": "race-1", "status": "progress", "progress": 50})
+    gallery.handle_task({"task_type": "asset_download", "task_id": "race-1", "status": "finished", "result": {}})
+    # Send to Godot started meanwhile; it shows once the POST returns.
+    gallery.handle_task({"task_type": "asset_download", "task_id": "web-3", "status": "created"})
+    print("EARLY_REPORTS=%s WEB_EARLY=%d" % [reports, gallery.downloads.web_downloads.size()])
+    while responses.is_empty():
+        await get_tree().process_frame
+    print("RESPONSE=%s" % [responses[0]])
+    print("REPORTS=%s POSTING=%s RUNNING=%s" % [reports, tasks.is_posting(), tasks.has("race")])
+    print("WEB=%s" % [gallery.downloads.web_downloads.keys()])
+    print("TILES=%s" % [gallery.project_view.entries.map(func(e): return e.id)])
+
+    # A newer request with the same key supersedes the running one.
+    var superseded := []
+    var slow := func() -> Array:
+        await get_tree().process_frame
+        return ["race-2", ""]
+    var first := func():
+        superseded.append(await tasks.start("race", slow, func(task): superseded.append(task.status)))
+    first.call()
+    var fast := func() -> Array:
+        return ["race-3", ""]
+    var second := func():
+        responses.append(await tasks.start("race", fast, func(task): responses.append(task.status)))
+    second.call()
+    while superseded.is_empty():
+        await get_tree().process_frame
+    gallery.handle_task({"task_type": "search", "task_id": "race-2", "status": "finished"})
+    gallery.handle_task({"task_type": "search", "task_id": "race-3", "status": "finished"})
+    print("SUPERSEDED=%s SECOND=%s" % [superseded, responses.slice(1)])
+    gallery.drop_vanished_downloads({})
+    print("DROPPED=%d" % gallery.downloads.active_count())
+    get_tree().quit()
+"""
+
+
+def test_gallery_early_task_race(godot_executable, tmp_path):
+    """A task reported before its POST returns goes to the request, once."""
+    stdout, stderr = run_editor_probe(godot_executable, tmp_path, RACE_PROBE)
+    output = stdout + stderr
+    assert "POSTING=true PENDING=true" in stdout, output
+    assert 'EARLY_REPORTS=[] WEB_EARLY=0' in stdout, output
+    assert 'RESPONSE=["race-1", ""]' in stdout, output
+    # only the latest early report is replayed
+    assert 'REPORTS=["finished"] POSTING=false RUNNING=false' in stdout, output
+    assert 'WEB=["web-3"]' in stdout, output
+    assert 'TILES=["web-3"]' in stdout, output
+    assert 'SUPERSEDED=[[]] SECOND=[["race-3", ""], "finished"]' in stdout, output
+    assert "DROPPED=0" in stdout, output
     assert "SCRIPT ERROR" not in stderr, output
 
 
