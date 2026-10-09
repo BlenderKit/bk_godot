@@ -3,6 +3,7 @@ import argparse
 import configparser
 import fnmatch
 import hashlib
+import importlib.util
 import json
 import os
 import platform
@@ -467,6 +468,9 @@ def test(verbose=False, filter=None):
     print("# Running tests")
 
     cmd = [sys.executable, "-m", "pytest"]
+    # Each test runs its own Godot, so run them in parallel when possible.
+    if importlib.util.find_spec("xdist"):
+        cmd.extend(["-n", "auto"])
 
     if verbose:
         cmd.append("-v")
@@ -478,8 +482,8 @@ def test(verbose=False, filter=None):
 
 
 def test_e2e(verbose=False, filter=None, headed=False):
-    """Run the Playwright end-to-end test against the live BlenderKit site."""
-    print("# Running end-to-end tests (live site, needs network + Playwright)")
+    """Run the end-to-end tests against the live Blendkit site."""
+    print("# Running end-to-end tests (live site, needs network)")
 
     cmd = [sys.executable, "-m", "pytest", "-m", "e2e", "-rs"]
 
@@ -719,9 +723,9 @@ parser_test.add_argument(
 # COMMAND: test-e2e
 parser_test_e2e = subparsers.add_parser(
     "test-e2e",
-    help="Run the Playwright end-to-end test (live site, needs network).",
+    help="Run the end-to-end tests (live site, needs network).",
     description=(
-        "Run the browser end-to-end test against blenderkit.com.\n"
+        "Run the gallery and browser end-to-end tests against blenderkit.com.\n"
         "Requires Playwright (pip install -r requirements-dev.txt && "
         "playwright install chromium) and network access.\n"
         "Set BLENDERKIT_API_KEY to download gated assets."

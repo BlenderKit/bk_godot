@@ -338,7 +338,7 @@ Run `python dev.py` for a list of all available commands.
 | `clean` | Remove build artifacts (`out/` and client binaries) |
 | `set-version` | Set plugin version in `plugin.cfg` |
 | `test` | Run pytest tests |
-| `test-e2e` | Run the live browser-to-Godot end-to-end test |
+| `test-e2e` | Run the live gallery and browser-to-Godot end-to-end tests |
 
 Run `./dev.py <command> --help` for command-specific options.
 
@@ -362,16 +362,17 @@ Run the default test suite with:
 ./dev.py test
 ```
 
-These tests use pytest and run Godot in headless editor mode. They do not access
-the live Blendkit website, and the live E2E test is excluded by default. Use
-`-v` for verbose output or `-k <pattern>` to select tests:
+These tests use pytest and run Godot in headless editor mode, in parallel when
+`pytest-xdist` is installed. They do not access the live Blendkit website, and
+the live E2E tests are excluded by default. Use `-v` for verbose output or
+`-k <pattern>` to select tests:
 
 ```sh
 ./dev.py test -v
 ./dev.py test -k plugin_enables
 ```
 
-### Live E2E test
+### Live E2E tests
 
 Install Playwright's Chromium browser once, then run the E2E suite:
 
@@ -383,10 +384,18 @@ playwright install chromium
 On a fresh Linux system, `playwright install --with-deps chromium` also installs
 the required system packages.
 
-The E2E test starts Godot and the bundled Client, opens a real asset page on
-Blendkit.com in Chromium, clicks **Send to Godot**, and waits for the downloaded
-asset to appear in `bk_assets/`. It therefore requires internet access. Use
-`--headed` to watch the browser, or `-k <pattern>` to select E2E tests:
+Each E2E test starts Godot with the bundled Client in a temporary project, so
+nothing is downloaded into this one. They require internet access:
+
+- The gallery test searches from the gallery, waits for the thumbnails, and
+  downloads a free glTF model from the details dialog. The model must end up
+  imported in the project, marked as downloaded and indexed.
+- The browser test opens a real asset page on Blendkit.com in Chromium, clicks
+  **Send to Godot**, and waits for the gallery to show the download, move it
+  into `bk_assets/`, and look the asset up for its name and thumbnail. The
+  request goes to the test's editor, even when other Godot editors are open.
+
+Use `--headed` to watch the browser, or `-k <pattern>` to select E2E tests:
 
 ```sh
 ./dev.py test-e2e --headed
@@ -397,7 +406,7 @@ free asset with one that requires authentication. `BLENDERKIT_E2E_SITE` and
 `BLENDERKIT_E2E_ASSET` can point the test at another deployment or asset.
 
 If Cloudflare serves its human-verification page to an automated runner, the
-test is reported as skipped and saves `tests/e2e_failure.png` for diagnostics.
+browser test is reported as skipped and saves `tests/e2e_failure.png` for diagnostics.
 Other unexpected pages and failures in the browser-to-Client download flow
 still fail the test.
 

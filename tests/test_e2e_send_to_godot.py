@@ -5,6 +5,7 @@ This drives the real flow described in the README:
     Godot (plugin) -> spawns + subscribes to Blendkit Client
     Browser on blenderkit.com -> 'Send to Godot' button -> Client get_asset
     Client downloads the asset -> file lands in bk_assets/
+    Gallery shows the download -> looks the asset up on Blendkit
 
 It is a live integration test: it needs network access to blenderkit.com and a
 real browser. It is excluded from the default test run (see pytest.ini -> addopts
@@ -16,16 +17,22 @@ Environment variables:
     HEADED=1            Optional. Run the browser visibly instead of headless.
 """
 
+import json
 import os
-import time
+import re
+from pathlib import Path
 
 import pytest
+
+from .conftest import (
+    CLIENT_CONNECTED_RE,
+    GodotEditor,
+    make_probe_project,
+)
 
 # Playwright is a dev-only extra; skip this whole module if it isn't installed.
 sync_api = pytest.importorskip("playwright.sync_api")
 sync_playwright = sync_api.sync_playwright
-
-import re  # noqa: E402  (after importorskip so a missing Playwright skips cleanly)
 
 
 # The page hosting the "Send to Godot" button (the dedicated get-blenderkit page,
@@ -137,160 +144,191 @@ def _assert_expected_asset_page(page, response) -> None:
     )
 
 
-def _all_files(root: str) -> set:
-    return {
-        os.path.join(dirpath, name)
-        for dirpath, _dirs, names in os.walk(root)
-        for name in names
-    }
+# Watches the gallery while the browser sends the asset.
+WEB_PROBE = r"""
+const LOOKUP_S := 60.0
 
+func check():
+    var gallery = find_gallery()
+    var downloads = gallery.downloads
+    await wait_until(gallery.plugin.connection.is_client_connected, 60)
+    # Shown, the project view looks up the downloaded asset.
+    gallery.show()
+    gallery.project_toggle.button_pressed = true
+    var finished := []
+    downloads.web_download_finished.connect(func(path): finished.append(path))
+    var seen := {"badge": 0, "tiles": {}}
+    var watch := func():
+        if gallery._download_badge.visible:
+            seen.badge = maxi(seen.badge, int(gallery._download_badge.text))
+        for id in gallery.project_view.download_items:
+            seen.tiles[id] = true
+        return not finished.is_empty()
+    print("WEB_FINISHED=%s" % await wait_until(watch, float(OS.get_environment("BK_E2E_DOWNLOAD_S"))))
+    print("BADGE_MAX=%d" % seen.badge)
+    print("BADGE_HIDDEN=%s" % (not gallery._download_badge.visible))
+    print("DOWNLOAD_TILES=%d" % seen.tiles.size())
+    print("FILE=%s" % (finished[0] if finished else ""))
 
-@pytest.fixture
-def assets_dir() -> str:
-    """The plugin's default download directory (res://bk_assets/)."""
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bk_assets"
-    )
+    var base_id := OS.get_environment("BK_E2E_ASSET_BASE_ID")
+    var project = gallery.project_view
+    var looked_up := func():
+        return project.entries.any(func(e): return e.known and e.asset.get("assetBaseId") == base_id)
+    print("LOOKED_UP=%s" % await wait_until(looked_up, LOOKUP_S))
+    for e in project.entries:
+        if e.asset.get("assetBaseId") == base_id:
+            print("PROJECT_TILE=%s|%s|%s" % [e.asset.name, e.has("download"), not project.project.thumbnail(e.id).is_empty()])
+    print("SAVED=%s" % await wait_until(func(): return not project.project.unsaved, 10))
+"""
 
 
 @pytest.mark.e2e
-def test_send_to_godot_downloads_asset(running_godot, assets_dir):
-    before = _all_files(assets_dir)
+def test_send_to_godot_downloads_asset(godot_executable, tmp_path):
+    project = make_probe_project(tmp_path / "project", WEB_PROBE, with_client=True)
+    with GodotEditor(
+        godot_executable,
+        project,
+        env={
+            "BK_E2E_ASSET_BASE_ID": ASSET_BASE_ID,
+            "BK_E2E_DOWNLOAD_S": str(DOWNLOAD_TIMEOUT_S),
+        },
+    ) as editor:
+        editor.wait_for(CLIENT_CONNECTED_RE.pattern, 60)
+        _send_from_browser(editor.process.pid)
+        editor.wait(DOWNLOAD_TIMEOUT_S + 120)
+    stdout, output = editor.stdout, editor.output
+
+    def value(key):
+        m = re.search(rf"^{key}=(.*)$", stdout, re.M)
+        assert m, f"{key} missing:\n{output}"
+        return m[1]
+
+    # The Client downloads asynchronously, and the plugin moves the file
+    # into bk_assets/ once complete.
+    assert value("WEB_FINISHED") == "true", (
+        f"No Send to Godot download finished within {DOWNLOAD_TIMEOUT_S}s.\n{output}"
+    )
+    path = Path(value("FILE"))
+    assert path.is_file() and path.stat().st_size > 0, output
+    assert project / "bk_assets" in path.parents, output
+    assert ".downloads" not in path.parts, output
+    # The badge counted the download, if it ran long enough to be reported.
+    assert int(value("BADGE_MAX")) <= 1 and int(value("DOWNLOAD_TILES")) <= 1, output
+    assert value("BADGE_HIDDEN") == "true", output
+    # The project view found the asset on Blendkit: its name, not a guess.
+    assert value("LOOKED_UP") == "true", output
+    name, is_download, thumbnail = value("PROJECT_TILE").split("|")
+    assert name and name != "Send to Godot", output
+    assert is_download == "false" and thumbnail == "true", output
+    assert value("SAVED") == "true", output
+    assert "SCRIPT ERROR" not in editor.stderr, output
+
+
+def _send_from_browser(app_id: int) -> None:
+    """Press Send to Godot on the asset page; fails unless the Client accepts it.
+
+    Each subscribed Godot gets a button, and nothing tells them apart, so the
+    request is sent to the test editor ([param app_id]) whichever is pressed.
+    A developer's own editors don't get the asset then.
+    """
     api_key = os.environ.get("BLENDERKIT_API_KEY", "")
     headed = os.environ.get("HEADED") == "1"
 
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=not headed, args=CHROMIUM_ARGS)
-            page = browser.new_context().new_page()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=not headed, args=CHROMIUM_ARGS)
+        page = browser.new_context().new_page()
 
-            # Diagnostics: the Browser<->Client hop is the fragile part, so capture
-            # console output and any traffic to the local Client to explain failures.
-            console_msgs: list = []
-            page.on("console", lambda m: console_msgs.append(f"[{m.type}] {m.text}"))
-            local_net: list = []
-            page.on(
-                "requestfailed",
-                lambda r: (
-                    _is_local(r.url)
-                    and local_net.append(f"FAILED {r.method} {r.url} :: {r.failure}")
-                ),
-            )
-            page.on(
-                "response",
-                lambda r: (
-                    _is_local(r.url)
-                    and local_net.append(f"{r.status} {r.request.method} {r.url}")
-                ),
-            )
-
-            response = page.goto(ASSET_URL, wait_until="domcontentloaded")
-            _assert_expected_asset_page(page, response)
-            _dismiss_cookie_banner(page)
-
-            # Expose the API key the way a logged-in page would, so the button's
-            # get_asset call carries it (needed only for gated assets).
-            if api_key:
-                page.evaluate(
-                    """(key) => {
-                        let el = document.getElementById('api-key');
-                        if (!el) {
-                            el = document.createElement('div');
-                            el.id = 'api-key';
-                            document.body.appendChild(el);
-                        }
-                        el.setAttribute('data-api-key', key);
-                    }""",
-                    api_key,
-                )
-
-            # The button is rendered by client-buttons.js once bkclientjs detects
-            # our running Godot on the Client; text is "Send to Godot (vX.Y.Z)".
-            button = page.get_by_role("button", name=re.compile("Send to Godot", re.I))
-            try:
-                button.wait_for(state="visible", timeout=BUTTON_TIMEOUT_MS)
-            except sync_api.TimeoutError:
-                page.screenshot(path=FAILURE_SCREENSHOT, full_page=True)
-                pytest.fail(
-                    "'Send to Godot' button never appeared - bkclientjs likely "
-                    "could not reach the local Client.\n"
-                    f"Screenshot: {FAILURE_SCREENSHOT}\n"
-                    f"Local Client traffic ({len(local_net)} events):\n  "
-                    + (
-                        "\n  ".join(local_net)
-                        or "(none - the browser made no request to the Client at all)"
-                    )
-                    + "\nConsole (bkclientjs/widget/security):\n  "
-                    + "\n  ".join(
-                        m
-                        for m in console_msgs
-                        if re.search(
-                            r"client|software|widget|insecure|mixed|private|cors|blocked",
-                            m,
-                            re.I,
-                        )
-                    )
-                )
-
-            def is_get_asset_post(resp):
-                return (
-                    "/bkclientjs/get_asset" in resp.url
-                    and resp.request.method == "POST"
-                )
-
-            with page.expect_response(
-                is_get_asset_post, timeout=GET_ASSET_TIMEOUT_MS
-            ) as resp_info:
-                button.click()
-
-            status = resp_info.value.status
-            assert status == 200, f"Client get_asset returned HTTP {status}"
-            # (The button's transient "Sent successfully!" state isn't asserted:
-            # it shows for only ~3s and the 5s discovery poll rebuilds the buttons.
-            # The 200 above plus the downloaded file below are the real signals.)
-            browser.close()
-
-        # The Client downloads asynchronously, and the plugin moves the file
-        # into bk_assets/ once complete.
-        downloaded = _wait_for_download(assets_dir, before, DOWNLOAD_TIMEOUT_S)
-        assert downloaded, (
-            f"No asset file appeared under {assets_dir} within {DOWNLOAD_TIMEOUT_S}s.\n"
-            f"Godot output tail:\n{''.join(running_godot.lines[-40:])}"
+        # Diagnostics: the Browser<->Client hop is the fragile part, so capture
+        # console output and any traffic to the local Client to explain failures.
+        console_msgs: list = []
+        page.on("console", lambda m: console_msgs.append(f"[{m.type}] {m.text}"))
+        local_net: list = []
+        page.on(
+            "requestfailed",
+            lambda r: (
+                _is_local(r.url)
+                and local_net.append(f"FAILED {r.method} {r.url} :: {r.failure}")
+            ),
         )
-    finally:
-        _cleanup_new(assets_dir, before)
+        page.on(
+            "response",
+            lambda r: (
+                _is_local(r.url)
+                and local_net.append(f"{r.status} {r.request.method} {r.url}")
+            ),
+        )
 
+        def to_test_editor(route):
+            if route.request.method != "POST":
+                route.continue_()
+                return
+            body = json.loads(route.request.post_data or "{}")
+            body["app_id"] = app_id
+            route.continue_(post_data=json.dumps(body))
 
-def _wait_for_download(assets_dir: str, before: set, timeout_s: int):
-    """Wait until a new, non-empty, size-stable file appears in assets_dir."""
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        # Downloads are staged in .downloads/ until the plugin moves them in.
-        staging = os.path.join(assets_dir, ".downloads") + os.sep
-        new = [
-            f
-            for f in (_all_files(assets_dir) - before)
-            if not f.startswith(staging) and os.path.getsize(f) > 0
-        ]
-        if new:
-            sizes = {f: os.path.getsize(f) for f in new}
-            time.sleep(2)  # let an in-progress download settle
-            if all(os.path.exists(f) and os.path.getsize(f) == sizes[f] for f in new):
-                return new
-        time.sleep(2)
-    return None
+        page.route("**/bkclientjs/get_asset", to_test_editor)
 
+        response = page.goto(ASSET_URL, wait_until="domcontentloaded")
+        _assert_expected_asset_page(page, response)
+        _dismiss_cookie_banner(page)
 
-def _cleanup_new(assets_dir: str, before: set):
-    """Remove files (and now-empty dirs) this test created, so re-runs are deterministic."""
-    for f in _all_files(assets_dir) - before:
+        # Expose the API key the way a logged-in page would, so the button's
+        # get_asset call carries it (needed only for gated assets).
+        if api_key:
+            page.evaluate(
+                """(key) => {
+                    let el = document.getElementById('api-key');
+                    if (!el) {
+                        el = document.createElement('div');
+                        el.id = 'api-key';
+                        document.body.appendChild(el);
+                    }
+                    el.setAttribute('data-api-key', key);
+                }""",
+                api_key,
+            )
+
+        # The button is rendered by client-buttons.js once bkclientjs detects
+        # our running Godot on the Client; text is "Send to Godot (vX.Y.Z)".
+        button = page.get_by_role(
+            "button", name=re.compile("Send to Godot", re.I)
+        ).first
         try:
-            os.remove(f)
-        except OSError:
-            pass
-    for dirpath, _dirs, _files in os.walk(assets_dir, topdown=False):
-        if dirpath != assets_dir and not os.listdir(dirpath):
-            try:
-                os.rmdir(dirpath)
-            except OSError:
-                pass
+            button.wait_for(state="visible", timeout=BUTTON_TIMEOUT_MS)
+        except sync_api.TimeoutError:
+            page.screenshot(path=FAILURE_SCREENSHOT, full_page=True)
+            pytest.fail(
+                "'Send to Godot' button never appeared - bkclientjs likely "
+                "could not reach the local Client.\n"
+                f"Screenshot: {FAILURE_SCREENSHOT}\n"
+                f"Local Client traffic ({len(local_net)} events):\n  "
+                + (
+                    "\n  ".join(local_net)
+                    or "(none - the browser made no request to the Client at all)"
+                )
+                + "\nConsole (bkclientjs/widget/security):\n  "
+                + "\n  ".join(
+                    m
+                    for m in console_msgs
+                    if re.search(
+                        r"client|software|widget|insecure|mixed|private|cors|blocked",
+                        m,
+                        re.I,
+                    )
+                )
+            )
+
+        def is_get_asset_post(resp):
+            return "/bkclientjs/get_asset" in resp.url and resp.request.method == "POST"
+
+        with page.expect_response(
+            is_get_asset_post, timeout=GET_ASSET_TIMEOUT_MS
+        ) as resp_info:
+            button.click()
+
+        status = resp_info.value.status
+        assert status == 200, f"Client get_asset returned HTTP {status}"
+        # (The button's transient "Sent successfully!" state isn't asserted:
+        # it shows for only ~3s and the 5s discovery poll rebuilds the buttons.
+        # The 200 above plus the downloaded file below are the real signals.)
+        browser.close()

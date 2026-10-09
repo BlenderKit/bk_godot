@@ -1,39 +1,9 @@
 """Tests for the Blendkit main-screen gallery tab."""
 
-import json
 import os
-import re
-import shutil
-import subprocess
 import time
-import urllib.request
-from pathlib import Path
 
-import pytest
-
-from .conftest import PROJECT_DIR, unsubscribe_client
-
-ROOT = Path(PROJECT_DIR)
-
-
-def run_godot_script(godot_executable, tmp_path, project_dir, source, timeout=30):
-    script = tmp_path / "checks.gd"
-    script.write_text(source)
-    return subprocess.run(
-        [
-            godot_executable,
-            "--headless",
-            "--log-file",
-            str(tmp_path / "godot.log"),
-            "--path",
-            str(project_dir),
-            "--script",
-            str(script),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+from .conftest import make_probe_project, run_editor_probe, run_godot_script
 
 
 GALLERY_API_CHECKS = r"""extends SceneTree
@@ -121,7 +91,7 @@ func _initialize():
 
 
 def test_gallery_api(godot_executable, tmp_path):
-    result = run_godot_script(godot_executable, tmp_path, ROOT, GALLERY_API_CHECKS)
+    result = run_godot_script(godot_executable, tmp_path, GALLERY_API_CHECKS)
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
     assert "GALLERY_API_CHECKS_PASSED" in result.stdout, output
@@ -260,7 +230,6 @@ func _initialize():
 
 
 def test_project_assets(godot_executable, tmp_path):
-    os.environ["BK_TEST_DIR"] = str(tmp_path / "data")
     # A download the editor closed during, last written to an hour ago.
     stale = tmp_path / "data" / "bk_assets" / ".downloads" / "models" / "old_x"
     stale.mkdir(parents=True)
@@ -268,12 +237,8 @@ def test_project_assets(godot_executable, tmp_path):
     hour_ago = time.time() - 3600
     for path in (stale / "old.glb", stale):
         os.utime(path, (hour_ago, hour_ago))
-    os.environ["BK_STALE_DIR"] = str(stale)
-    try:
-        result = run_godot_script(godot_executable, tmp_path, ROOT, PROJECT_ASSETS_CHECKS)
-    finally:
-        del os.environ["BK_TEST_DIR"]
-        del os.environ["BK_STALE_DIR"]
+    env = {"BK_TEST_DIR": str(tmp_path / "data"), "BK_STALE_DIR": str(stale)}
+    result = run_godot_script(godot_executable, tmp_path, PROJECT_ASSETS_CHECKS, env)
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
     assert "PROJECT_ASSETS_CHECKS_PASSED" in result.stdout, output
@@ -282,26 +247,17 @@ def test_project_assets(godot_executable, tmp_path):
     assert "ERROR" not in result.stderr, output
 
 
-MAIN_SCREEN_PROBE = r"""@tool
-extends EditorPlugin
-
+MAIN_SCREEN_PROBE = r"""
 const ID := "17982784-2390-4999-83d7-c72ea929f352"
 
-func _enter_tree():
-    check.call_deferred()
-
 func check():
-    var gallery = null
-    for child in EditorInterface.get_editor_main_screen().get_children():
-        if child.name == "BlendkitGallery":
-            gallery = child
+    var gallery = find_gallery()
     print("GALLERY_FOUND=%s" % (gallery != null))
     if gallery:
         print("GALLERY_HIDDEN=%s" % (not gallery.visible))
         print("GALLERY_HAS_PLUGIN=%s" % (gallery.plugin != null))
         print("GALLERY_ICON=%s" % (gallery.plugin._get_plugin_icon() != null))
         await check_downloads(gallery)
-    get_tree().quit()
 
 func check_downloads(gallery):
     var badge: Label = gallery._download_badge
@@ -345,49 +301,10 @@ func check_downloads(gallery):
 """
 
 
-def run_editor_probe(godot_executable, tmp_path, probe_source):
-    """Run the editor with the plugin (without the Client) and a probe plugin.
-
-    Returns stdout and stderr.
-    """
-    project = tmp_path / "project"
-    shutil.copytree(
-        ROOT / "addons" / "blendkit",
-        project / "addons" / "blendkit",
-        ignore=shutil.ignore_patterns("client"),
-    )
-    probe = project / "addons" / "probe"
-    probe.mkdir()
-    (probe / "plugin.cfg").write_text(
-        '[plugin]\nname="probe"\ndescription=""\nauthor=""\nversion="0"\nscript="probe.gd"\n'
-    )
-    (probe / "probe.gd").write_text(probe_source)
-    (project / "project.godot").write_text(
-        "config_version=5\n\n[application]\n\nconfig/name=\"Gallery test\"\n\n"
-        "[editor_plugins]\n\nenabled=PackedStringArray("
-        '"res://addons/blendkit/plugin.cfg", "res://addons/probe/plugin.cfg")\n'
-    )
-    with subprocess.Popen(
-        [godot_executable, "--headless", "--editor", "--path", str(project)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    ) as proc:
-        try:
-            stdout, stderr = proc.communicate(timeout=60)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.communicate()
-            raise
-    m = re.search(r"Connected to Client(?: v[\d.]+)? on port (\d+)", stdout)
-    if m:
-        unsubscribe_client(m.group(1), proc.pid)
-    return stdout, stderr
-
-
 def test_gallery_main_screen(godot_executable, tmp_path):
     """Enabling the plugin adds the gallery to the editor's main screen."""
-    stdout, stderr = run_editor_probe(godot_executable, tmp_path, MAIN_SCREEN_PROBE)
+    project = make_probe_project(tmp_path / "project", MAIN_SCREEN_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
     output = stdout + stderr
     assert "GALLERY_FOUND=true" in stdout, output
     assert "GALLERY_HIDDEN=true" in stdout, output
@@ -400,7 +317,7 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     assert "BADGE=true 1" in stdout, output
     assert "WEB_ID=17982784-2390-4999-83d7-c72ea929f352" in stdout, output
     # the staged download shows only as the download
-    assert "PROJECT_TILES=[[\"web-1\", \"Wooden Chair\"]]" in stdout, output
+    assert 'PROJECT_TILES=[["web-1", "Wooden Chair"]]' in stdout, output
     assert "TILE_TOOLTIP=Wooden Chair|Downloading 1.0MB (40%)" in stdout, output
     assert "KEPT=1 STAGED=true" in stdout, output
     assert "FINISHED=0 BADGE_HIDDEN=true" in stdout, output
@@ -413,17 +330,7 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     assert "SCRIPT ERROR" not in stderr, output
 
 
-RACE_PROBE = r"""@tool
-extends EditorPlugin
-
-func _enter_tree():
-    check.call_deferred()
-
-func find_gallery():
-    for child in EditorInterface.get_editor_main_screen().get_children():
-        if child.name == "BlendkitGallery":
-            return child
-
+RACE_PROBE = r"""
 func check():
     var gallery = find_gallery()
     var tasks = gallery.tasks
@@ -472,16 +379,16 @@ func check():
     print("SUPERSEDED=%s SECOND=%s" % [superseded, responses.slice(1)])
     gallery.drop_vanished_downloads({})
     print("DROPPED=%d" % gallery.downloads.active_count())
-    get_tree().quit()
 """
 
 
 def test_gallery_early_task_race(godot_executable, tmp_path):
     """A task reported before its POST returns goes to the request, once."""
-    stdout, stderr = run_editor_probe(godot_executable, tmp_path, RACE_PROBE)
+    project = make_probe_project(tmp_path / "project", RACE_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
     output = stdout + stderr
     assert "POSTING=true PENDING=true" in stdout, output
-    assert 'EARLY_REPORTS=[] WEB_EARLY=0' in stdout, output
+    assert "EARLY_REPORTS=[] WEB_EARLY=0" in stdout, output
     assert 'RESPONSE=["race-1", ""]' in stdout, output
     # only the latest early report is replayed
     assert 'REPORTS=["finished"] POSTING=false RUNNING=false' in stdout, output
@@ -490,136 +397,3 @@ def test_gallery_early_task_race(godot_executable, tmp_path):
     assert 'SUPERSEDED=[[]] SECOND=[["race-3", ""], "finished"]' in stdout, output
     assert "DROPPED=0" in stdout, output
     assert "SCRIPT ERROR" not in stderr, output
-
-
-# MARK: live end-to-end
-
-SERVER = "https://blendkit.com"
-
-
-def client_api_version() -> str:
-    text = (ROOT / "addons" / "blendkit" / "client_binary.gd").read_text()
-    return re.search(r'^const CLIENT_API_VERSION = "(v\d+\.\d+)"', text, re.M)[1]
-
-
-def post(port, endpoint, body, timeout=10):
-    url = f"http://127.0.0.1:{port}/{client_api_version()}/{endpoint}"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read() or b"null")
-
-
-@pytest.mark.e2e
-def test_gallery_search_and_download(running_godot, tmp_path):
-    """Search and download through the Client like the gallery does.
-
-    A separate fake app_id stands in for the gallery, so the running editor's
-    plugin does not consume the tasks.
-    """
-    port = running_godot.port
-    app_id = 2_000_000_000 + os.getpid() % 1_000_000
-    assets_path = tmp_path / "bk_assets"
-    thumbs = tmp_path / "thumbs"
-    thumbs.mkdir()
-    report_body = {
-        "name": "Godot",
-        "appID": app_id,
-        "version": "4.5.0",
-        "addonVersion": "0.0.0",
-        "assetsPath": str(assets_path),
-        "projectName": "gallery e2e",
-        "modelFormat": "gltf_godot",
-        "resolution": "",
-    }
-    tasks = {}
-
-    def poll_until(condition, timeout):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            for task in post(port, "godot/report", report_body).get("tasks") or []:
-                tasks.setdefault(task["task_type"], {})[task["task_id"]] = task
-            if condition():
-                return True
-            time.sleep(0.3)
-        return False
-
-    try:
-        poll_until(lambda: True, 5)  # subscribe
-        urlquery = (
-            f"{SERVER}/api/v1/search/?query=chair+asset_type:model+is_free:true"
-            "+sexualizedContent:false+last_gltf_godot_upload_isnull:false+order:_score"
-            "&dict_parameters=1&page_size=5&page=1&addon_version=0.0.0"
-        )
-        search_id = post(
-            port,
-            "assets/search",
-            {
-                "app_id": app_id,
-                "addon_version": "0.0.0",
-                "platform_version": "e2e",
-                "api_key": "",
-                "asset_type": "model",
-                "urlquery": urlquery,
-                "tempdir": str(thumbs),
-                "page_size": 5,
-                "scene_uuid": "6f1c2a43-4b8e-4c55-9d7e-2b1f9a0c3d11",
-            },
-        )["task_id"]
-
-        def search_done():
-            task = tasks.get("search", {}).get(search_id)
-            return task and task["status"] in ("finished", "error") and tasks.get(
-                "thumbnail_download"
-            )
-
-        assert poll_until(search_done, 60), tasks.keys()
-        search = tasks["search"][search_id]
-        assert search["status"] == "finished", search.get("message")
-        results = search["result"]["results"]
-        assert results, "no search results"
-        thumb = next(iter(tasks["thumbnail_download"].values()))
-        assert thumb["data"]["assetBaseId"] in {a["assetBaseId"] for a in results}
-
-        asset = next(a for a in results if a.get("canDownload"))
-        download_id = post(
-            port,
-            "assets/download",
-            {
-                "app_id": app_id,
-                "addon_version": "0.0.0",
-                "platform_version": "e2e",
-                "download_dirs": [str(assets_path / "models")],
-                "resolution": "gltf_godot",
-                "asset_data": {
-                    "name": asset["name"],
-                    "id": asset["id"],
-                    "assetType": "model",
-                    "files": asset["files"],
-                    "available_resolutions": [],
-                },
-                "PREFS": {
-                    "scene_id": "6f1c2a43-4b8e-4c55-9d7e-2b1f9a0c3d11",
-                    "api_key": "",
-                    "unpack_files": False,
-                    "create_asset_library": False,
-                },
-            },
-        )["task_id"]
-
-        def download_done():
-            task = tasks.get("asset_download", {}).get(download_id)
-            return task and task["status"] in ("finished", "error")
-
-        assert poll_until(download_done, 180), "download did not finish"
-        download = tasks["asset_download"][download_id]
-        assert download["status"] == "finished", download.get("message")
-        path = Path(download["result"]["file_paths"][0])
-        assert path.is_file()
-        assert path.parent.parent == assets_path / "models"
-        assert path.suffix == ".glb"
-    finally:
-        unsubscribe_client(port, app_id)

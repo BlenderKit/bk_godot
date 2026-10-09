@@ -37,7 +37,7 @@ jobs:
         run: godot --version
 
       - name: Install pytest
-        run: pip install pytest
+        run: pip install pytest pytest-xdist
 
       - name: Test standalone client packaging
         run: python -m pytest tests/test_build.py -q

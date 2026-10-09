@@ -1,11 +1,6 @@
 """Tests for the optional Blendkit login."""
 
-from pathlib import Path
-
-from .conftest import PROJECT_DIR
-from .test_gallery import run_godot_script
-
-ROOT = Path(PROJECT_DIR)
+from .conftest import run_godot_script
 
 AUTH_CHECKS = r"""extends SceneTree
 
@@ -62,7 +57,7 @@ func _initialize():
 
 
 def test_auth_helpers(godot_executable, tmp_path):
-    result = run_godot_script(godot_executable, tmp_path, ROOT, AUTH_CHECKS)
+    result = run_godot_script(godot_executable, tmp_path, AUTH_CHECKS)
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
     assert "AUTH_CHECKS_PASSED" in result.stdout, output

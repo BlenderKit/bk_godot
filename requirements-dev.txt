@@ -7,5 +7,6 @@
 #   playwright install chromium
 #
 pytest>=8
+pytest-xdist>=3
 requests>=2.31
 playwright>=1.40
