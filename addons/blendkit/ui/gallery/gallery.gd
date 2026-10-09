@@ -173,7 +173,7 @@ func on_connection_changed() -> void:
 	if not is_node_ready():
 		return
 	menu_button.refresh()
-	var connected := is_client_connected()
+	var connected: bool = plugin.is_client_connected()
 	if connected == _was_connected:
 		if not connected:
 			search.update_connection_message()
@@ -221,10 +221,6 @@ func drop_vanished_downloads(reported: Dictionary) -> void:
 func _on_unclaimed_task(task: Dictionary) -> void:
 	if task.get("task_type") == "asset_download":
 		downloads.handle_web_task(task)
-
-
-func is_client_connected() -> bool:
-	return plugin != null and plugin.state == plugin.State.CONNECTED
 
 
 # MARK: layout

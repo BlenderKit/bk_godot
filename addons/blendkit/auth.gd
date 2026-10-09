@@ -88,7 +88,7 @@ func on_connected() -> void:
 ## Log in through the browser. Without a Client connection, turn the Client
 ## on and log in once it connects.
 func login(signup := false) -> void:
-	if _is_connected():
+	if plugin.is_client_connected():
 		_start_login(signup)
 		return
 	_queued_login = 1 if signup else 0
@@ -150,7 +150,7 @@ func logout() -> void:
 	var old_refresh := refresh_token
 	_clear()
 	plugin.log_info("Logged out")
-	if old_refresh.is_empty() or not _is_connected():
+	if old_refresh.is_empty() or not plugin.is_client_connected():
 		return
 	var body: Dictionary = plugin.client_data(old_access)
 	body["refresh_token"] = old_refresh
@@ -160,7 +160,7 @@ func logout() -> void:
 
 
 func maybe_refresh() -> void:
-	if refresh_token.is_empty() or not needs_refresh(expires_at, now()) or not _is_connected():
+	if refresh_token.is_empty() or not needs_refresh(expires_at, now()) or not plugin.is_client_connected():
 		return
 	if _refresh_started >= 0 and Time.get_ticks_msec() - _refresh_started < REFRESH_RETRY_MS:
 		return
@@ -175,7 +175,7 @@ func maybe_refresh() -> void:
 
 
 func fetch_profile() -> void:
-	if not is_logged_in() or not _is_connected():
+	if not is_logged_in() or not plugin.is_client_connected():
 		return
 	var response := await GalleryApi.post_json(self, plugin.client_url("profiles/get_user_profile"), plugin.client_data(api_key()))
 	if not response.ok:
@@ -183,7 +183,7 @@ func fetch_profile() -> void:
 
 
 func _fetch_avatar() -> void:
-	if profile.is_empty() or not _is_connected():
+	if profile.is_empty() or not plugin.is_client_connected():
 		return
 	var body: Dictionary = plugin.client_data()
 	body["id"] = int(profile.get("id", 0))
@@ -347,10 +347,6 @@ func _save() -> void:
 
 
 # MARK: helpers
-
-func _is_connected() -> bool:
-	return plugin != null and plugin.state == plugin.State.CONNECTED
-
 
 static func now() -> float:
 	return Time.get_unix_time_from_system()

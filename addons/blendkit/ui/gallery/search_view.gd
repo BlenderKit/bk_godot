@@ -148,7 +148,7 @@ func update_connection_message() -> void:
 
 func request_search(new_page: int = 1, force: bool = false) -> void:
 	page = new_page
-	if not gallery.is_client_connected():
+	if not plugin.is_client_connected():
 		_pending_search = true
 		gallery.tasks.forget(SEARCH_TASK)
 		gallery.set_busy(false)
@@ -421,7 +421,7 @@ func fill_categories() -> void:
 
 
 func _fetch_categories() -> void:
-	if _fetching_categories or not gallery.is_client_connected() or not plugin.categories.is_empty():
+	if _fetching_categories or not plugin.is_client_connected() or not plugin.categories.is_empty():
 		return
 	_fetching_categories = true
 	var categories: Array = await GalleryApi.fetch_categories(self, plugin)

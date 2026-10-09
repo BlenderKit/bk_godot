@@ -222,7 +222,7 @@ func _queue_lookup(id: String, asset_type: String) -> void:
 ## Look up the next unknown asset folder on Blendkit, one at a time. The
 ## search task also downloads the thumbnail, see add_thumbnail().
 func next_lookup() -> void:
-	if not _lookup_id.is_empty() or _lookup_queue.is_empty() or not gallery.is_client_connected():
+	if not _lookup_id.is_empty() or _lookup_queue.is_empty() or not gallery.plugin.is_client_connected():
 		return
 	var id: String = _lookup_queue.keys()[0]
 	var asset_type: String = _lookup_queue[id]

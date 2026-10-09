@@ -325,6 +325,10 @@ func update_status():
 		gallery.on_connection_changed()
 
 
+func is_client_connected() -> bool:
+	return state == State.CONNECTED
+
+
 func status_text() -> String:
 	match state:
 		State.DISABLED:

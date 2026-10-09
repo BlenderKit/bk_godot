@@ -114,7 +114,7 @@ func refresh() -> void:
 
 
 func status_color() -> Color:
-	if plugin.state == plugin.State.CONNECTED and plugin.failed_requests == 0:
+	if plugin.is_client_connected() and plugin.failed_requests == 0:
 		return get_theme_color("success_color", "Editor")
 	if plugin.state == plugin.State.FAILED:
 		return get_theme_color("error_color", "Editor")
