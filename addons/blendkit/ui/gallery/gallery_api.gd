@@ -61,6 +61,8 @@ const FILE_TYPES := [
 	["zip_file", "Archive (.zip)"],
 ]
 
+static var _slug_regex := RegEx.create_from_string("[^a-z0-9]+")
+
 
 # MARK: query building
 
@@ -187,8 +189,7 @@ static func pick_resolution_file_type(present: PackedStringArray, resolution: St
 
 ## Mirrors the Client's Slugify.
 static func slugify(text: String) -> String:
-	var regex := RegEx.create_from_string("[^a-z0-9]+")
-	var slug := regex.sub(text.to_lower(), "-", true)
+	var slug := _slug_regex.sub(text.to_lower(), "-", true)
 	if slug.length() > 50:
 		slug = slug.left(50)
 	return slug.lstrip("-").rstrip("-")

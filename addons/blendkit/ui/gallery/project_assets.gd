@@ -21,6 +21,8 @@ const KEPT_FIELDS := ["id", "assetBaseId", "name", "displayName", "assetType", "
 ## Files in an asset folder that are not the asset itself.
 const SIDE_EXTENSIONS := ["import", "uid"]
 
+static var _asset_id_regex := RegEx.create_from_string("_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
+
 ## Absolute path of the index directory.
 var dir: String
 var index := ConfigFile.new()
@@ -173,7 +175,7 @@ static func recent_download_folder(staging: String, since: int, taken: Dictionar
 
 ## The asset id of a folder named <slug>_<id> by the Client, or "".
 static func folder_asset_id(folder: String) -> String:
-	var m := RegEx.create_from_string("_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$").search(folder)
+	var m := _asset_id_regex.search(folder)
 	return m.get_string(1) if m else ""
 
 

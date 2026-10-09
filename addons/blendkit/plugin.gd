@@ -38,6 +38,9 @@ const REQUEST_TIMEOUT_MIN_FRAMES: int = 10
 const MAX_FAILED_REQUESTS: int = 3
 # Values of these keys never go to the Output, e.g. the tokens in login tasks.
 const SECRET_KEYS = ["access_token", "refresh_token", "api_key", "code_verifier"]
+# Client versions of the supported API series, e.g. "1.13.6" for v1.13.
+static var _client_version_regex := RegEx.create_from_string("^" + CLIENT_API_VERSION.substr(1).replace(".", "\\.") + "\\.[0-9]+$")
+static var _digits_regex := RegEx.create_from_string("\\d+")
 
 
 enum LogLevel { ERROR, WARNING, INFO, VERBOSE, DEBUG, TRACE }
@@ -793,9 +796,7 @@ func install_shared_client():
 
 
 static func is_valid_client_version(version: String) -> bool:
-	var regex := RegEx.new()
-	regex.compile("^" + CLIENT_API_VERSION.substr(1).replace(".", "\\.") + "\\.[0-9]+$")
-	return regex.search(version) != null
+	return _client_version_regex.search(version) != null
 
 
 static func is_compatible_client(found: String, required: String) -> bool:
@@ -938,9 +939,7 @@ static func parse_version_parts(version: String) -> Array:
 	# "1.9.1-260127" -> [1, 9, 1, 260127]. Mirrors the Client's
 	# tolerant comparator (BlenderKit/version_compare.py).
 	var parts: Array[int] = []
-	var regex := RegEx.new()
-	regex.compile("\\d+")
-	for m in regex.search_all(version):
+	for m in _digits_regex.search_all(version):
 		parts.append(int(m.get_string()))
 	return parts
 
