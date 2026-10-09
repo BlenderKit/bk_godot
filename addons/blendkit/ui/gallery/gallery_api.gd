@@ -422,10 +422,9 @@ static func search(parent: Node, plugin: EditorPlugin, url_query: String, asset_
 
 
 static func download(parent: Node, plugin: EditorPlugin, asset: Dictionary, file_type: String, abs_download_path: String) -> Array:
-	var body := {
-		"app_id": OS.get_process_id(),
-		"addon_version": plugin.get_addon_version(),
-		"platform_version": OS.get_name(),
+	var api_key: String = plugin.auth.api_key()
+	var body: Dictionary = plugin.client_data(api_key)
+	body.merge({
 		"download_dirs": [type_download_dir(abs_download_path, str(asset.get("assetType", "")))],
 		"resolution": file_type,
 		"asset_data": {
@@ -437,16 +436,17 @@ static func download(parent: Node, plugin: EditorPlugin, asset: Dictionary, file
 		},
 		"PREFS": {
 			"scene_id": project_scene_uuid(),
-			"api_key": plugin.auth.api_key(),
+			"api_key": api_key,
 			"unpack_files": false,
 			"create_asset_library": false,
 		},
-	}
+	})
 	return task_id_from(await post_json(parent, plugin.client_url("assets/download"), body))
 
 
 static func cancel_download(parent: Node, plugin: EditorPlugin, task_id: String) -> Dictionary:
-	var body := {"task_id": task_id, "app_id": OS.get_process_id()}
+	var body: Dictionary = plugin.client_data()
+	body["task_id"] = task_id
 	return await post_json(parent, plugin.client_url("assets/cancel_download"), body)
 
 
