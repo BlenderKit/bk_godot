@@ -24,7 +24,8 @@ const OLD_SETTINGS = {"blendkit/model_format": SETTING_MODEL_FORMAT, "blendkit/r
 const RESOLUTION_AUTO = "auto"
 # The resolution Auto downloads.
 const AUTO_RESOLUTION = "resolution_2K"
-const DOCS_URL = "https://github.com/BlenderKit/bk_godot"
+const USER_GUIDE_URL = "https://www.blendkit.com/blendkit-in-godot/"
+const SOURCES_URL = "https://github.com/BlenderKit/bk_godot"
 const ISSUES_URL = "https://github.com/BlenderKit/bk_godot/issues"
 
 const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")

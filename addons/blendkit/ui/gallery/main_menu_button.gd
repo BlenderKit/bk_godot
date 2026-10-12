@@ -12,7 +12,7 @@ const SettingsDialog = preload("res://addons/blendkit/ui/settings_dialog.gd")
 
 enum Item {
 	PROFILE, EMAIL, PLAN, LOGIN, SIGNUP, LOGOUT, LOGIN_STATUS, CANCEL_LOGIN, LOGIN_ERROR,
-	STATUS, ENABLE, RESTART, SETTINGS, WEBSITE, DOCS, ISSUES, VERSION, CLIENT_VERSION,
+	STATUS, ENABLE, RESTART, SETTINGS, WEBSITE, USER_GUIDE, SOURCES, ISSUES, VERSION, CLIENT_VERSION,
 }
 
 const USER_ICON_PATH = "res://addons/blendkit/ui/icons/user.svg"
@@ -31,7 +31,7 @@ var _settings: AcceptDialog
 var _logo_key := ""
 var _avatar: Texture2D
 var _avatar_key := ""
-var _user_icons: Dictionary = {}
+var _mono_icons: Dictionary = {}
 
 
 ## Called by the gallery once the plugin is known.
@@ -183,17 +183,19 @@ func _fill_menu() -> void:
 		_menu.set_item_tooltip(-1, "Client %son port %s" % ["v%s " % version if version else "", plugin.connection.port])
 	_menu.add_check_item("Enable Blendkit Client", Item.ENABLE)
 	_menu.set_item_checked(-1, plugin.client_enabled)
-	_menu.set_item_tooltip(-1, "The Blendkit Client searches and downloads assets and connects Send to Godot on blendkit.com.")
+	_menu.set_item_tooltip(-1, "The Blendkit Client searches and downloads assets.")
 	_menu.add_icon_item(get_theme_icon("Tools", "EditorIcons"), "Settings…", Item.SETTINGS)
 	if plugin.connection.state == ClientConnection.State.FAILED:
 		_menu.add_icon_item(get_theme_icon("Reload", "EditorIcons"), "Restart Client", Item.RESTART)
 	_menu.add_separator("Account")
 	_fill_account()
 	_menu.add_separator()
-	_menu.add_icon_item(get_theme_icon("ExternalLink", "EditorIcons"), "blendkit.com", Item.WEBSITE)
+	_menu.add_icon_item(_mono_icon(Icons.ICON_PATH), "Blendkit.com", Item.WEBSITE)
 	_menu.set_item_tooltip(-1, plugin.SERVER)
-	_menu.add_icon_item(get_theme_icon("Help", "EditorIcons"), "Documentation", Item.DOCS)
-	_menu.set_item_tooltip(-1, plugin.DOCS_URL)
+	_menu.add_icon_item(get_theme_icon("Help", "EditorIcons"), "User Guide", Item.USER_GUIDE)
+	_menu.set_item_tooltip(-1, plugin.USER_GUIDE_URL)
+	_menu.add_icon_item(get_theme_icon("Script", "EditorIcons"), "README & Sources", Item.SOURCES)
+	_menu.set_item_tooltip(-1, plugin.SOURCES_URL)
 	_menu.add_icon_item(get_theme_icon("Debug", "EditorIcons"), "Report an Issue", Item.ISSUES)
 	_menu.set_item_tooltip(-1, plugin.ISSUES_URL)
 	_menu.add_separator()
@@ -211,7 +213,7 @@ func _fill_account() -> void:
 	if logged_in:
 		_update_avatar()
 		var who: String = Auth.display_name(auth.profile)
-		_menu.add_icon_item(_avatar if _avatar else _user_icon(AVATAR_SIZE), who if who else "Loading profile…", Item.PROFILE)
+		_menu.add_icon_item(_avatar if _avatar else _mono_icon(USER_ICON_PATH, AVATAR_SIZE), who if who else "Loading profile…", Item.PROFILE)
 		_menu.set_item_icon_max_width(-1, int(AVATAR_SIZE * EditorInterface.get_editor_scale()))
 		_menu.set_item_tooltip(-1, "Open your profile on blendkit.com.")
 		var email := str(auth.profile.get("email", "")) if auth.profile.get("email") else ""
@@ -219,7 +221,7 @@ func _fill_account() -> void:
 			_menu.add_item(email, Item.EMAIL)
 			_menu.set_item_disabled(-1, true)
 	else:
-		_menu.add_icon_item(_user_icon(), "Not logged in", Item.PROFILE)
+		_menu.add_icon_item(_mono_icon(USER_ICON_PATH), "Not logged in", Item.PROFILE)
 		_menu.set_item_disabled(-1, true)
 
 	# Without an account, only free assets download, as with the Free plan.
@@ -274,19 +276,21 @@ func _on_id_pressed(id: int) -> void:
 			_settings.popup_centered()
 		Item.WEBSITE:
 			OS.shell_open(plugin.SERVER)
-		Item.DOCS:
-			OS.shell_open(plugin.DOCS_URL)
+		Item.USER_GUIDE:
+			OS.shell_open(plugin.USER_GUIDE_URL)
+		Item.SOURCES:
+			OS.shell_open(plugin.SOURCES_URL)
 		Item.ISSUES:
 			OS.shell_open(plugin.ISSUES_URL)
 
 
-## Monochrome user icon matching the editor icons, rendered like the
+## Monochrome 16 px SVG icon matching the editor icons, rendered like the
 ## plugin's tab icon. size is in unscaled pixels.
-func _user_icon(size := 16) -> Texture2D:
-	var key := "%s %s %s" % [size, EditorInterface.get_editor_scale(), Icons.is_dark_icon_theme()]
-	if not _user_icons.has(key):
-		_user_icons[key] = Icons.render_svg(USER_ICON_PATH, size * EditorInterface.get_editor_scale() / 16.0, true)
-	return _user_icons[key]
+func _mono_icon(path: String, size := 16) -> Texture2D:
+	var key := "%s %s %s %s" % [path, size, EditorInterface.get_editor_scale(), Icons.is_dark_icon_theme()]
+	if not _mono_icons.has(key):
+		_mono_icons[key] = Icons.render_svg(path, size * EditorInterface.get_editor_scale() / 16.0, true)
+	return _mono_icons[key]
 
 
 ## The avatar as a round icon at its menu size.

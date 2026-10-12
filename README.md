@@ -1,6 +1,6 @@
 <div align="center">
   <img src="addons/blendkit/logo/blendkit-logo-hexa_pure.svg" alt="Blendkit Logo" width="100"/>
-  <h1 align="center">Blendkit for Godot</h3>
+  <h1 align="center">Blendkit for Godot</h1>
 
   A simple yet effective add-on that lets you import models
   from the [Blendkit](https://blendkit.com) library
@@ -12,14 +12,19 @@
 
 # About
 
-Browse the [Blendkit.com](https://blendkit.com) gallery, click **Send to Godot**
-on any asset, and let it land directly in your Godot
-project - organized and ready to use.
+Search the [Blendkit.com](https://blendkit.com) library right inside the
+Godot editor: open the **Blendkit** tab, find an asset, click **Download**, and it
+lands in your project, organized and ready to use.
 
-You can process assets as you see fit, possibly building your own workflow /
-pipeline on top of this simple mechanism.
+![Blendkit in Godot](img/blendkit_in_godot.png)
 
-See [User Guide](https://blendkit.com/godot) for an overview,
+No web browser needed: search, details and downloads all happen in the editor.
+A browser only opens if you choose to log in.
+
+You can process the downloaded assets however you like, or build your own
+workflow / pipeline on top of them.
+
+See [User Guide](https://www.blendkit.com/blendkit-in-godot/) for an overview,
 screenshots, and getting started guide.
 
 This project is Free and Open Source Software under GPLv2.
@@ -33,9 +38,12 @@ This project is Free and Open Source Software under GPLv2.
 
 ### alpha
 
-Blendkit Godot plugin is in **active early development** focusing on polishing
-fundamentals (building, testing, integration) in order to provide a robust
-user and developer experience, including distribution and installation.
+Fundamentals are done: building, testing, integration, distribution and
+installation work reliably. The new **Blendkit** editor tab brings decent
+usability and ergonomics. The remaining bottleneck is importing `.blend` and
+glTF files into Godot, an ongoing upstream effort.
+
+More testing and polish is needed before reaching beta quality.
 
 As of now, please consider this software **experimental** 🧪
 
@@ -44,32 +52,32 @@ plugin is useful for you and everyone else.
 
 **IMPORTANT:** Godot Blender imports are relatively young and many `.blend` files can
 import incorrectly or not import at all with ample amount of warnings and errors
-printed to Godot Output. As of Godot 4.5.1, Blender 3 is required while Blender
-5 has been out for some time.
+printed to Godot Output. **Blender Import** in Blendkit **Settings** shows whether
+Godot can import `.blend` files and helps you find Blender.
 
 This plugin will get increasingly useful as native Blender -> Godot import
 improves.
 
-Experimental **glTF** support was introduced in `0.4.0` - set **Model Format**
-to **glTF (.glb) when available** to download glTF instead of the original
-Blender (`*.blend`) file. glTF auto-exports are by no means perfect, but they
-might occasionally work.
+Set **Model Format** to **glTF (.glb)** to download glTF instead of the original
+Blender (`.blend`) file. Blendkit glTF auto-exports using Blender are by no
+means perfect, but they might work better for some assets and they don't
+require local Blender binary.
 
 
 ## Requirements
 
 Blendkit Godot Plugin requires:
 
-- Godot Engine: **4.X**
-- OS: **Linux**, **Windows**
-    - **MacOS** doesn't work yet due to security (work in progress)
+- Godot Engine: **4** (**4.4+** tested in CI)
+- OS: **Linux**, **Windows**, **MacOS** (MacOS should work now but is untested,
+  [reports](https://github.com/BlenderKit/bk_godot/issues) welcome)
 - Architectures: **x86_64**, **arm64**
-- Web browser: **permission to access local network** (to connect to Blendkit Client)
+- Web browser: only to log in, which is optional
 
 
 ## Installation
 
-See [User Guide](https://blendkit.com/godot) for a visual overview
+See [User Guide](https://www.blendkit.com/blendkit-in-godot/) for a visual overview
 of installation and usage.
 
 The Plugin needs to be installed for each Godot project.
@@ -87,9 +95,8 @@ You can also browse the plugin on the
 
 ### From a ZIP archive
 
-Download the `blendkit-godot_vX.Y.Z.zip` archive from the
-[Godot Asset Store](https://store.godotengine.org/asset/blendkit/blendkit/)
-or [GitHub Releases](https://github.com/BlenderKit/bk_godot/releases)
+Download the `blendkit-godot_vX.Y.Z.zip` archive from
+[GitHub Releases](https://github.com/BlenderKit/bk_godot/releases)
 (or [build](#building) your own from sources), then:
 
 1. **Extract** the ZIP into your Godot project root directory (where `project.godot` is located)
@@ -115,81 +122,89 @@ This avoids stale files left over from the previous version.
 ## Usage
 
 After Blendkit Godot plugin is installed and enabled in your Godot project,
-you should see a new **Blendkit** tab in the top bar (next to **Asset Store**)
-of the Godot Editor.
+open the new **Blendkit** tab in the top bar (next to **Asset Store**) of the
+Godot Editor.
 
-You can now browse assets from [Blendkit.com](https://blendkit.com) in your
-browser and download them into your Godot project with a single click on the **Send
-to Godot** button on any **Get asset** page.
+### Search and download
 
-For example, after downloading two models and one material:
+- Search by text, sort the results, and filter by type (Models, Materials,
+  HDRs, Scenes, Printables), category, polygon count, **Free only** and more.
+  For models, the **Format** dropdown is the **Model Format** setting:
+  **glTF (.glb)** shows only models with glTF and downloads it,
+  **Blender (.blend)** shows all.
+- Click an asset to see its details. Choose a file and click **Download** to
+  get it into `bk_assets/`. The file defaults to the **Model Format** and
+  **Resolution** settings. A thin bar along the bottom of the asset's
+  thumbnail shows the download progress, and a check mark in its corner shows
+  the asset is in the project (or an error icon when the download failed).
+- Logging in is optional. Free assets download without an account. To
+  download Full Plan assets, click **Log In…** in the Blendkit menu at the end
+  of the search bar and log in with a Full Plan account in the browser that
+  opens.
+
+Downloaded assets are organized by type and asset. For example, after
+downloading two models and one material:
 
 ```
 bk_assets
 ├── materials
-│   └── stylized-wooden-_42daf872-0c07-4f9f-bd51-2d741043096b
-│       └── stylized-wooden-floor_2K_724059e9-51b8-4d19-8088-3a11745347a2.blend
+│   └── stylized-wooden-_42daf872-0c07-4f9f-bd51-2d741043096b
+│       └── stylized-wooden-floor_2K_724059e9-51b8-4d19-8088-3a11745347a2.blend
 └── models
     ├── 19th-century-pap_6c28bfad-6678-4e85-abbc-41b36c436c96
-    │   └── 19th-century-paper-clutter-waste_2K_2e96ac1b-aae0-4c49-b352-6553f693f841.blend
+    │   └── 19th-century-paper-clutter-waste_2K_2e96ac1b-aae0-4c49-b352-6553f693f841.blend
     └── wooden-lamp_84286bab-7077-4bb8-a83f-f035c71e9885
         └── wooden-lamp_e6458d96-fe9f-4b4d-a164-c7d61974be86.blend
 ```
 
-### Blendkit tab
+### Project assets
 
-You can also search and download assets without leaving Godot: open the
-**Blendkit** tab in the editor's top bar (next to **Asset Store**).
+The download toggle next to the search bar switches the **Blendkit** tab to
+the assets downloaded to this project, with a local search and
+**Show in FileSystem**. Switch back with the toggle or **Browse Blendkit**
+below the assets.
 
-- Search by text, sort the results, and filter by type (Models, Materials,
-  HDRs, Scenes, Printables), category and **Free only**. For models, the
-  **Format** dropdown is the **Model Format** setting: **glTF (.glb)** shows
-  only models with glTF and downloads it, **Blender (.blend)** shows all.
-- Click an asset to see its details. Choose a file and click **Download** to
-  get it into `bk_assets/`, with the same layout as **Send to Godot**. The file
-  defaults to the **Model Format** and **Resolution** settings. A thin bar
-  along the bottom of the asset's thumbnail shows the download progress, and a
-  check mark in its corner shows the asset is in the project (or an error icon
-  when the download failed).
-- Logging in is optional. Free assets download without an account. To
-  download Full Plan assets here, click **Log In…** in the Blendkit menu at
-  the end of the search bar and log in with a Full Plan account in the
-  browser that opens. Without logging
-  in, click **Get on blendkit.com** and use **Send to Godot** there.
+### Blendkit menu
 
 The Blendkit menu at the end of the search bar (the Blendkit logo with **⋮**)
 gathers the Client, the account and settings. The dot in the logo's corner
 shows the Blendkit Client status: green when connected, yellow while
 connecting, red when it failed and gray when it's off. The menu has:
 
-- The Client status in full, **Enable Blendkit Client** to turn the Client on
-  and off, and **Restart Client** when it failed.
+- The Client status in full and **Enable Blendkit Client** to turn the Client
+  on and off.
+- **Settings** with the download directory (`res://bk_assets/` by default),
+  **Blender Import**, **Model Format** (**Blender (.blend)** by default, or
+  **glTF (.glb)**), **Resolution**, the Client **Port** and the plugin's
+  **Log Level**.
+- **Restart Client** when it failed.
 - The account: your avatar, name and email once you're logged in (click them
   for your profile), and your plan (click it for the plans). **Log In…** and
   **Sign Up…** open the browser and turn the Client on if it's off, as logging
   in goes through it. **Log Out** when logged in.
-- **Settings…** with the download directory (`res://bk_assets/` by default),
-  **Model Format** (Blender original `.blend` by default, or glTF), **Resolution**, the Client **Port** and
-  the plugin's **Log Level**.
-- Links to blendkit.com, the documentation and the issue tracker.
+- Links to blendkit.com, **User Guide**, **README & Sources** and the issue
+  tracker.
+- The plugin and Client versions.
 
 The login is shared through the Blendkit Client, so logging in or out in
 another Blendkit add-on (e.g. Blender's) does the same here while both run.
 The login is stored in the editor's data directory, outside your projects.
 
+### Details
+
 Thumbnails are cached in `~/blenderkit_data/godot_temp/`, outside your project.
 
-Downloads in progress, from the **Blendkit** tab and **Send to Godot** alike,
-go to `bk_assets/.downloads/` first. Godot doesn't scan hidden folders and git
-ignores it, so partial files are never imported or committed. Each file moves
-to its folder once complete, replacing an older copy, and Godot imports it.
-Downloads left there when the editor closed are deleted on the next start.
+Downloads in progress go to `bk_assets/.downloads/` first. Godot doesn't scan
+hidden folders and git ignores it, so partial files are never imported or
+committed. Each file moves to its folder once complete, replacing an older
+copy, and Godot imports it. Downloads left there when the editor closed are
+deleted on the next start.
 
 You don't need a credit card to get free assets, but you can access paid assets
 should you decide to support artists with a
 [Blendkit.com](https://blendkit.com) Full Plan.
 
-You can create empty `.gdignore` file in `bk_assets/` to prevent Godot
+You can create an empty `.gdignore` file in `bk_assets/` to prevent Godot
 auto-import.
 
 
@@ -214,18 +229,16 @@ auto-import.
 └──────────────────────┘                              └────────────────────┘
            ▲
            │
-     HTTP  │  initiate download
+     HTTP  │  optional login
            │
            ▼
-┌─────────────────────────┐
-│   Browser / bkclientjs  │
-│       (JavaScript)      │
-└─────────────────────────┘
+┌──────────────────────┐
+│     Web browser      │
+└──────────────────────┘
 ```
 
 ### Weak points
 
-- **Browser ↔ Client** connection may be blocked by browser policy / firewall / OS settings
 - **Godot ↔ Client** connection may be lost if Godot doesn't send heartbeat for
   too long, this leads to Client auto (re)start
 
@@ -233,7 +246,7 @@ auto-import.
 ## Directory Structure
 
 - `addons/blendkit/` - Godot plugin sources (standard Godot addon path)
-- `BlenderKit/` - Blendkit Client sources (cloned from upstream repo)
+- `bk_client/` - Blendkit Client sources (cloned on demand by `./dev.py build --from-source`)
 - `tests/` - pytest test suite
 - `out/` - Build output directory (generated)
 - `project.godot` - Godot project file for development and testing

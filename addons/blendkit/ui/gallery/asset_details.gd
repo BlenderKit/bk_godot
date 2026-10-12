@@ -243,9 +243,9 @@ func refresh_download() -> void:
 			_login_button.show()
 			_login_button.disabled = auth.login_pending
 			if asset.get("isFree") == true:
-				note_label.text = "Log in to download this asset here, or use Send to Godot on blendkit.com."
+				note_label.text = "Log in to download this asset here."
 			else:
-				note_label.text = "Full Plan asset. Log in with Full Plan to download it here, or use Send to Godot on blendkit.com."
+				note_label.text = "Full Plan asset. Log in with Full Plan to download it here."
 			return
 		var reason := GalleryApi.cant_download_message(asset).strip_edges()
 		if reason and not reason.ends_with("."):
@@ -254,7 +254,7 @@ func refresh_download() -> void:
 			ok.text = "Get Full Plan"
 			note_label.text = reason if reason else "This asset needs Full Plan."
 		else:
-			note_label.text = reason if reason else "This asset can't be downloaded here. Try Send to Godot on blendkit.com."
+			note_label.text = reason if reason else "This asset can't be downloaded here. Try blendkit.com."
 		return
 	if file_option.item_count == 0:
 		ok.text = "Download"

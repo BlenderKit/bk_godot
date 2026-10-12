@@ -1,59 +1,73 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-10-12
+
+The plugin moves into a new **Blendkit** main screen tab in the Godot editor,
+with a built-in asset browser, project assets, integrated settings, login,
+Blender import setup and more.
+
+A web browser is no longer required; it's only needed for the optional login.
+Relying on the Send to Godot button in modern browsers was the biggest pain
+point, and the built-in asset browser now makes it unnecessary 😎
+
+This release is packed with new features and polish, including UI that follows
+Godot conventions: a huge leap forward in usability 🥳
 
 ### Added
 
 - **Blendkit** tab in the editor's top bar, next to **Asset Store**: search
   Blendkit assets with filters, page through thumbnails, open asset details,
-  and download free assets straight into `bk_assets/`. Full Plan assets link to
-  blendkit.com, where **Send to Godot** gets them.
-- Optional login from the **Blendkit** tab: **Log In…** in the Blendkit menu
-  logs in through the browser like the Blender add-on, turning the Client on
-  if needed. With a Full Plan account, Full Plan assets download straight
-  into the project.
-- Blendkit menu at the end of the search bar: the Blendkit logo with a Client
-  status dot and **⋮** opens the Client status and switch, the account
-  (avatar, name, email and plan, or **Log In…** and **Sign Up…**),
-  **Settings…** and links to blendkit.com, the docs and the issue tracker.
-- Asset thumbnails show download progress along their bottom edge, and a
-  check mark or an error icon when the download finishes.
-- Project assets: the download toggle next to the search switches the
-  **Blendkit** tab to the assets downloaded to the project, including those
-  sent with **Send to Godot**, with a local search and **Show in FileSystem**.
-  Asset folders found in `bk_assets/` are looked up on blendkit.com and
-  remembered in `.godot/blendkit/`, so nothing is added to the project.
-  Switching back, with the toggle or **Browse Blendkit** below the assets,
-  returns to the previous search instantly.
-- The download toggle shows the number of downloads in progress, and the
-  project assets list them first with their progress, including **Send to
-  Godot** downloads from blendkit.com.
-- Downloads are staged in `bk_assets/.downloads/` and move into place once
-  complete, so Godot no longer tries to import partial files.
-- **Polygons** filter for models and printables in the **Blendkit** tab: a
-  range slider from 0 to ∞ polygons with Min and Max boxes for exact counts
-  and **Any** to clear it, shown as **Any**, **> 1k**, **< 10k** or
-  **10 - 10k**.
-- **Blender Import** line in **Settings…** shows how Godot imports .blend
+  and download assets straight into `bk_assets/`.
+- **Polygons** filter for models and printables: a range slider from 0 to ∞
+  with Min and Max boxes for exact counts and **Any** to clear it. The active
+  filter reads **Any**, **> 1k**, **< 10k** or **10 - 10k**.
+- Project assets: the download toggle next to the search bar switches the
+  **Blendkit** tab to assets downloaded to the project, with a local search
+  and **Show in FileSystem**.
+  Asset folders found in `bk_assets/` are looked up on blendkit.com and cached
+  in `.godot/blendkit/`, so nothing is added to the project. Switching back
+  with the toggle or **Browse Blendkit** below the assets restores the
+  previous search instantly.
+- Blendkit menu at the end of the search bar, opened by the Blendkit logo with
+  a Client status dot and **⋮**: Client status and switch, account (avatar,
+  name, email and plan, or **Log In…** and **Sign Up…**), **Settings**, and
+  links to blendkit.com, **User Guide**, **README & Sources** and the issue
+  tracker.
+- Optional login: **Log In…** in the Blendkit menu logs in through the
+  browser like the Blender add-on, turning the Client on if needed. With a
+  Full Plan account, Full Plan assets download straight into the project.
+- **Blender Import** line in **Settings** shows how Godot imports .blend
   files and warns when Blender isn't set up. Clicking it opens a dialog to
-  choose **Don't import .blend** or **Native .blend import**,
-  which needs Blender: **Detect** finds it or a file picker sets it, and
-  Apply stays off until it works. **Apply & Restart** restarts the
-  editor, as Godot sets up .blend import when it starts.
+  choose between **Don't import .blend** and **Native .blend import**. Native
+  import needs Blender: **Detect** finds it, or set it with a file picker;
+  Apply stays disabled until Blender works. **Apply & Restart** restarts the
+  editor, since Godot sets up .blend import on startup.
+- Downloads are staged in `bk_assets/.downloads/` and moved into place once
+  complete, so Godot no longer tries to import partial files.
+- Plugin and Client versions at the bottom of the Blendkit menu.
 
 ### Changed
 
-- Model Format options are now **Blender (.blend)** and **glTF (.glb)**, in
-  the settings and in the **Blendkit** tab's Format filter.
-- **Auto** resolution downloads 2K textures instead of the original
+- Use official signed Blendkit Client binaries v1.13.6 from standalone
+  [bk_client](https://github.com/BlenderKit/bk_client) releases.
+- **Model Format** options are renamed to **Blender (.blend)** and **glTF
+  (.glb)**, both in the settings and in the **Blendkit** tab's Format filter.
+- **Model Format** now defaults to **Blender (.blend)** instead of glTF.
+  Projects that never changed it switch to .blend downloads; set it back to
+  **glTF (.glb)** in **Settings** if you prefer glTF.
+- **Auto** resolution now downloads 2K textures instead of the original
   full-resolution .blend.
+- Settings are saved to Godot's **Project Settings** and **Editor Settings**
+  under **Blendkit**, where they can be edited too. Download directory, Model
+  Format and Resolution are per project in `project.godot`, shared with the
+  team. Client Port, Log Level and the Client switch stay in your editor
+  settings. Model Format and Resolution set in older versions are migrated.
 
 ### Removed
 
 - The **Blendkit** dock next to **Inspector**. Its status and Client switch
-  moved to the Blendkit menu, its settings to **Settings…** in that menu, and
-  download progress to the asset thumbnails and details. Downloads started
-  with **Send to Godot** on blendkit.com show in the editor Output.
+  moved to the Blendkit menu, its settings to **Settings** in that menu, and
+  download progress to the asset thumbnails and details.
 
 ## 0.6.1 - 2026-07-01
 
