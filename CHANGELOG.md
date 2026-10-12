@@ -34,6 +34,17 @@
   range slider from 0 to ∞ polygons with Min and Max boxes for exact counts
   and **Any** to clear it, shown as **Any**, **> 1k**, **< 10k** or
   **10 - 10k**.
+- **Blender Import** line in **Settings…** shows how Godot imports .blend
+  files and warns when Blender isn't set up. Clicking it opens a dialog to
+  choose **Don't import .blend** or **Native .blend import**,
+  which needs Blender: **Detect** finds it or a file picker sets it, and
+  Apply stays off until it works. **Apply & Restart** restarts the
+  editor, as Godot sets up .blend import when it starts.
+
+### Changed
+
+- Model Format options are now **Original .blend** and **Blendkit glTF**, in
+  the settings and in the **Blendkit** tab's Format filter.
 
 ### Removed
 

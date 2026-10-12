@@ -8,7 +8,7 @@ signal download_dir_changed
 
 const SERVER = "https://blendkit.com"
 # [value, label] pairs for the settings dialog
-const MODEL_FORMATS = [["blend", "Blender original (.blend)"], ["gltf_godot", "glTF (.glb) when available"]]
+const MODEL_FORMATS = [["blend", "Original .blend"], ["gltf_godot", "Blendkit glTF when available"]]
 const RESOLUTIONS = [["", "Auto"], ["ORIGINAL", "Original"], ["resolution_4K", "4K"], ["resolution_2K", "2K"], ["resolution_1K", "1K"], ["resolution_0_5K", "0.5K"]]
 # Project settings live in project.godot and are shared with the team, editor
 # settings stay on this computer. All of them show in Godot's settings dialogs.
@@ -27,6 +27,7 @@ const ISSUES_URL = "https://github.com/BlenderKit/bk_godot/issues"
 
 const gallery_scene = preload("res://addons/blendkit/ui/gallery/gallery.tscn")
 const Auth = preload("res://addons/blendkit/auth.gd")
+const BlenderImport = preload("res://addons/blendkit/blender_import.gd")
 const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
@@ -85,6 +86,10 @@ var download_dir: String = "res://bk_assets/"
 var absolute_download_path: String
 var model_format: String = "blend"
 var resolution: String = ""
+# Godot sets up .blend import when the editor starts, so changes to these
+# apply after a restart.
+var startup_blend_enabled: bool
+var startup_blender_path: String
 # Port to start the Client on when none is running
 var preferred_port: String = ClientConnection.CLIENT_PORTS[0]
 var addon_version: String
@@ -98,6 +103,8 @@ var plugin_icon_key: String
 
 func _enter_tree() -> void:
 	init_settings()
+	startup_blend_enabled = BlenderImport.blend_import_enabled()
+	startup_blender_path = BlenderImport.blender_path()
 	log_info("Plugin enabled")
 	absolute_download_path = ProjectSettings.globalize_path(download_dir)
 	log_info("Download path: %s" % absolute_download_path)
@@ -221,6 +228,27 @@ func set_model_format(format: String) -> void:
 	model_format = format
 	save_project_setting(SETTING_MODEL_FORMAT, model_format)
 	model_format_changed.emit()
+
+
+## Godot's switch for .blend import, which applies after a restart.
+func set_blend_import_enabled(enabled: bool) -> void:
+	if enabled == BlenderImport.blend_import_enabled():
+		return
+	save_project_setting(BlenderImport.GODOT_ENABLED, enabled)
+	log_info(".blend import %s" % ("enabled" if enabled else "disabled"))
+
+
+func set_blender_path(path: String) -> void:
+	if path == BlenderImport.blender_path():
+		return
+	EditorInterface.get_editor_settings().set_setting(BlenderImport.GODOT_BLENDER_PATH, path)
+	log_info("Blender path set to %s" % path if path else "Blender path cleared")
+
+
+## Whether .blend import [param enabled] with Blender at [param path] differs
+## from what Godot set up when the editor started.
+func blend_import_needs_restart(enabled: bool, path: String) -> bool:
+	return enabled != startup_blend_enabled or (enabled and path != startup_blender_path)
 
 
 func set_resolution(new_resolution: String) -> void:

@@ -14,7 +14,7 @@ const PAGE_SIZE := 30
 ## still without one then show their asset type icon.
 const THUMBS_WAIT_MS := 20000
 ## Short Model Format labels for the filter row.
-const FORMAT_LABELS := {"blend": "Blender (.blend)", "gltf_godot": "glTF (.glb)"}
+const FORMAT_LABELS := {"blend": "Original .blend", "gltf_godot": "Blendkit glTF"}
 const SEARCH_TASK := "search"
 ## Wait this long after the Polygons range last changed before searching.
 const POLYGONS_DELAY := 0.5
