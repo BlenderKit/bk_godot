@@ -30,6 +30,10 @@
   Godot** downloads from blendkit.com.
 - Downloads are staged in `bk_assets/.downloads/` and move into place once
   complete, so Godot no longer tries to import partial files.
+- **Polygons** filter for models and printables in the **Blendkit** tab: a
+  range slider from 0 to ∞ polygons with Min and Max boxes for exact counts
+  and **Any** to clear it, shown as **Any**, **> 1k**, **< 10k** or
+  **10 - 10k**.
 
 ### Removed
 

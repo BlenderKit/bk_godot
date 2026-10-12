@@ -136,7 +136,7 @@ func _fill_params() -> void:
 		return
 	var rows: Array = []
 	if p.get("faceCount"):
-		rows.append(["Faces", _thousands(int(p.faceCount))])
+		rows.append(["Polygons", _thousands(int(p.faceCount))])
 	if p.has("dimensionX") and p.has("dimensionY") and p.has("dimensionZ"):
 		rows.append(["Dimensions", "%s × %s × %s m" % [_num(p.dimensionX), _num(p.dimensionY), _num(p.dimensionZ)]])
 	if p.get("textureResolutionMax"):

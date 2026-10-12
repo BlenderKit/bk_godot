@@ -16,6 +16,8 @@ const THUMBS_WAIT_MS := 20000
 ## Short Model Format labels for the filter row.
 const FORMAT_LABELS := {"blend": "Blender (.blend)", "gltf_godot": "glTF (.glb)"}
 const SEARCH_TASK := "search"
+## Wait this long after the Polygons range last changed before searching.
+const POLYGONS_DELAY := 0.5
 
 @onready var filter_row: HFlowContainer = %FilterRow
 @onready var sort_option: OptionButton = %SortOption
@@ -23,6 +25,7 @@ const SEARCH_TASK := "search"
 @onready var category_option: OptionButton = %CategoryOption
 @onready var free_check: CheckBox = %FreeCheck
 @onready var format_option: OptionButton = %FormatOption
+@onready var polygon_filter: Button = %PolygonFilter
 @onready var message_box: VBoxContainer = %MessageBox
 @onready var message_label: Label = %MessageLabel
 @onready var message_button: Button = %MessageButton
@@ -51,6 +54,7 @@ var _message_action := Callable()
 var _page_count := 0
 ## [page, page count] the page buttons were made for.
 var _pages_made: Array = []
+var _polygons_timer: Timer
 
 
 ## Called by the gallery once the plugin is known.
@@ -76,6 +80,12 @@ func setup(new_gallery: Node) -> void:
 	sort_option.select(GalleryApi.option_index(GalleryApi.SORTS, _get_meta("gallery_sort", "relevance")))
 	type_option.select(maxi(0, GalleryApi.ASSET_TYPES.find(_get_meta("gallery_type", "model"))))
 	free_check.button_pressed = _get_meta("gallery_free", false)
+	var polygons: Array = _get_meta("gallery_polygons", [0, GalleryApi.NO_LIMIT])
+	polygon_filter.setup(polygons[0], polygons[1])
+	_polygons_timer = Timer.new()
+	_polygons_timer.one_shot = true
+	_polygons_timer.wait_time = POLYGONS_DELAY
+	add_child(_polygons_timer)
 	_on_model_format_changed()
 	_update_type_filters()
 	fill_categories()
@@ -84,6 +94,13 @@ func setup(new_gallery: Node) -> void:
 	type_option.item_selected.connect(_on_type_selected)
 	category_option.item_selected.connect(func(_i): request_search())
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
+	polygon_filter.range_changed.connect(_on_polygons_changed)
+	_polygons_timer.timeout.connect(request_search)
+	# Closing the popup searches right away.
+	polygon_filter.closed.connect(func():
+		if not _polygons_timer.is_stopped():
+			_polygons_timer.stop()
+			request_search())
 	format_option.item_selected.connect(func(i): plugin.set_model_format(plugin.MODEL_FORMATS[i][0]))
 	plugin.model_format_changed.connect(_on_model_format_changed)
 	plugin.auth.account_changed.connect(_on_account_changed)
@@ -166,7 +183,8 @@ func _run_search(force: bool = true) -> void:
 	var text: String = gallery.blendkit_query()
 	var url := GalleryApi.build_search_url(plugin.SERVER, text, asset_type,
 		_category_slug(), _sort(), free_check.button_pressed,
-		asset_type == "model" and plugin.model_format != "blend", page, PAGE_SIZE, plugin.get_addon_version())
+		asset_type == "model" and plugin.model_format != "blend",
+		polygon_filter.min_faces, polygon_filter.max_faces, page, PAGE_SIZE, plugin.get_addon_version())
 	if url == _search_url and _search_error.is_empty() and not force:
 		return
 	_pending_search = false
@@ -434,9 +452,10 @@ func _fetch_categories() -> void:
 		fill_categories()
 
 
-## Only models have glTF.
+## Only models have glTF; scenes have no polygon count.
 func _update_type_filters() -> void:
 	format_option.get_parent().visible = _asset_type() == "model"
+	polygon_filter.get_parent().visible = _asset_type() in GalleryApi.POLYGON_TYPES
 
 
 func _on_sort_selected(index: int) -> void:
@@ -455,6 +474,12 @@ func _on_type_selected(index: int) -> void:
 func _on_filter_toggled(pressed: bool, meta_key: String) -> void:
 	_set_meta(meta_key, pressed)
 	request_search()
+
+
+## Dragging the range searches once it rests.
+func _on_polygons_changed() -> void:
+	_set_meta("gallery_polygons", [polygon_filter.min_faces, polygon_filter.max_faces])
+	_polygons_timer.start()
 
 
 ## The Format dropdown is the Model Format setting. glTF shows only models

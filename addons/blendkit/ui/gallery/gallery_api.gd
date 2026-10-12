@@ -25,6 +25,13 @@ const ASSET_TYPE_LABELS := {
 	"printable": "Printables",
 }
 
+## Asset types with a polygon count to filter by. Scenes report 1 face.
+const POLYGON_TYPES := ["model", "printable"]
+## Polygon count without an upper limit.
+const NO_LIMIT := -1
+## Stops of the Polygons filter's range slider, the last is no limit.
+const POLYGON_STOPS := [0, 10, 100, 1000, 10000, 100000, 1000000, NO_LIMIT]
+
 ## Sort options, in OptionButton order: [id, label].
 const SORTS := [
 	["relevance", "Relevance"],
@@ -100,7 +107,9 @@ static func encode_text(text: String) -> String:
 	return "+".join(words)
 
 
-static func build_search_url(server: String, text: String, asset_type: String, category_slug: String, sort: String, free_only: bool, godot_ready: bool, page: int, page_size: int, addon_version: String) -> String:
+## Polygon counts from [param min_faces] to [param max_faces], which may be
+## NO_LIMIT, apply to POLYGON_TYPES.
+static func build_search_url(server: String, text: String, asset_type: String, category_slug: String, sort: String, free_only: bool, godot_ready: bool, min_faces: int, max_faces: int, page: int, page_size: int, addon_version: String) -> String:
 	var tokens := PackedStringArray()
 	var encoded := encode_text(text)
 	if not encoded.is_empty():
@@ -115,9 +124,70 @@ static func build_search_url(server: String, text: String, asset_type: String, c
 		tokens.append("sexualizedContent:false")
 		if godot_ready:
 			tokens.append("last_gltf_godot_upload_isnull:false")
+	if asset_type in POLYGON_TYPES:
+		if min_faces > 0:
+			tokens.append("faceCount_gte:%d" % min_faces)
+		if max_faces != NO_LIMIT:
+			tokens.append("faceCount_lte:%d" % max_faces)
 	tokens.append("order:" + search_order(sort, text))
 	return "%s/api/v1/search/?query=%s&dict_parameters=1&page_size=%d&page=%d&addon_version=%s" % [
 		server, "+".join(tokens), page_size, page, addon_version.uri_encode()]
+
+
+# MARK: polygon counts
+
+## Short polygon count like 950, 1.5k or 2M, exact below a billion; ∞ for
+## NO_LIMIT.
+static func short_count(n: int) -> String:
+	if n == NO_LIMIT:
+		return "∞"
+	for unit in [[1000000, "M"], [1000, "k"]]:
+		if n >= unit[0]:
+			var whole: bool = n % unit[0] == 0
+			return (str(int(n / float(unit[0]))) if whole else String.num(n / float(unit[0]), 6)) + unit[1]
+	return str(n)
+
+
+## Polygon count typed like 1500, 1 500, 1.5k or 2M; -1 when it isn't one.
+static func parse_count(text: String) -> int:
+	text = text.strip_edges().to_lower().replace(" ", "").replace(",", "").replace("_", "")
+	var multiplier := 1
+	if text.ends_with("k"):
+		multiplier = 1000
+	elif text.ends_with("m"):
+		multiplier = 1000000
+	if multiplier > 1:
+		text = text.left(-1)
+	if not text.is_valid_float():
+		return -1
+	var value := text.to_float() * multiplier
+	return roundi(value) if value >= 0 and value < 1e15 else -1
+
+
+## Label of the Polygons filter: Any, > 1k, < 10k or 10 - 10k.
+static func polygon_label(min_faces: int, max_faces: int) -> String:
+	if max_faces == NO_LIMIT:
+		return "Any" if min_faces <= 0 else "> " + short_count(min_faces)
+	if min_faces <= 0:
+		return "< " + short_count(max_faces)
+	return "%s - %s" % [short_count(min_faces), short_count(max_faces)]
+
+
+## Position of a polygon count on the range slider, in POLYGON_STOPS
+## indices: fractional between stops, on a log scale except from 0 to 10.
+static func polygon_position(n: int) -> float:
+	var last := POLYGON_STOPS.size() - 1
+	if n == NO_LIMIT:
+		return last
+	for i in range(1, last):
+		var stop: int = POLYGON_STOPS[i]
+		if n <= stop:
+			var previous: int = POLYGON_STOPS[i - 1]
+			if previous == 0:
+				return i - 1 + n / float(stop)
+			return i - 1 + log(n / float(previous)) / log(stop / float(previous))
+	# Past the last count, short of no limit.
+	return last - 1 + minf(0.9, log(n / float(POLYGON_STOPS[last - 1])) / log(100.0))
 
 
 ## Search for one asset by its version id, as named in the asset's

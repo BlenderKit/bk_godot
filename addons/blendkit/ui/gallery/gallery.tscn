@@ -5,6 +5,7 @@
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/main_menu_button.gd" id="4_menu"]
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/search_view.gd" id="5_search"]
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/project_view.gd" id="6_project"]
+[ext_resource type="Script" path="res://addons/blendkit/ui/gallery/polygon_filter.gd" id="7_polygons"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_border"]
 content_margin_left = 15.0
@@ -110,6 +111,18 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Model Format to download, also used by Send to Godot on blendkit.com.
 glTF shows only models with glTF (.glb) exported automatically for Godot. Experimental."
+
+[node name="Polygons" type="HBoxContainer" parent="Main/FilterRow"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Main/FilterRow/Polygons"]
+layout_mode = 2
+text = "Polygons:"
+
+[node name="PolygonFilter" type="Button" parent="Main/FilterRow/Polygons"]
+unique_name_in_owner = true
+layout_mode = 2
+script = ExtResource("7_polygons")
 
 [node name="Checks" type="HBoxContainer" parent="Main/FilterRow"]
 layout_mode = 2

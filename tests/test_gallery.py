@@ -25,14 +25,40 @@ func files(types: Array) -> Dictionary:
 
 func _initialize():
     # free text is encoded per word and joined with "+", filters follow
-    var url := Api.build_search_url("https://blendkit.com", "  old  chair&co ", "model", "furniture", "relevance", true, true, 3, 30, "0.6.1")
+    var url := Api.build_search_url("https://blendkit.com", "  old  chair&co ", "model", "furniture", "relevance", true, true, 0, Api.NO_LIMIT, 3, 30, "0.6.1")
     check(url == "https://blendkit.com/api/v1/search/?query=old+chair%26co+asset_type:model+category_subtree:furniture+is_free:true+sexualizedContent:false+last_gltf_godot_upload_isnull:false+order:_score&dict_parameters=1&page_size=30&page=3&addon_version=0.6.1", url)
     # relevance without text falls back to recently updated; the root category is skipped
-    url = Api.build_search_url("https://blendkit.com", "", "model", "model", "relevance", false, false, 1, 30, "0.6.1")
+    url = Api.build_search_url("https://blendkit.com", "", "model", "model", "relevance", false, false, 0, Api.NO_LIMIT, 1, 30, "0.6.1")
     check(url.contains("?query=asset_type:model+sexualizedContent:false+order:-last_blend_upload&"), url)
     # model-only filters don't apply to other types
-    url = Api.build_search_url("https://blendkit.com", "wood", "material", "", "best", false, true, 1, 30, "0.6.1")
+    url = Api.build_search_url("https://blendkit.com", "wood", "material", "", "best", false, true, 10, 10000, 1, 30, "0.6.1")
     check(url.contains("?query=wood+asset_type:material+order:-quality&"), url)
+    # polygon counts apply to models and printables, without the open ends
+    url = Api.build_search_url("https://blendkit.com", "", "printable", "", "newest", false, false, 10, 10000, 1, 30, "0.6.1")
+    check(url.contains("?query=asset_type:printable+faceCount_gte:10+faceCount_lte:10000+order:-created&"), url)
+    url = Api.build_search_url("https://blendkit.com", "", "model", "", "newest", false, false, 1000, Api.NO_LIMIT, 1, 30, "0.6.1")
+    check(url.contains("+faceCount_gte:1000+order:") and not url.contains("faceCount_lte"), url)
+    url = Api.build_search_url("https://blendkit.com", "", "model", "", "newest", false, false, 0, 10000, 1, 30, "0.6.1")
+    check(url.contains("+faceCount_lte:10000+order:") and not url.contains("faceCount_gte"), url)
+
+    check(Api.polygon_label(0, Api.NO_LIMIT) == "Any", "any")
+    check(Api.polygon_label(1000, Api.NO_LIMIT) == "> 1k", "more than")
+    check(Api.polygon_label(0, 10000) == "< 10k", "less than")
+    check(Api.polygon_label(10, 10000) == "10 - 10k", "range")
+    check(Api.polygon_label(1500, 2000000) == "1.5k - 2M", Api.polygon_label(1500, 2000000))
+    check(Api.short_count(1234) == "1.234k", Api.short_count(1234))
+    check(Api.short_count(950) == "950", "hundreds")
+    check(Api.short_count(Api.NO_LIMIT) == "∞", "no limit")
+    check(Api.parse_count(" 2.5k ") == 2500, "k")
+    check(Api.parse_count("2M") == 2000000, "M")
+    check(Api.parse_count("1 500") == 1500, "spaces")
+    check(Api.parse_count("abc") == -1 and Api.parse_count("-5") == -1 and Api.parse_count("k") == -1, "invalid")
+    check(Api.polygon_position(0) == 0.0 and Api.polygon_position(1000) == 3.0, "stops")
+    check(Api.polygon_position(5) == 0.5, "linear to 10")
+    check(absf(Api.polygon_position(3162) - 3.5) < 0.001, str(Api.polygon_position(3162)))
+    check(Api.polygon_position(Api.NO_LIMIT) == Api.POLYGON_STOPS.size() - 1, "no limit")
+    var past := Api.polygon_position(10000000)
+    check(past > Api.POLYGON_STOPS.size() - 2 and past < Api.POLYGON_STOPS.size() - 1, "past the last count")
     check(Api.search_order("newest", "x") == "-created", "newest")
     check(Api.search_order("popular", "") == "-score", "popular")
 
@@ -398,4 +424,98 @@ def test_gallery_early_task_race(godot_executable, tmp_path):
     assert 'TILES=["web-3"]' in stdout, output
     assert 'SUPERSEDED=[[]] SECOND=[["race-3", ""], "finished"]' in stdout, output
     assert "DROPPED=0" in stdout, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
+POLYGONS_PROBE = r"""
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+
+func press(slider, x: float, pressed: bool) -> void:
+    var event := InputEventMouseButton.new()
+    event.button_index = MOUSE_BUTTON_LEFT
+    event.pressed = pressed
+    event.position = Vector2(x, 5)
+    slider._gui_input(event)
+
+func move(slider, x: float, pressed: bool = true) -> void:
+    var event := InputEventMouseMotion.new()
+    event.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+    event.position = Vector2(x, 5)
+    slider._gui_input(event)
+
+func check():
+    var gallery = find_gallery()
+    var search = gallery.search
+    var polygons = search.polygon_filter
+    var row: Control = polygons.get_parent()
+    print("LABEL=%s" % polygons.text)
+    search.type_option.select(GalleryApi.ASSET_TYPES.find("printable"))
+    search._on_type_selected(search.type_option.selected)
+    print("PRINTABLE_SHOWN=%s" % row.visible)
+    search.type_option.select(GalleryApi.ASSET_TYPES.find("scene"))
+    search._on_type_selected(search.type_option.selected)
+    print("SCENE_SHOWN=%s" % row.visible)
+    search.type_option.select(GalleryApi.ASSET_TYPES.find("model"))
+    search._on_type_selected(search.type_option.selected)
+    print("MODEL_SHOWN=%s" % row.visible)
+    var slider = polygons._slider
+    slider.size = Vector2(400, 40)
+    var changes := []
+    polygons.range_changed.connect(func(): changes.append(polygons.text))
+    # Drag the low grabber from 0 to the 10 stop; a click on the track moves
+    # the nearest grabber there, then it drags to 10k.
+    press(slider, slider._x(0), true)
+    move(slider, slider._x(1))
+    press(slider, slider._x(1), false)
+    press(slider, slider._x(6), true)
+    move(slider, slider._x(4))
+    press(slider, slider._x(4), false)
+    print("DRAGGED=%s" % [changes])
+    print("SAVED=%s" % [search._get_meta("gallery_polygons", [])])
+    # Dragged past the low grabber, the high one pushes it along.
+    press(slider, slider._x(4), true)
+    move(slider, slider._x(0))
+    press(slider, slider._x(0), false)
+    print("CLAMPED=%s %s" % [polygons.min_faces, polygons.max_faces])
+    # Released outside the popup, the next motion without the button stops
+    # the drag.
+    press(slider, slider._x(1), true)
+    move(slider, slider._x(5), false)
+    move(slider, slider._x(5))
+    print("RELEASED_OUTSIDE=%s %s" % [polygons.max_faces, slider._dragging])
+    polygons._min_edit.text = "2.5k"
+    polygons._max_edit.text = ""
+    polygons._apply_edits()
+    print("TYPED=%s" % polygons.text)
+    polygons._min_edit.text = "lots"
+    polygons._apply_edits()
+    print("INVALID=%s %s" % [polygons.text, polygons._min_edit.text])
+    var url := GalleryApi.build_search_url("", "", "model", "", "newest", false, false,
+        polygons.min_faces, polygons.max_faces, 1, 30, "")
+    print("URL_GTE=%s" % url.contains("faceCount_gte:2500+"))
+    print("ANY_ENABLED=%s" % (not polygons._any_button.disabled))
+    polygons._any_button.pressed.emit()
+    print("CLEARED=%s %s" % [polygons.text, polygons._any_button.disabled])
+"""
+
+
+def test_gallery_polygons(godot_executable, tmp_path):
+    """The Polygons filter shows for models and printables and edits a range."""
+    project = make_probe_project(tmp_path / "project", POLYGONS_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    assert "LABEL=Any" in lines, output
+    assert "PRINTABLE_SHOWN=true" in lines, output
+    assert "SCENE_SHOWN=false" in lines, output
+    assert "MODEL_SHOWN=true" in lines, output
+    assert 'DRAGGED=["> 10", "10 - 1M", "10 - 10k"]' in lines, output
+    assert "SAVED=[10, 10000]" in lines, output
+    assert "CLAMPED=0 10" in lines, output
+    assert "RELEASED_OUTSIDE=10 -1" in lines, output
+    assert "TYPED=> 2.5k" in lines, output
+    assert "INVALID=> 2.5k 2.5k" in lines, output
+    assert "URL_GTE=true" in lines, output
+    assert "ANY_ENABLED=true" in lines, output
+    assert "CLEARED=Any true" in lines, output
     assert "SCRIPT ERROR" not in stderr, output
