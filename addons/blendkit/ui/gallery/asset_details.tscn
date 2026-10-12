@@ -72,19 +72,6 @@ columns = 4
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="FileRow" type="HBoxContainer" parent="Content/Right"]
-layout_mode = 2
-tooltip_text = "File to download. The default follows the Model Format and Resolution in Blendkit Settings."
-
-[node name="Label" type="Label" parent="Content/Right/FileRow"]
-layout_mode = 2
-text = "File"
-
-[node name="FileOption" type="OptionButton" parent="Content/Right/FileRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
 [node name="Note" type="Label" parent="Content/Right"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 0)

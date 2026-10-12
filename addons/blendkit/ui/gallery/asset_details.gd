@@ -1,10 +1,10 @@
 @tool
 extends ConfirmationDialog
-## Asset details with a preview, description, key parameters, tags and a
-## file chooser. OK downloads, or opens the asset web page (or the plans for
-## a Free plan account) when the user can't download it. For an asset
-## already in the project, OK shows its file instead. It isn't modal: clicking
-## the editor outside closes it.
+## Asset details with a preview, description, key parameters and tags, and a
+## file chooser next to the OK button. OK downloads, or opens the asset web
+## page (or the plans for a Free plan account) when the user can't download
+## it. For an asset already in the project, OK shows its file instead. It isn't
+## modal: clicking the editor outside closes it.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
@@ -25,7 +25,6 @@ const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
 @onready var description: RichTextLabel = %Description
 @onready var params_grid: GridContainer = %Params
 @onready var tags_flow: HFlowContainer = %Tags
-@onready var file_option: OptionButton = %FileOption
 @onready var note_label: Label = %Note
 
 ## Set by the gallery, used to read download state and the download settings.
@@ -39,12 +38,20 @@ var _web_button: Button
 var _cancel_download_button: Button
 var _login_button: Button
 var _shown_frame := -1
+var file_option: OptionButton
 
 
 func _ready() -> void:
 	dialog_hide_on_ok = false
 	preview.custom_minimum_size = Vector2.ONE * 400 * EditorInterface.get_editor_scale()
-	get_cancel_button().text = "Close"
+	# clicking outside closes it
+	get_cancel_button().hide()
+	# the file chooser sits right after the OK button, showing what it downloads
+	file_option = OptionButton.new()
+	file_option.tooltip_text = "File to download. The default follows the Model Format and Resolution in Blendkit Settings."
+	var ok := get_ok_button()
+	ok.get_parent().add_child(file_option)
+	ok.get_parent().move_child(file_option, ok.get_index() + 1)
 	_web_button = add_button("View on blendkit.com", true, "web")
 	_cancel_download_button = add_button("Cancel Download", true, "cancel_download")
 	_cancel_download_button.hide()
@@ -223,7 +230,7 @@ func refresh_download() -> void:
 	note_label.text = ""
 	note_label.remove_theme_color_override("font_color")
 	_web_button.visible = not GalleryApi.base_id(asset).is_empty()
-	file_option.get_parent().visible = local_path.is_empty()
+	file_option.visible = local_path.is_empty()
 
 	if not local_path.is_empty():
 		ok.text = "Show in FileSystem"
