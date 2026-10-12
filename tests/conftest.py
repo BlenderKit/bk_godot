@@ -91,7 +91,7 @@ def godot_executable() -> str:
 def run_godot_script(godot_executable, tmp_path, source, env=None, timeout=30):
     """Run a SceneTree script in this project, without the editor."""
     script = tmp_path / "checks.gd"
-    script.write_text(source)
+    script.write_text(source, encoding="utf-8")
     return subprocess.run(
         [
             godot_executable,
@@ -105,6 +105,8 @@ def run_godot_script(godot_executable, tmp_path, source, env=None, timeout=30):
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         env={**os.environ, **(env or {})},
     )
@@ -183,7 +185,7 @@ def make_probe_project(
     (probe / "plugin.cfg").write_text(
         '[plugin]\nname="probe"\ndescription=""\nauthor=""\nversion="0"\nscript="probe.gd"\n'
     )
-    (probe / "probe.gd").write_text(PROBE_HEADER + probe_source)
+    (probe / "probe.gd").write_text(PROBE_HEADER + probe_source, encoding="utf-8")
     (path / "project.godot").write_text(
         'config_version=5\n\n[application]\n\nconfig/name="Blendkit test"\n\n'
         "[editor_plugins]\n\nenabled=PackedStringArray("
@@ -202,6 +204,8 @@ class GodotEditor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
             env={**os.environ, **(env or {})},
         )
