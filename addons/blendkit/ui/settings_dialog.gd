@@ -66,7 +66,7 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_row("Model Format", _model_format, "Original .blend downloads Blendkit's original files, which Godot imports only through Blender.\nBlendkit glTF downloads .glb files exported by Blendkit, which Godot imports directly, and falls back to Original .blend at the selected Resolution. Only some models have it. Experimental.")
 	_resolution = _options(plugin.RESOLUTIONS.map(func(r): return r[1]))
 	_resolution.item_selected.connect(func(i): plugin.set_resolution(plugin.RESOLUTIONS[i][0]))
-	_row("Resolution", _resolution, "Texture resolution for .blend files, also used when glTF is unavailable.")
+	_row("Resolution", _resolution, "Texture resolution for .blend files, also used when glTF is unavailable. Auto downloads 2K.")
 
 	_section("Editor", "Saved in your editor settings and applies to all your projects.\nAlso in Editor Settings → Blendkit.")
 	_port = _options(ClientConnection.CLIENT_PORTS)

@@ -259,7 +259,7 @@ func on_timer_timeout() -> void:
 		"assetsPath": GalleryApi.staging_path(plugin.absolute_download_path),
 		"projectName": ProjectSettings.get_setting("application/config/name"),
 		"modelFormat": plugin.model_format,
-		"resolution": plugin.resolution,
+		"resolution": plugin.download_resolution(),
 	}
 	var json = JSON.stringify(data)
 	request_start_time = Time.get_ticks_msec()

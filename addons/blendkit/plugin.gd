@@ -22,6 +22,8 @@ const SETTING_LOG_LEVEL = "blendkit/client/log_level"
 const OLD_SETTINGS = {"blendkit/model_format": SETTING_MODEL_FORMAT, "blendkit/resolution": SETTING_RESOLUTION}
 # Godot's enum hints can't hold an empty value, so Auto resolution "" is stored as this.
 const RESOLUTION_AUTO = "auto"
+# The resolution Auto downloads.
+const AUTO_RESOLUTION = "resolution_2K"
 const DOCS_URL = "https://github.com/BlenderKit/bk_godot"
 const ISSUES_URL = "https://github.com/BlenderKit/bk_godot/issues"
 
@@ -249,6 +251,11 @@ func set_blender_path(path: String) -> void:
 ## from what Godot set up when the editor started.
 func blend_import_needs_restart(enabled: bool, path: String) -> bool:
 	return enabled != startup_blend_enabled or (enabled and path != startup_blender_path)
+
+
+## The resolution to download, with Auto resolved.
+func download_resolution() -> String:
+	return AUTO_RESOLUTION if resolution.is_empty() else resolution
 
 
 func set_resolution(new_resolution: String) -> void:

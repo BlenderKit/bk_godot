@@ -204,7 +204,7 @@ func _fill_tags() -> void:
 
 func _fill_files() -> void:
 	file_option.clear()
-	var preferred := GalleryApi.pick_file_type(asset, gallery.plugin.model_format, gallery.plugin.resolution)
+	var preferred := GalleryApi.pick_file_type(asset, gallery.plugin.model_format, gallery.plugin.download_resolution())
 	for file_type in GalleryApi.downloadable_file_types(asset):
 		file_option.add_item(GalleryApi.file_type_label(file_type))
 		file_option.set_item_metadata(file_option.item_count - 1, file_type)
