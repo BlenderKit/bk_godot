@@ -63,7 +63,7 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_row("Blender Import", _blend_import, "Whether Godot imports .blend files, and the Blender it imports them with.\nClick to change them.")
 	_model_format = _options(plugin.MODEL_FORMATS.map(func(f): return f[1]))
 	_model_format.item_selected.connect(func(i): plugin.set_model_format(plugin.MODEL_FORMATS[i][0]))
-	_row("Model Format", _model_format, "Original .blend downloads Blendkit's original files, which Godot imports only through Blender.\nBlendkit glTF downloads .glb files exported by Blendkit, which Godot imports directly, and falls back to Original .blend at the selected Resolution. Only some models have it. Experimental.")
+	_row("Model Format", _model_format, "Blender (.blend) downloads .blend files at the selected Resolution, which Godot imports only through Blender.\nglTF (.glb) downloads .glb files exported by Blendkit, which Godot imports directly. Only some models have one, so the Blendkit tab shows only those, and other models fall back to .blend at the selected Resolution. Experimental.")
 	_resolution = _options(plugin.RESOLUTIONS.map(func(r): return r[1]))
 	_resolution.item_selected.connect(func(i): plugin.set_resolution(plugin.RESOLUTIONS[i][0]))
 	_row("Resolution", _resolution, "Texture resolution for .blend files, also used when glTF is unavailable. Auto downloads 2K.")

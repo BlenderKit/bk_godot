@@ -110,7 +110,8 @@ text = "Format:"
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Model Format to download, also used by Send to Godot on blendkit.com.
-Blendkit glTF shows only models with a .glb exported by Blendkit, which Godot imports without Blender. Experimental."
+Blender (.blend) shows all models and downloads .blend files at the selected Resolution, which Godot imports only through Blender.
+glTF (.glb) shows only models with a .glb exported by Blendkit, which Godot imports directly. Experimental."
 
 [node name="Polygons" type="HBoxContainer" parent="Main/FilterRow"]
 layout_mode = 2

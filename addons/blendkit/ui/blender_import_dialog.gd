@@ -11,7 +11,7 @@ const WIDTH := 560
 enum Choice { DONT_IMPORT, NATIVE }
 ## [label, description], indexed by Choice.
 const CHOICES = [
-	["Don't import .blend", "Godot never imports .blend files. Blendkit still downloads them, for converting with your own tools, but they stay hidden in the FileSystem dock. Blendkit glTF downloads import as usual."],
+	["Don't import .blend", "Godot never imports .blend files. Blendkit still downloads them, for converting with your own tools, but they stay hidden in the FileSystem dock. glTF (.glb) downloads import as usual."],
 	["Native .blend import", "Godot converts each .blend on this computer with Blender and imports it as a scene. Every computer that opens the project needs Blender %d.0+. Large assets can take long to import, again whenever they change." % BlenderImport.MIN_VERSION],
 ]
 ## Shown while .blend import is on, Godot's default, without a working Blender.

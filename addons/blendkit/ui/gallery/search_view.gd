@@ -13,8 +13,6 @@ const PAGE_SIZE := 30
 ## How long to keep polling fast for thumbnails after results arrive. Tiles
 ## still without one then show their asset type icon.
 const THUMBS_WAIT_MS := 20000
-## Short Model Format labels for the filter row.
-const FORMAT_LABELS := {"blend": "Original .blend", "gltf_godot": "Blendkit glTF"}
 const SEARCH_TASK := "search"
 ## Wait this long after the Polygons range last changed before searching.
 const POLYGONS_DELAY := 0.5
@@ -76,7 +74,7 @@ func setup(new_gallery: Node) -> void:
 	for asset_type in GalleryApi.ASSET_TYPES:
 		type_option.add_item(GalleryApi.ASSET_TYPE_LABELS[asset_type])
 	for format in plugin.MODEL_FORMATS:
-		format_option.add_item(FORMAT_LABELS.get(format[0], format[1]))
+		format_option.add_item(format[1])
 	sort_option.select(GalleryApi.option_index(GalleryApi.SORTS, _get_meta("gallery_sort", "relevance")))
 	type_option.select(maxi(0, GalleryApi.ASSET_TYPES.find(_get_meta("gallery_type", "model"))))
 	free_check.button_pressed = _get_meta("gallery_free", false)

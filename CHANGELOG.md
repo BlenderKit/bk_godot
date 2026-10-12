@@ -43,7 +43,7 @@
 
 ### Changed
 
-- Model Format options are now **Original .blend** and **Blendkit glTF**, in
+- Model Format options are now **Blender (.blend)** and **glTF (.glb)**, in
   the settings and in the **Blendkit** tab's Format filter.
 - **Auto** resolution downloads 2K textures instead of the original
   full-resolution .blend.

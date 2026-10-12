@@ -7,8 +7,8 @@ signal model_format_changed
 signal download_dir_changed
 
 const SERVER = "https://blendkit.com"
-# [value, label] pairs for the settings dialog
-const MODEL_FORMATS = [["blend", "Original .blend"], ["gltf_godot", "Blendkit glTF when available"]]
+# [value, label] pairs for the settings dialog and the Format filter
+const MODEL_FORMATS = [["blend", "Blender (.blend)"], ["gltf_godot", "glTF (.glb)"]]
 const RESOLUTIONS = [["", "Auto"], ["ORIGINAL", "Original"], ["resolution_4K", "4K"], ["resolution_2K", "2K"], ["resolution_1K", "1K"], ["resolution_0_5K", "0.5K"]]
 # Project settings live in project.godot and are shared with the team, editor
 # settings stay on this computer. All of them show in Godot's settings dialogs.
