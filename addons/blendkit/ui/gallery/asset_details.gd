@@ -3,7 +3,8 @@ extends ConfirmationDialog
 ## Asset details with a preview, description, key parameters, tags and a
 ## file chooser. OK downloads, or opens the asset web page (or the plans for
 ## a Free plan account) when the user can't download it. For an asset
-## already in the project, OK shows its file instead.
+## already in the project, OK shows its file instead. It isn't modal: clicking
+## the editor outside closes it.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
@@ -37,6 +38,7 @@ var _preview_type := ""
 var _web_button: Button
 var _cancel_download_button: Button
 var _login_button: Button
+var _shown_frame := -1
 
 
 func _ready() -> void:
@@ -51,6 +53,11 @@ func _ready() -> void:
 	confirmed.connect(_on_ok)
 	custom_action.connect(_on_custom_action)
 	file_option.item_selected.connect(func(_i): refresh_download())
+	exclusive = false
+	# A separate window gets focus_entered on the editor window, an embedded
+	# one (single window mode) only focus_exited on itself.
+	get_tree().root.focus_entered.connect(_close_if_outside)
+	focus_exited.connect(func(): _close_if_outside.call_deferred())
 
 
 func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_local_path: String = "") -> void:
@@ -85,7 +92,21 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_local_path: S
 
 	refresh_download()
 	var edscale := EditorInterface.get_editor_scale()
+	_shown_frame = Engine.get_process_frames()
 	popup_centered_clamped(Vector2i(Vector2(960, 600) * edscale), 0.9)
+
+
+## Close when the focus went to the editor, not when it went to another app
+## (a browser opened by the buttons) or to the dialog's own popups.
+func _close_if_outside() -> void:
+	if not visible or has_focus() or _shown_frame == Engine.get_process_frames():
+		return
+	if not get_tree().root.has_focus():
+		return
+	for window in find_children("*", "Window", true, false):
+		if window.visible:
+			return
+	hide()
 
 
 func on_thumbnail(type: String, texture: Texture2D) -> void:
