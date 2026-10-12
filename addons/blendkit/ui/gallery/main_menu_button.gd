@@ -184,12 +184,11 @@ func _fill_menu() -> void:
 	_menu.add_check_item("Enable Blendkit Client", Item.ENABLE)
 	_menu.set_item_checked(-1, plugin.client_enabled)
 	_menu.set_item_tooltip(-1, "The Blendkit Client searches and downloads assets and connects Send to Godot on blendkit.com.")
+	_menu.add_icon_item(get_theme_icon("Tools", "EditorIcons"), "Settings…", Item.SETTINGS)
 	if plugin.connection.state == ClientConnection.State.FAILED:
 		_menu.add_icon_item(get_theme_icon("Reload", "EditorIcons"), "Restart Client", Item.RESTART)
 	_menu.add_separator("Account")
 	_fill_account()
-	_menu.add_separator()
-	_menu.add_icon_item(get_theme_icon("Tools", "EditorIcons"), "Settings…", Item.SETTINGS)
 	_menu.add_separator()
 	_menu.add_icon_item(get_theme_icon("ExternalLink", "EditorIcons"), "blendkit.com", Item.WEBSITE)
 	_menu.set_item_tooltip(-1, plugin.SERVER)
