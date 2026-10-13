@@ -1,0 +1,66 @@
+[gd_scene format=3 uid="uid://c4a1u7xuxq85e"]
+
+[sub_resource type="PanoramaSkyMaterial" id="PanoramaSkyMaterial_f6sd4"]
+
+[sub_resource type="Sky" id="Sky_2u7ba"]
+sky_material = SubResource("PanoramaSkyMaterial_f6sd4")
+
+[sub_resource type="Environment" id="Environment_u3fke"]
+background_mode = 2
+sky = SubResource("Sky_2u7ba")
+ambient_light_source = 3
+reflected_light_source = 2
+tonemap_mode = 4
+tonemap_exposure = 12.0
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+size = Vector2(8, 8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.5, 0.5, 0.5, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_chrome"]
+metallic = 1.0
+roughness = 0.05
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_glossy"]
+albedo_color = Color(0.8, 0.8, 0.8, 1)
+roughness = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_matte"]
+albedo_color = Color(0.8, 0.8, 0.8, 1)
+
+[node name="BKTest3DScene" type="Node3D" unique_id=1560048855]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=324979710]
+environment = SubResource("Environment_u3fke")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=370072032]
+transform = Transform3D(0.97960335, 0.047031537, -0.19535962, 0, 0.9722231, 0.23405628, 0.20094115, -0.22928232, 0.95239294, 0, 0, 0)
+light_color = Color(0.749, 0.841, 1, 1)
+light_energy = 0.81
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=257995808]
+transform = Transform3D(0.78360677, -0.121838555, 0.6091928, 0, 0.9805807, 0.19611613, -0.6212572, -0.15367793, 0.76838964, 3.106286, 1.6, 3.9180338)
+
+[node name="Ground" type="MeshInstance3D" parent="." unique_id=1949944660]
+mesh = SubResource("PlaneMesh_ground")
+surface_material_override/0 = SubResource("StandardMaterial3D_ground")
+
+[node name="ChromeBall" type="MeshInstance3D" parent="." unique_id=1105830804]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("SphereMesh_ball")
+surface_material_override/0 = SubResource("StandardMaterial3D_chrome")
+
+[node name="GlossyBall" type="MeshInstance3D" parent="." unique_id=1336044713]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.97950846, 0.5, 0.7765715)
+mesh = SubResource("SphereMesh_ball")
+surface_material_override/0 = SubResource("StandardMaterial3D_glossy")
+
+[node name="MatteBall" type="MeshInstance3D" parent="." unique_id=310378317]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.97950846, 0.5, -0.7765715)
+mesh = SubResource("SphereMesh_ball")
+surface_material_override/0 = SubResource("StandardMaterial3D_matte")
