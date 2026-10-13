@@ -35,16 +35,20 @@ const POLYGON_STOPS := [0, 10, 100, 1000, 10000, 100000, 1000000, NO_LIMIT]
 ## Sort options, in OptionButton order: [id, label].
 const SORTS := [
 	["relevance", "Relevance"],
+	["trending", "Trending"],
+	["bookmarked", "Most bookmarked"],
+	["score", "Highest asset score"],
+	["complexity", "Highest complexity"],
+	["quality", "Highest quality"],
 	["newest", "Newest"],
-	["updated", "Recently updated"],
-	["popular", "Popular"],
-	["best", "Best rated"],
 ]
 const SORT_ORDERS := {
+	"trending": "-bookmarks_90",
+	"bookmarked": "-bookmarks",
+	"score": "-score",
+	"complexity": "-working_hours",
+	"quality": "-quality",
 	"newest": "-created",
-	"updated": "-last_blend_upload",
-	"popular": "-score",
-	"best": "-quality",
 }
 
 ## Texture size of the resolution file types, in pixels.
@@ -91,7 +95,7 @@ static func option_index(options: Array, value: Variant) -> int:
 # MARK: query building
 
 ## Order for a sort option. Relevance needs text to rank by, so without text
-## fall back to recently updated, like the Blender add-on.
+## fall back to recently uploaded, like the Blender and Unreal add-ons.
 static func search_order(sort: String, text: String) -> String:
 	if SORT_ORDERS.has(sort):
 		return SORT_ORDERS[sort]

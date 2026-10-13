@@ -27,11 +27,11 @@ func _initialize():
     # free text is encoded per word and joined with "+", filters follow
     var url := Api.build_search_url("https://blendkit.com", "  old  chair&co ", "model", "furniture", "relevance", true, true, 0, Api.NO_LIMIT, 3, 30, "0.6.1")
     check(url == "https://blendkit.com/api/v1/search/?query=old+chair%26co+asset_type:model+category_subtree:furniture+is_free:true+sexualizedContent:false+last_gltf_godot_upload_isnull:false+order:_score&dict_parameters=1&page_size=30&page=3&addon_version=0.6.1", url)
-    # relevance without text falls back to recently updated; the root category is skipped
+    # relevance without text falls back to recently uploaded; the root category is skipped
     url = Api.build_search_url("https://blendkit.com", "", "model", "model", "relevance", false, false, 0, Api.NO_LIMIT, 1, 30, "0.6.1")
     check(url.contains("?query=asset_type:model+sexualizedContent:false+order:-last_blend_upload&"), url)
     # model-only filters don't apply to other types
-    url = Api.build_search_url("https://blendkit.com", "wood", "material", "", "best", false, true, 10, 10000, 1, 30, "0.6.1")
+    url = Api.build_search_url("https://blendkit.com", "wood", "material", "", "quality", false, true, 10, 10000, 1, 30, "0.6.1")
     check(url.contains("?query=wood+asset_type:material+order:-quality&"), url)
     # polygon counts apply to models and printables, without the open ends
     url = Api.build_search_url("https://blendkit.com", "", "printable", "", "newest", false, false, 10, 10000, 1, 30, "0.6.1")
@@ -63,7 +63,8 @@ func _initialize():
     var past := Api.polygon_position(10000000)
     check(past > Api.POLYGON_STOPS.size() - 2 and past < Api.POLYGON_STOPS.size() - 1, "past the last count")
     check(Api.search_order("newest", "x") == "-created", "newest")
-    check(Api.search_order("popular", "") == "-score", "popular")
+    check(Api.search_order("trending", "x") == "-bookmarks_90", "trending ignores text")
+    check(Api.search_order("score", "") == "-score", "score")
 
     check(Api.page_count(0, 30) == 0, "no pages")
     check(Api.page_count(31, 30) == 2, "two pages")

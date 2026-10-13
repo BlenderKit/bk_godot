@@ -15,6 +15,9 @@
   license and date. Animated, Rigged and Procedural show only when they apply.
   Long descriptions scroll. The tags are a comma-separated list.
 - Asset details open at their final size, without a jump in the first frame.
+- The gallery **Sort** options match blendkit.com: Relevance, Trending, Most
+  bookmarked, Highest asset score, Highest complexity, Highest quality and
+  Newest.
 
 - Asset details list the formats already downloaded to the project, marked
   with a check. **Show File** shows the selected downloaded file, in the
