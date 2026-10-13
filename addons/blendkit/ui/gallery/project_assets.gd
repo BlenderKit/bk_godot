@@ -375,16 +375,37 @@ static func _keep_resource_uid(path: String, target: String) -> void:
 
 
 ## Move the files in folder [param from] into folder [param to], replacing
-## the files there, and keeping the others.
+## the files there, and keeping the others. Import settings there stay, with
+## their uids and changes, else they move with their paths made project
+## paths, see _localize_import_paths().
 static func _move_dir(from: String, to: String) -> void:
 	DirAccess.make_dir_recursive_absolute(to)
 	for dir in DirAccess.get_directories_at(from):
 		_move_dir(from.path_join(dir), to.path_join(dir))
 	for file in DirAccess.get_files_at(from):
 		var target := to.path_join(file)
+		if file.get_extension() == "import":
+			if FileAccess.file_exists(target):
+				DirAccess.remove_absolute(from.path_join(file))
+				continue
+			_localize_import_paths(from.path_join(file), to)
 		DirAccess.remove_absolute(target)
 		DirAccess.rename_absolute(from.path_join(file), target)
 	DirAccess.remove_absolute(from) # only if empty
+
+
+## Make the normal map path in the texture import settings at [param path]
+## the project path of the normal map, from a path relative to folder
+## [param dir] the texture moves to, see material_to_godot.py.
+static func _localize_import_paths(path: String, dir: String) -> void:
+	var config := ConfigFile.new()
+	if config.load(path) != OK:
+		return
+	var normal: String = config.get_value("params", "roughness/src_normal", "")
+	if normal.is_empty() or normal.is_absolute_path():
+		return
+	config.set_value("params", "roughness/src_normal", ProjectSettings.localize_path(dir.path_join(normal).simplify_path()))
+	config.save(path)
 
 
 ## The folder in [param type_dir] for a download of asset [param id]: the one

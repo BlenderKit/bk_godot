@@ -19,6 +19,10 @@ UVs, e.g. a CSG box. Godot has no height mapping with triplanar mapping, so
 the height map is there but off, to turn on along with turning triplanar
 mapping off.
 
+Each texture gets the import settings Godot would switch it to on seeing it
+used in the material, so that it's imported once, with no messages about
+the change.
+
 Writes the .tres last, so its existence means success. Blender exits with 0
 even when a script fails, so failures exit with 1 for the Client to report
 them.
@@ -26,6 +30,7 @@ them.
 
 import json
 import os
+import posixpath
 import re
 import shutil
 import sys
@@ -40,6 +45,10 @@ RED, GREEN, BLUE, ALPHA, GRAYSCALE = range(5)
 # BaseMaterial3D.Transparency and CullMode
 ALPHA_BLEND, ALPHA_SCISSOR = 1, 2
 CULL_DISABLED = 2
+# ResourceImporterTexture options
+VRAM_COMPRESSED = 2
+NORMAL_MAP_ENABLE, NORMAL_MAP_DISABLED = 1, 2
+ROUGHNESS_DISABLED, ROUGHNESS_RED = 1, 2
 # Nodes that only adjust a color: the texture through them is kept, without
 # the adjustment, for the base and emission colors.
 COLOR_ADJUSTMENTS = {"ShaderNodeHueSaturation", "ShaderNodeBrightContrast", "ShaderNodeGamma",
@@ -84,6 +93,8 @@ class Converter:
         self.props = {}
         # Image Texture nodes of the textures used
         self.texture_nodes = []
+        # texture path -> {prop: channel} of the props it's the texture of
+        self.uses = {}
         self.albedo_image = None
         # the bump node on the normal, and the height map's scale
         self.bump = None
@@ -179,6 +190,7 @@ class Converter:
         if not colors:
             self.props[prop + "_texture_channel"] = channel
         self.texture_nodes.append(node)
+        self.uses.setdefault(self.written[node.image.name], {})[prop] = channel
         if prop == "albedo":
             self.albedo_image = node.image
         return True
@@ -303,6 +315,29 @@ class Converter:
         if scale != 1.0:
             self.props["uv1_scale"] = "Vector3(%s, %s, %s)" % ((gd_float(scale),) * 3)
 
+    def imports(self):
+        """{texture path: its .import}, as Godot makes it on seeing the
+        texture used in 3D: VRAM compressed with mipmaps, RG compressed for
+        normal maps, and for the roughness map, its roughness limited by
+        the normal map. Godot's detection takes other textures for roughness
+        maps too, so their limiter is disabled."""
+        normal = next((path for path, uses in self.uses.items() if "normal" in uses), None)
+        files = {}
+        for path, uses in self.uses.items():
+            params = {"compress/mode": VRAM_COMPRESSED,
+                      "compress/normal_map": NORMAL_MAP_ENABLE if "normal" in uses else NORMAL_MAP_DISABLED,
+                      "mipmaps/generate": True, "roughness/mode": ROUGHNESS_DISABLED,
+                      "detect_3d/compress_to": 0}
+            if "roughness" in uses and normal not in (None, path):
+                params["roughness/mode"] = ROUGHNESS_RED + uses["roughness"]
+                # relative to the texture, made a project path as it moves
+                # into the project, see ProjectAssets._move_dir()
+                params["roughness/src_normal"] = gd_string(posixpath.relpath(normal, posixpath.dirname(path)))
+            lines = ["[remap]", "", 'importer="texture"', 'type="CompressedTexture2D"', "", "[params]", ""]
+            lines += ["%s=%s" % (key, gd_value(value)) for key, value in params.items()]
+            files[path] = "\n".join(lines) + "\n"
+        return files
+
     def tres(self):
         lines = ['[gd_resource type="StandardMaterial3D" format=3]', ""]
         for i, path in enumerate(self.ext_resources):
@@ -406,6 +441,9 @@ def main():
     material = asset_material(params["input_path"])
     converter = Converter(params["output_path"], params["textures_dir"])
     converter.convert(material, texture_size(material))
+    for path, text in converter.imports().items():
+        with open(os.path.join(converter.output_dir, path + ".import"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
     with open(params["output_path"], "w", encoding="utf-8", newline="\n") as f:
         f.write(converter.tres())
 

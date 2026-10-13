@@ -295,6 +295,9 @@ func download(gallery, n: int, report: String) -> void:
     print("CASE%d=%s FILES=%s DIRS=%s TEXTURES=%s LEFT=%s" % [n, file.get_file(), ",".join(DirAccess.get_files_at(folder)),
         ",".join(DirAccess.get_directories_at(folder)), ",".join(DirAccess.get_files_at(folder.path_join("textures_2K"))),
         DirAccess.dir_exists_absolute(path.get_base_dir())])
+    var import := ConfigFile.new()
+    if import.load(folder.path_join("textures_2K/albedo.jpg.import")) == OK:
+        print("CASE%d SRC_NORMAL=%s" % [n, import.get_value("params", "roughness/src_normal")])
 
 func check():
     var gallery = find_gallery()
@@ -305,6 +308,8 @@ func check():
         print("PLAN=%s" % plan.script.get_file())
         # what's written either way, the material last
         write(plan.params.textures_dir.path_join("albedo.jpg"), "jpg")
+        write(plan.params.textures_dir.path_join("albedo.jpg.import"),
+            '[remap]\n\nimporter="texture"\n\n[params]\n\nroughness/mode=2\nroughness/src_normal="normal.jpg"\n')
         if mode == "convert":
             write(plan.params.output_path, '[gd_resource type="StandardMaterial3D" format=3]\n\n[resource]\n')
         return ["conv-%s" % plan.params.input_path.get_base_dir().get_file().get_slice("-", 2).left(1), ""]
@@ -324,7 +329,9 @@ def test_material_conversion(godot_executable, tmp_path):
     output = stdout + stderr
     lines = stdout.splitlines()
     assert "PLAN=material_to_godot.py" in lines, output
-    assert "CASE1=rock-road_2K.tres FILES=rock-road_2K.tres DIRS=textures_2K TEXTURES=albedo.jpg LEFT=false" in lines, output
+    assert "CASE1=rock-road_2K.tres FILES=rock-road_2K.tres DIRS=textures_2K TEXTURES=albedo.jpg,albedo.jpg.import LEFT=false" in lines, output
+    # The normal map path of the roughness limiter is made a project path.
+    assert "CASE1 SRC_NORMAL=res://bk_assets/materials/rock-road/textures_2K/normal.jpg" in lines, output
     assert "CASE2=rock-road_2K.blend FILES=rock-road_2K.blend DIRS= TEXTURES= LEFT=false" in lines, output
     assert "Could not convert rock-road_2K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend for Godot" in stderr, output
     assert "SCRIPT ERROR" not in stderr, output
@@ -442,5 +449,19 @@ def test_material_script(tmp_path):
     assert "metallic_texture" not in props and "emission_enabled" not in props, tres
     # Packed images are copied as they are, the TIFF re-saved as PNG.
     textures = data / "textures_2K"
-    assert sorted(p.name for p in textures.iterdir()) == ["albedo.png", "height.png", "normal.png", "orm.png"]
+    images = ["albedo.png", "height.png", "normal.png", "orm.png"]
+    assert sorted(p.name for p in textures.iterdir()) == sorted(images + [i + ".import" for i in images])
     assert (textures / "height.png").read_bytes().startswith(b"\x89PNG"), "re-saved"
+    # Each is imported as Godot would reimport it on seeing it used in 3D.
+    imports = {i: dict(line.split("=", 1) for line in (textures / (i + ".import")).read_text().splitlines()
+                       if "=" in line) for i in images}
+    for i in images:
+        assert imports[i]["importer"] == '"texture"', imports[i]
+        assert imports[i]["compress/mode"] == "2" and imports[i]["mipmaps/generate"] == "true", imports[i]
+        assert imports[i]["detect_3d/compress_to"] == "0", imports[i]
+    assert imports["normal.png"]["compress/normal_map"] == "1", imports
+    assert imports["albedo.png"]["compress/normal_map"] == "2", imports
+    # the roughness in green, limited by the normal map, the others not
+    assert imports["orm.png"]["roughness/mode"] == "3", imports
+    assert imports["orm.png"]["roughness/src_normal"] == '"normal.png"', imports
+    assert {imports[i]["roughness/mode"] for i in ("albedo.png", "height.png", "normal.png")} == {"1"}, imports

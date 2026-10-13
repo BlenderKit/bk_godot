@@ -23,7 +23,9 @@
   triplanar at that size, so it fits any mesh, e.g. a CSG box. Turning
   triplanar off uses the mesh's UVs, and the height map is there to turn on,
   as Godot has none with triplanar mapping. Procedural materials
-  become a flat color. Without Blender, the `.blend` is kept.
+  become a flat color. Without Blender, the `.blend` is kept. The textures
+  come with their 3D import settings, so Godot imports them once, with the
+  roughness map limited by the normal map.
 
 ### Changed
 
