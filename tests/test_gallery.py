@@ -462,6 +462,65 @@ def test_gallery_details_files(godot_executable, tmp_path):
     assert "SCRIPT ERROR" not in stderr, output
 
 
+FILE_POINTER_PROBE = r"""
+const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
+const FilePointer = preload("res://addons/blendkit/ui/file_pointer.gd")
+
+func pointer():
+    for child in get_window().get_children():
+        if child.get_script() == FilePointer:
+            return child
+
+## Where the pointer lands, once it found the file, and whether that is on
+## [param widget].
+func landing(widget: Control) -> String:
+    for i in 6:
+        await get_tree().process_frame
+    var p = pointer()
+    if p == null:
+        return "none"
+    return str(widget.get_global_rect().has_point(p.get_global_position() + p._target))
+
+func check():
+    # Indexed at startup, so reveal() doesn't fall back to the file manager.
+    var path := "res://assets/pointer/model.tres"
+    var dock := EditorInterface.get_file_system_dock()
+    var tree: Tree = dock.find_children("*", "Tree", true, false)[0]
+    var list: ItemList = dock.find_children("*", "ItemList", true, false)[0]
+    FileReveal.reveal(path)
+    await wait_until(func(): return pointer() != null, 10.0)
+    print("TREE_LANDED=%s" % await landing(tree))
+    print("TREE_FREED=%s" % await wait_until(func(): return pointer() == null, 5.0))
+    # The split view selects the file in the file list.
+    for button: Button in dock.find_children("*", "Button", true, false):
+        if button.tooltip_text == "Change Split Mode":
+            button.pressed.emit()
+    FileReveal.reveal(path)
+    print("LIST_LANDED=%s" % await landing(list))
+    await wait_until(func(): return pointer() == null, 5.0)
+    # A file the dock didn't select: no pointer, no errors.
+    FilePointer.point_at("res://assets/pointer/missing.tres")
+    print("MISSING=%s" % await landing(list))
+"""
+
+
+def test_file_pointer(godot_executable, tmp_path):
+    """Show File points at the file in the FileSystem dock, in either layout."""
+    project = make_probe_project(tmp_path / "project", FILE_POINTER_PROBE)
+    (project / "assets" / "pointer").mkdir(parents=True)
+    (project / "assets" / "pointer" / "model.tres").write_text(
+        '[gd_resource type="Resource" format=3]\n\n[resource]\n'
+    )
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    assert "TREE_LANDED=true" in lines, output
+    assert "TREE_FREED=true" in lines, output
+    assert "LIST_LANDED=true" in lines, output
+    assert "MISSING=none" in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
 RACE_PROBE = r"""
 func check():
     var gallery = find_gallery()

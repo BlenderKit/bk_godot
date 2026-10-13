@@ -2,6 +2,8 @@
 extends RefCounted
 ## Shows a downloaded file to the user.
 
+const FilePointer = preload("res://addons/blendkit/ui/file_pointer.gd")
+
 
 ## Select the file in the FileSystem dock, or show it in the OS file manager
 ## when it's outside the project or of a type the dock doesn't list.
@@ -15,6 +17,7 @@ static func reveal(file_path: String) -> void:
 			await efs.sources_changed
 		if is_indexed(efs, resource_path):
 			EditorInterface.get_file_system_dock().navigate_to_path(resource_path)
+			FilePointer.point_at(resource_path)
 			return
 	OS.shell_show_in_file_manager(ProjectSettings.globalize_path(file_path))
 

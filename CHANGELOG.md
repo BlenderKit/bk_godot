@@ -7,7 +7,8 @@
 - Asset details list the formats already downloaded to the project, marked
   with a check. **Show File** shows the selected downloaded file, in the
   FileSystem dock if Godot imports it, otherwise in the file manager. The
-  other formats can still be downloaded.
+  other formats can still be downloaded. In the FileSystem dock, the Blendkit
+  logo briefly points at the file.
 - Asset details opened from project assets look the asset up on blendkit.com
   to offer the formats not downloaded yet. Offline, they show the downloaded
   ones.
