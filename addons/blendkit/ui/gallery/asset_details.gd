@@ -271,6 +271,7 @@ func refresh_download() -> void:
 		_fill_files(false)
 	var ok := get_ok_button()
 	ok.disabled = false
+	ok.tooltip_text = ""
 	_cancel_download_button.hide()
 	_login_button.hide()
 	note_label.text = ""
@@ -287,8 +288,8 @@ func refresh_download() -> void:
 		return
 	if local_files.has(selected_file_type()):
 		ok.text = "Show File"
-		note_label.text = "%s\n\nShow the file in the FileSystem dock if Godot imports it, otherwise in the file manager." \
-			% local_files[selected_file_type()].get_file()
+		ok.tooltip_text = "Show the file in the FileSystem dock if Godot imports it, otherwise in the file manager."
+		note_label.text = local_files[selected_file_type()].get_file()
 		return
 	if asset.get("canDownload") != true:
 		var auth = gallery.plugin.auth

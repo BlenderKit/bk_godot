@@ -410,7 +410,8 @@ func check():
     details.show_asset(asset, {}, folder)
     print("ITEMS=%s" % [items(details)])
     print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
-    print("NOTE=%s" % details.note_label.text.replace("\n", "|"))
+    print("NOTE=%s" % details.note_label.text)
+    print("TOOLTIP=%s" % details.get_ok_button().tooltip_text)
     details.file_option.select(1)
     details.file_option.item_selected.emit(1)
     print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
@@ -445,9 +446,9 @@ def test_gallery_details_files(godot_executable, tmp_path):
     # Only the Client's files: no extracted texture, no user file.
     assert 'ITEMS=[["gltf_godot", true], ["resolution_2K", true]]' in lines, output
     assert "SELECTED=gltf_godot BUTTON=Show File" in lines, output
+    assert "NOTE=tangerines_gltf_godot_b9d80621-bb1f-4335-894a-18e41438be00.glb" in lines, output
     assert (
-        "NOTE=tangerines_gltf_godot_b9d80621-bb1f-4335-894a-18e41438be00.glb||"
-        "Show the file in the FileSystem dock if Godot imports it, otherwise in the file manager."
+        "TOOLTIP=Show the file in the FileSystem dock if Godot imports it, otherwise in the file manager."
     ) in lines, output
     assert "SELECTED=resolution_2K BUTTON=Show File" in lines, output
     assert (
