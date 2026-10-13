@@ -1,11 +1,12 @@
 @tool
 extends AcceptDialog
 ## Asset details with a preview, description, key parameters and tags, and
-## under them a file chooser with the action button. The action downloads, or
-## opens the asset web page (or the plans for a Free plan account) when the
-## user can't download it. The chooser marks the files already in the
-## project, and for those the action shows the file instead. It isn't modal:
-## clicking the editor outside closes it.
+## under them a file chooser with the action button. The action downloads,
+## cancels the download, or opens the plans when a Full Plan asset needs
+## them, with a login button next to it when logged out. The chooser marks
+## the files already in the project, and for those the action shows the file
+## instead. It isn't modal: clicking the
+## editor outside closes it.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
@@ -18,6 +19,9 @@ const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.g
 const PREVIEW_TYPES := ["full", "photo_full", "wire_full"]
 const PREVIEW_LABELS := {"full": "Render", "photo_full": "Photo", "wire_full": "Wireframe"}
 const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
+## Presses right after the action turned into Cancel are a double click on
+## Download, not a cancel.
+const CANCEL_GUARD_MS := 500
 
 @onready var preview: TextureRect = %Preview
 @onready var preview_strip: HBoxContainer = %PreviewStrip
@@ -32,9 +36,8 @@ const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
 @onready var note_label: Label = %Note
 @onready var file_option: OptionButton = %FileOption
 @onready var action_button: Button = %ActionButton
-@onready var _cancel_download_button: Button = %CancelDownload
-@onready var _login_button: Button = %LogIn
 @onready var _web_button: Button = %WebButton
+@onready var _login_button: Button = %LogIn
 
 ## Set by the gallery, used to read download state and the download settings.
 var gallery: Node
@@ -46,6 +49,10 @@ var local_files: Dictionary = {}
 var _textures: Dictionary = {}
 var _preview_type := ""
 var _shown_frame := -1
+## When the action turned into Cancel, or -1.
+var _cancel_since := -1
+## When the downloaded files stop waiting for the FileSystem dock: path -> msec.
+var _index_deadlines: Dictionary = {}
 
 
 func _ready() -> void:
@@ -55,9 +62,12 @@ func _ready() -> void:
 	# no space for the empty button row under the footer
 	add_theme_constant_override("buttons_separation", 0)
 	action_button.pressed.connect(_on_action)
-	_web_button.pressed.connect(_on_custom_action.bind("web"))
-	_login_button.pressed.connect(_on_custom_action.bind("login"))
-	_cancel_download_button.pressed.connect(_on_custom_action.bind("cancel_download"))
+	_login_button.pressed.connect(_on_login)
+	_web_button.pressed.connect(func(): OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset)))
+	# a downloaded file can be shown once the dock lists it
+	EditorInterface.get_resource_filesystem().filesystem_changed.connect(func():
+		if visible:
+			refresh_download())
 	var dim := get_theme_color("font_disabled_color", "Editor")
 	info_label.add_theme_color_override("font_color", dim)
 	tags_key.add_theme_color_override("font_color", dim)
@@ -134,15 +144,18 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 	await get_tree().process_frame
 	if visible:
 		size.y = 0
-		# Enter acts like on the OK button the dialog hides
-		if not action_button.disabled:
+		# Enter acts like on the OK button the dialog hides. Logging in comes
+		# first, an account may have Full Plan already.
+		if _login_button.visible:
+			_login_button.grab_focus()
+		elif not action_button.disabled:
 			action_button.grab_focus()
 
 
 ## Close when the focus went to the editor, not when it went to another app
 ## (a browser opened by the buttons) or to the dialog's own popups.
 func _close_if_outside() -> void:
-	if not visible or has_focus() or _shown_frame == Engine.get_process_frames():
+	if not is_inside_tree() or not visible or has_focus() or _shown_frame == Engine.get_process_frames():
 		return
 	if not get_tree().root.has_focus():
 		return
@@ -301,8 +314,12 @@ func selected_file_type() -> String:
 func refresh_download() -> void:
 	if asset.is_empty():
 		return
+	var login_focused := _login_button.has_focus()
 	_refresh_download()
 	note_label.visible = not note_label.text.is_empty()
+	# logged in, the focus moves on to the action
+	if login_focused and not _login_button.visible and not action_button.disabled:
+		action_button.grab_focus()
 
 
 func _refresh_download() -> void:
@@ -313,52 +330,62 @@ func _refresh_download() -> void:
 		_fill_files(false)
 	action_button.disabled = false
 	action_button.tooltip_text = ""
-	_cancel_download_button.hide()
-	_login_button.hide()
 	note_label.text = ""
 	note_label.remove_theme_color_override("font_color")
+	_login_button.hide()
 	_web_button.visible = not GalleryApi.base_id(asset).is_empty()
 
 	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
 	var status: String = dl.get("status", "")
+	if status in GalleryApi.ACTIVE_DOWNLOAD and str(dl.get("task_id", "")):
+		action_button.text = "Cancel Download (%d%%)" % int(dl.get("progress", 0))
+		if _cancel_since < 0:
+			_cancel_since = Time.get_ticks_msec()
+		note_label.text = str(dl.get("message", ""))
+		return
+	_cancel_since = -1
 	if status in GalleryApi.ACTIVE_DOWNLOAD:
-		action_button.text = "Downloading %d %%" % int(dl.get("progress", 0))
+		# can't be cancelled before the Client has the task
+		action_button.text = "Downloading…"
 		action_button.disabled = true
-		_cancel_download_button.visible = not str(dl.get("task_id", "")).is_empty()
 		note_label.text = str(dl.get("message", ""))
 		return
 	if local_files.has(selected_file_type()):
+		var path: String = local_files[selected_file_type()]
+		note_label.text = path.get_file()
+		if _waits_for_index(path):
+			action_button.text = "Importing…"
+			action_button.disabled = true
+			action_button.tooltip_text = "Waiting for the editor to import the file."
+			return
 		action_button.text = "Show File"
 		action_button.tooltip_text = "Show the file in the FileSystem dock if Godot imports it, otherwise in the file manager."
-		note_label.text = local_files[selected_file_type()].get_file()
 		return
+	action_button.text = "Download"
 	if asset.get("canDownload") != true:
 		var auth = gallery.plugin.auth
-		action_button.text = "Get on blendkit.com"
 		if not auth.is_logged_in():
 			_login_button.show()
-			_login_button.disabled = auth.login_pending
-			if asset.get("isFree") == true:
-				note_label.text = "Log in to download this asset here."
+			_login_button.text = "Cancel Login" if auth.login_pending else "Log In…"
+		if _offers_full_plan():
+			action_button.text = "Get Full Plan…"
+			action_button.tooltip_text = "See the Blendkit plans in the browser."
+			if auth.is_logged_in():
+				note_label.text = "Get Blendkit Full Plan to download and support human artists ♥"
 			else:
-				note_label.text = "Full Plan asset. Log in with Full Plan to download it here."
-			return
-		var reason := GalleryApi.cant_download_message(asset).strip_edges()
-		if reason and not reason.ends_with("."):
-			reason += "."
-		if _needs_full_plan():
-			action_button.text = "Get Full Plan"
-			note_label.text = reason if reason else "This asset needs Full Plan."
+				note_label.text = "Log in with Blendkit Full Plan to download and support human artists ♥"
 		else:
-			note_label.text = reason if reason else "This asset can't be downloaded here. Try blendkit.com."
+			action_button.disabled = true
+			var reason := GalleryApi.cant_download_message(asset).strip_edges()
+			if reason and not reason.ends_with("."):
+				reason += "."
+			note_label.text = reason if reason else "This asset can't be downloaded here."
 		return
 	if file_option.item_count == 0:
-		action_button.text = "Download"
 		action_button.disabled = true
 		note_label.text = "No downloadable file for this asset."
 		return
 
-	action_button.text = "Download"
 	var same_file: bool = dl.get("file_type", "") == selected_file_type()
 	if status == "error" and same_file:
 		note_label.text = "Download failed: %s" % dl.get("message", "")
@@ -369,6 +396,20 @@ func _refresh_download() -> void:
 		note_label.text = "No glTF for this asset, using %s." % GalleryApi.file_type_label(selected_file_type())
 
 
+## A downloaded file the FileSystem dock will list but doesn't yet, until
+## it does or it's waited for long enough.
+func _waits_for_index(path: String) -> bool:
+	if not FileReveal.is_pending(path):
+		_index_deadlines.erase(path)
+		return false
+	if not _index_deadlines.has(path):
+		_index_deadlines[path] = Time.get_ticks_msec() + FileReveal.INDEX_WAIT_MS
+		get_tree().create_timer(FileReveal.INDEX_WAIT_MS / 1000.0).timeout.connect(func():
+			if visible:
+				refresh_download())
+	return Time.get_ticks_msec() < _index_deadlines[path]
+
+
 ## glTF is the Model Format but the model has none, so a .blend is picked.
 func _gltf_unavailable() -> bool:
 	if asset.get("assetType", "") != "model" or gallery.plugin.model_format == "blend":
@@ -377,39 +418,39 @@ func _gltf_unavailable() -> bool:
 	return not ("gltf_godot" in present or "gltf" in present)
 
 
-## A Full Plan asset and a logged-in account on the Free plan.
-func _needs_full_plan() -> bool:
+## A Full Plan asset and an account that may not have Full Plan: logged
+## out, or on the Free plan.
+func _offers_full_plan() -> bool:
 	var auth = gallery.plugin.auth
-	return asset.get("isFree") != true and auth.is_logged_in() and Auth.plan_label(auth.profile) == "Free"
+	return asset.get("isFree") != true and (not auth.is_logged_in() or Auth.plan_label(auth.profile) == "Free")
 
 
 func _on_action() -> void:
 	var file_type := selected_file_type()
+	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
+	if dl.get("status", "") in GalleryApi.ACTIVE_DOWNLOAD:
+		if dl.get("task_id") and _cancel_since >= 0 and Time.get_ticks_msec() - _cancel_since >= CANCEL_GUARD_MS:
+			cancel_requested.emit(dl.task_id)
+		return
 	if local_files.has(file_type):
 		FileReveal.reveal(local_files[file_type])
 		hide()
 		return
 	if asset.get("canDownload") != true:
-		if _needs_full_plan():
-			OS.shell_open(gallery.plugin.SERVER + "/plans/pricing")
-		else:
-			OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset))
+		if _offers_full_plan():
+			OS.shell_open(gallery.plugin.SERVER + "/plans/pricing/")
 		return
 	if not file_type.is_empty():
 		download_requested.emit(asset, file_type)
 
 
-func _on_custom_action(action: StringName) -> void:
-	match action:
-		"web":
-			OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset))
-		"login":
-			gallery.plugin.auth.login()
-			refresh_download()
-		"cancel_download":
-			var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
-			if dl.get("task_id"):
-				cancel_requested.emit(dl.task_id)
+func _on_login() -> void:
+	var auth = gallery.plugin.auth
+	if auth.login_pending:
+		auth.cancel_login()
+	else:
+		auth.login()
+	refresh_download()
 
 
 static func _num(value) -> String:

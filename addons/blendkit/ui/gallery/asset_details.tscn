@@ -102,14 +102,9 @@ autowrap_mode = 3
 [node name="Footer" type="HBoxContainer" parent="Content"]
 layout_mode = 2
 
-[node name="FooterLeft" type="HBoxContainer" parent="Content/Footer"]
+[node name="FooterLeft" type="Control" parent="Content/Footer"]
 layout_mode = 2
 size_flags_horizontal = 3
-
-[node name="WebButton" type="Button" parent="Content/Footer/FooterLeft"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "View on blendkit.com"
 
 [node name="FileOption" type="OptionButton" parent="Content/Footer"]
 unique_name_in_owner = true
@@ -121,19 +116,18 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Download"
 
+[node name="LogIn" type="Button" parent="Content/Footer"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+text = "Log In…"
+
 [node name="FooterRight" type="HBoxContainer" parent="Content/Footer"]
 layout_mode = 2
 size_flags_horizontal = 3
 alignment = 2
 
-[node name="CancelDownload" type="Button" parent="Content/Footer/FooterRight"]
+[node name="WebButton" type="Button" parent="Content/Footer/FooterRight"]
 unique_name_in_owner = true
-visible = false
 layout_mode = 2
-text = "Cancel Download"
-
-[node name="LogIn" type="Button" parent="Content/Footer/FooterRight"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-text = "Log In…"
+text = "View on blendkit.com"

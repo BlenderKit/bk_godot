@@ -20,6 +20,7 @@ const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
+const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
 
 ## How long before a Send to Godot task first shows its asset folder may have
 ## changed, and how long after to keep looking for it, in seconds.
@@ -235,7 +236,12 @@ func _post_lookup(asset: Dictionary) -> Array:
 ## Let the editor import a finished download in the project. Looking for
 ## changed files is much quicker than a full rescan.
 static func _scan_download(file_path: String) -> void:
-	if ProjectSettings.localize_path(file_path).begins_with("res://"):
+	var resource_path := ProjectSettings.localize_path(file_path)
+	if not resource_path.begins_with("res://"):
+		return
+	if FileReveal.is_listed(resource_path):
+		FileReveal.index_file(file_path)
+	else:
 		EditorInterface.get_resource_filesystem().scan_sources()
 
 

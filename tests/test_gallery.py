@@ -463,6 +463,119 @@ def test_gallery_details_files(godot_executable, tmp_path):
     assert "SCRIPT ERROR" not in stderr, output
 
 
+DETAILS_ACTIONS_PROBE = r"""
+const ID := "676596bd-d7fd-47db-a9b5-a4b0e35738e7"
+const FILE_ID := "b9d80621-bb1f-4335-894a-18e41438be00"
+
+func select(details, file_type: String):
+    for i in details.file_option.item_count:
+        if details.file_option.get_item_metadata(i) == file_type:
+            details.file_option.select(i)
+            details.file_option.item_selected.emit(i)
+
+func state(details) -> String:
+    return "%s|%s|%s" % [details.action_button.text, details.action_button.disabled, details.note_label.text]
+
+func check():
+    var gallery = find_gallery()
+    var details = gallery.details
+    var auth = gallery.plugin.auth
+    var cancelled := []
+    details.cancel_requested.disconnect(gallery.downloads.cancel)
+    details.cancel_requested.connect(func(task_id): cancelled.append(task_id))
+    var asset := {"id": ID, "assetBaseId": "base", "name": "Tangerines", "assetType": "model",
+        "isFree": false, "canDownload": false, "files": [{"fileType": "gltf_godot"}]}
+    auth.access_token = ""
+    details.show_asset(asset, {})
+    print("ANONYMOUS=%s" % state(details))
+    print("LOGIN=%s|%s" % [details._login_button.visible, details._login_button.text])
+    auth.login_pending = true
+    details.refresh_download()
+    print("LOGIN_PENDING=%s|%s" % [details._login_button.visible, details._login_button.text])
+    auth.login_pending = false
+    auth.access_token = "token"
+    auth.profile = {"hasFreePlan": true}
+    details.refresh_download()
+    print("FREE_PLAN=%s" % state(details))
+    print("LOGGED_IN=%s" % details._login_button.visible)
+    auth.profile = {"currentPlanName": "Full Plan"}
+    details.refresh_download()
+    print("OTHER=%s" % state(details))
+
+    # A download: no cancel before the Client has the task, nor right after.
+    asset.canDownload = true
+    details.update_asset(asset)
+    print("DOWNLOAD=%s" % state(details))
+    gallery.downloads.gallery_downloads["base"] = {"asset": asset, "task_id": "", "status": "posting", "progress": 0, "message": ""}
+    details.refresh_download()
+    print("POSTING=%s" % state(details))
+    gallery.downloads.gallery_downloads["base"] = {"asset": asset, "task_id": "t1", "status": "progress", "progress": 23, "message": ""}
+    details.refresh_download()
+    print("PROGRESS=%s" % state(details))
+    details.action_button.pressed.emit()
+    print("CANCEL_AT_ONCE=%s" % [cancelled])
+    details._cancel_since -= details.CANCEL_GUARD_MS
+    details.action_button.pressed.emit()
+    print("CANCEL_LATER=%s" % [cancelled])
+    gallery.downloads.gallery_downloads.erase("base")
+
+    # Downloaded into the project: Show File once the dock lists the file,
+    # at once for a .blend the editor doesn't import.
+    auth.access_token = ""
+    var folder := "res://dl/tangerines_" + ID
+    DirAccess.make_dir_recursive_absolute(folder)
+    var doc := GLTFDocument.new()
+    var gltf := GLTFState.new()
+    var node := Node3D.new()
+    doc.append_from_scene(node, gltf)
+    node.free()
+    doc.write_to_filesystem(gltf, ProjectSettings.globalize_path(folder.path_join("tangerines_gltf_godot_%s.glb" % FILE_ID)))
+    FileAccess.open(folder.path_join("tangerines_2K_%s.blend" % FILE_ID), FileAccess.WRITE).store_string("x")
+    # like a finished download, possibly while the editor scans
+    gallery.downloads._scan_download(ProjectSettings.globalize_path(folder.path_join("tangerines_gltf_godot_%s.glb" % FILE_ID)))
+    details.show_asset(asset, {}, ProjectSettings.globalize_path(folder))
+    select(details, "gltf_godot")
+    print("FRESH=%s" % details.action_button.text)
+    print("IMPORTED=%s" % await wait_until(func(): return details.action_button.text == "Show File", 20))
+    select(details, "resolution_2K")
+    print("BLEND=%s" % details.action_button.text)
+    details.hide()
+"""
+
+
+def test_gallery_details_actions(godot_executable, tmp_path):
+    """The action follows the account, the download and the editor import."""
+    project = make_probe_project(
+        tmp_path / "project",
+        DETAILS_ACTIONS_PROBE,
+        settings="[filesystem]\n\nimport/blender/enabled=false\n",
+    )
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = [line for line in stdout.splitlines() if "=" in line]
+    assert (
+        "ANONYMOUS=Get Full Plan…|false|"
+        "Log in with Blendkit Full Plan to download and support human artists ♥"
+    ) in lines, output
+    assert "LOGIN=true|Log In…" in lines, output
+    assert "LOGIN_PENDING=true|Cancel Login" in lines, output
+    assert (
+        "FREE_PLAN=Get Full Plan…|false|"
+        "Get Blendkit Full Plan to download and support human artists ♥"
+    ) in lines, output
+    assert "LOGGED_IN=false" in lines, output
+    assert "OTHER=Download|true|This asset can't be downloaded here." in lines, output
+    assert "DOWNLOAD=Download|false|" in lines, output
+    assert "POSTING=Downloading…|true|" in lines, output
+    assert "PROGRESS=Cancel Download (23%)|false|" in lines, output
+    assert "CANCEL_AT_ONCE=[]" in lines, output
+    assert 'CANCEL_LATER=["t1"]' in lines, output
+    assert "FRESH=Importing…" in lines, output
+    assert "IMPORTED=true" in lines, output
+    assert "BLEND=Show File" in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
 FILE_POINTER_PROBE = r"""
 const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
 const FilePointer = preload("res://addons/blendkit/ui/file_pointer.gd")
@@ -499,6 +612,14 @@ func check():
     FileReveal.reveal(path)
     print("LIST_LANDED=%s" % await landing(list))
     await wait_until(func(): return pointer() == null, 5.0)
+    # A fresh file, indexed only once imported, well after the scan.
+    var fresh := "res://assets/pointer/fresh.tres"
+    FileAccess.open(fresh, FileAccess.WRITE).store_string('[gd_resource type="Resource" format=3]\n\n[resource]\n')
+    EditorInterface.get_resource_filesystem().scan_sources()
+    FileReveal.reveal(fresh)
+    await wait_until(func(): return pointer() != null, 10.0)
+    print("FRESH_LANDED=%s" % await landing(list))
+    await wait_until(func(): return pointer() == null, 5.0)
     # A file the dock didn't select: no pointer, no errors.
     FilePointer.point_at("res://assets/pointer/missing.tres")
     print("MISSING=%s" % await landing(list))
@@ -518,6 +639,7 @@ def test_file_pointer(godot_executable, tmp_path):
     assert "TREE_LANDED=true" in lines, output
     assert "TREE_FREED=true" in lines, output
     assert "LIST_LANDED=true" in lines, output
+    assert "FRESH_LANDED=true" in lines, output
     assert "MISSING=none" in lines, output
     assert "SCRIPT ERROR" not in stderr, output
 
