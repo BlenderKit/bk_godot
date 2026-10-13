@@ -6,6 +6,7 @@ AUTH_CHECKS = r"""extends SceneTree
 
 const Auth = preload("res://addons/blendkit/auth.gd")
 const MainMenuButton = preload("res://addons/blendkit/ui/gallery/main_menu_button.gd")
+const Plans = preload("res://addons/blendkit/ui/plans.gd")
 
 var failures := 0
 
@@ -40,6 +41,22 @@ func _initialize():
     check(Auth.plan_label({"currentPlanName": "Full", "hasFreePlan": false}) == "Full Plan", "full")
     check(Auth.plan_label({"currentPlanName": "Full Plan"}) == "Full Plan", "full plan")
     check(Auth.plan_label({"currentPlanName": null, "hasFreePlan": true}) == "Free", "null name")
+    check(Auth.plan_label({"currentPlanName": "Business", "hasFreePlan": false}) == "Business Plan", "business")
+    check(Plans.user_plan({}) == "", "unknown plan kind")
+    check(Plans.user_plan({"currentPlanName": "Free", "hasFreePlan": true}) == "free", "free kind")
+    check(Plans.user_plan({"currentPlanName": "Full", "hasFreePlan": false}) == "full", "full kind")
+    check(Plans.user_plan({"currentPlanName": "Business Plan"}) == "business", "business kind")
+    check(Plans.user_plan({"currentPlanName": "Education"}) == "", "other plan kind")
+    check(Plans.asset_plan({}) == "", "unknown asset plan")
+    check(Plans.asset_plan({"isFree": true}) == "free", "free asset")
+    check(Plans.asset_plan({"isFree": false}) == "full", "full asset")
+    var star := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+    star.set_pixel(1, 1, Color(0.9, 0.9, 0.9, 0.5))
+    var tinted := Plans.tint_icon(ImageTexture.create_from_image(star), "full", Color(0.1, 0.1, 0.1))
+    var pixel := tinted.get_image().get_pixel(1, 1)
+    check(pixel.to_html(false) == "b35935" and absf(pixel.a - 0.5) < 0.01, "tinted star " + pixel.to_html())
+    check(tinted.get_image().get_pixel(0, 0).a == 0.0, "transparent stays")
+    check(Plans.tint_icon(ImageTexture.create_from_image(star), "business", Color(0.95, 0.95, 0.95)) == null, "pale on light")
     check(Auth.display_name({"fullName": " ", "username": "ann"}) == "ann", "username fallback")
     check(Auth.display_name({"fullName": null}) == "", "no name")
 

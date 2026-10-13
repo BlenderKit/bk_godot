@@ -1,12 +1,14 @@
 @tool
 extends VBoxContainer
-## One search result: thumbnail button, title, author and a footer with the
-## plan badge and quality rating. The thumbnail shows download progress along
-## its bottom edge and a downloaded or failed icon in its corner.
+## One search result: thumbnail button with the plan badge in its bottom
+## right corner, title, author and quality rating. The thumbnail shows
+## download progress along its bottom edge and a downloaded or failed icon in
+## its top right corner.
 
 signal selected(asset: Dictionary)
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const Plans = preload("res://addons/blendkit/ui/plans.gd")
 const THUMB_SIZE := 160
 const DOWNLOAD_BAR_HEIGHT := 4
 
@@ -24,8 +26,8 @@ const TYPE_ICONS := {
 @onready var download_bar: ColorRect = $ThumbButton/DownloadTrack/DownloadBar
 @onready var title_label: Label = $Title
 @onready var author_label: Label = $Author
-@onready var plan_label: Label = $Footer/Plan
-@onready var rating_label: Label = $Footer/Rating
+@onready var plan_label: Label = $ThumbButton/Plan
+@onready var rating_label: Label = $Rating
 
 var asset: Dictionary = {}
 var _has_thumbnail := false
@@ -45,6 +47,7 @@ func _ready() -> void:
 	downloaded_icon.custom_minimum_size = Vector2.ONE * 16 * edscale
 	download_track.offset_top = -DOWNLOAD_BAR_HEIGHT * edscale
 	thumb_button.pressed.connect(func(): selected.emit(asset))
+	thumb_button.resized.connect(_place_badge)
 	_update()
 
 
@@ -65,9 +68,6 @@ func _update() -> void:
 	var author := GalleryApi.author_name(asset)
 	author_label.text = author
 	_tooltip = "%s\nby %s" % [title, author] if author else title
-	var free: bool = asset.get("isFree") == true
-	# Unknown for assets in the project not found on Blendkit.
-	plan_label.text = "" if not asset.has("isFree") else "Free" if free else "Full Plan"
 	var quality = asset.get("ratingsAverage", {})
 	quality = quality.get("quality") if quality is Dictionary else null
 	rating_label.text = "★ %.1f" % quality if quality is float or quality is int else ""
@@ -78,9 +78,9 @@ func _update_theme() -> void:
 	var dim := get_theme_color("font_disabled_color", "Editor")
 	author_label.add_theme_color_override("font_color", dim)
 	rating_label.add_theme_color_override("font_color", dim)
-	var free: bool = asset.get("isFree") == true
-	plan_label.add_theme_color_override("font_color",
-		get_theme_color("success_color" if free else "accent_color", "Editor"))
+	var plan := Plans.asset_plan(asset)
+	Plans.style_badge(plan_label, plan, Plans.ASSET_LABELS.get(plan, ""))
+	_place_badge()
 	download_bar.color = get_theme_color("accent_color", "Editor")
 	_update_download()
 	if not _has_thumbnail:
@@ -96,6 +96,13 @@ func set_thumbnail(texture: Texture2D) -> void:
 	_has_thumbnail = true
 	thumb_button.expand_icon = true
 	thumb_button.icon = texture
+	if is_node_ready():
+		_place_badge()
+
+
+func _place_badge() -> void:
+	var image: Texture2D = thumb_button.icon if _has_thumbnail else null
+	Plans.place_badge(plan_label, image.get_size() if image else Vector2.ZERO, thumb_button.get_theme_stylebox("normal"))
 
 
 func set_thumbnail_failed() -> void:

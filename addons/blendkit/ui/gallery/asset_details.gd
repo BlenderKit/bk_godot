@@ -13,9 +13,9 @@ signal cancel_requested(task_id: String)
 signal tag_selected(tag: String)
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
-const Auth = preload("res://addons/blendkit/auth.gd")
 const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
+const Plans = preload("res://addons/blendkit/ui/plans.gd")
 const PREVIEW_TYPES := ["full", "photo_full", "wire_full"]
 const PREVIEW_LABELS := {"full": "Render", "photo_full": "Photo", "wire_full": "Wireframe"}
 const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
@@ -28,6 +28,7 @@ const CANCEL_GUARD_MS := 500
 @onready var title_label: Label = %Title
 @onready var author_label: Label = %Author
 @onready var info_label: Label = %Info
+@onready var plan_label: Label = %Plan
 @onready var description: RichTextLabel = %Description
 @onready var params_grid: GridContainer = %Params
 @onready var tags_row: HBoxContainer = %TagsRow
@@ -57,6 +58,7 @@ var _index_deadlines: Dictionary = {}
 
 func _ready() -> void:
 	preview.custom_minimum_size = Vector2.ONE * 400 * EditorInterface.get_editor_scale()
+	preview.resized.connect(_place_badge)
 	# clicking outside closes it, the own footer centers the action
 	get_ok_button().hide()
 	# no space for the empty button row under the footer
@@ -108,8 +110,9 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 	var author := GalleryApi.author_name(asset)
 	author_label.text = "by " + author if author else ""
 	var license := str(asset.get("license", ""))
+	var plan := Plans.asset_plan(asset)
+	Plans.style_badge(plan_label, plan, Plans.ASSET_LABELS.get(plan, ""))
 	var info := PackedStringArray([
-		"" if not asset.has("isFree") else "Free" if asset.isFree == true else "Full Plan",
 		LICENSE_LABELS.get(license, license.replace("_", " ").capitalize()),
 		GalleryApi.ASSET_TYPE_LABELS.get(asset.get("assetType", ""), "").trim_suffix("s"),
 	])
@@ -131,6 +134,7 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 			on_thumbnail(type, GalleryApi.load_texture(thumbnails[type]))
 	if preview.texture == null and thumbnails.has("small"):
 		preview.texture = GalleryApi.cached_texture(thumbnails["small"])
+	_place_badge()
 
 	refresh_download()
 	var edscale := EditorInterface.get_editor_scale()
@@ -178,8 +182,14 @@ func on_thumbnail(type: String, texture: Texture2D) -> void:
 func _set_preview(type: String) -> void:
 	_preview_type = type
 	preview.texture = _textures[type]
+	_place_badge()
 	for button in preview_strip.get_children():
 		button.set_pressed_no_signal(button.get_meta("type") == type)
+
+
+## The plan badge in the corner of the shown preview.
+func _place_badge() -> void:
+	Plans.place_badge(plan_label, preview.texture.get_size() if preview.texture else Vector2.ZERO)
 
 
 func _rebuild_strip() -> void:
@@ -332,6 +342,7 @@ func _refresh_download() -> void:
 	action_button.tooltip_text = ""
 	note_label.text = ""
 	note_label.remove_theme_color_override("font_color")
+	Plans.style_button(action_button, "")
 	_login_button.hide()
 	_web_button.visible = not GalleryApi.base_id(asset).is_empty()
 
@@ -369,6 +380,7 @@ func _refresh_download() -> void:
 			_login_button.text = "Cancel Login" if auth.login_pending else "Log In…"
 		if _offers_full_plan():
 			action_button.text = "Get Full Plan…"
+			Plans.style_button(action_button, "full")
 			action_button.tooltip_text = "See the Blendkit plans in the browser."
 			if auth.is_logged_in():
 				note_label.text = "Get Blendkit Full Plan to download and support human artists ♥"
@@ -422,7 +434,7 @@ func _gltf_unavailable() -> bool:
 ## out, or on the Free plan.
 func _offers_full_plan() -> bool:
 	var auth = gallery.plugin.auth
-	return asset.get("isFree") != true and (not auth.is_logged_in() or Auth.plan_label(auth.profile) == "Free")
+	return asset.get("isFree") != true and (not auth.is_logged_in() or Plans.user_plan(auth.profile) == "free")
 
 
 func _on_action() -> void:

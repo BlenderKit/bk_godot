@@ -488,6 +488,8 @@ func check():
     auth.access_token = ""
     details.show_asset(asset, {})
     print("ANONYMOUS=%s" % state(details))
+    print("BADGE=%s|%s" % [details.plan_label.text, details.plan_label.get_theme_stylebox("normal").bg_color.to_html(false)])
+    print("PLANS_BUTTON=%s" % details.action_button.get_theme_stylebox("normal").bg_color.to_html(false))
     print("LOGIN=%s|%s" % [details._login_button.visible, details._login_button.text])
     auth.login_pending = true
     details.refresh_download()
@@ -506,6 +508,7 @@ func check():
     asset.canDownload = true
     details.update_asset(asset)
     print("DOWNLOAD=%s" % state(details))
+    print("DOWNLOAD_STYLED=%s" % details.action_button.has_theme_stylebox_override("normal"))
     gallery.downloads.gallery_downloads["base"] = {"asset": asset, "task_id": "", "status": "posting", "progress": 0, "message": ""}
     details.refresh_download()
     print("POSTING=%s" % state(details))
@@ -557,6 +560,8 @@ def test_gallery_details_actions(godot_executable, tmp_path):
         "ANONYMOUS=Get Full Plan…|false|"
         "Log in with Blendkit Full Plan to download and support human artists ♥"
     ) in lines, output
+    assert "BADGE=Full Plan|b35935" in lines, output
+    assert "PLANS_BUTTON=b35935" in lines, output
     assert "LOGIN=true|Log In…" in lines, output
     assert "LOGIN_PENDING=true|Cancel Login" in lines, output
     assert (
@@ -566,6 +571,7 @@ def test_gallery_details_actions(godot_executable, tmp_path):
     assert "LOGGED_IN=false" in lines, output
     assert "OTHER=Download|true|This asset can't be downloaded here." in lines, output
     assert "DOWNLOAD=Download|false|" in lines, output
+    assert "DOWNLOAD_STYLED=false" in lines, output
     assert "POSTING=Downloading…|true|" in lines, output
     assert "PROGRESS=Cancel Download (23%)|false|" in lines, output
     assert "CANCEL_AT_ONCE=[]" in lines, output

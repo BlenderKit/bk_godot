@@ -13,6 +13,11 @@
   to offer the formats not downloaded yet. Offline, they show the downloaded
   ones.
 - The file selector in asset details sits before the button it applies to.
+- Plans show in the Blendkit colors, the same in every editor theme: Free and
+  Full Plan badges in the corner of the previews in the gallery and in asset
+  details, like on blendkit.com, an orange **Get Full Plan…** button, and a
+  star in the plan's color next to your plan in the Blendkit menu, including
+  Business Plan.
 
 ### Fixed
 

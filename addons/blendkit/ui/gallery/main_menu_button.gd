@@ -8,6 +8,7 @@ const Auth = preload("res://addons/blendkit/auth.gd")
 const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const Icons = preload("res://addons/blendkit/ui/icons.gd")
+const Plans = preload("res://addons/blendkit/ui/plans.gd")
 const SettingsDialog = preload("res://addons/blendkit/ui/settings_dialog.gd")
 
 enum Item {
@@ -230,7 +231,7 @@ func _fill_account() -> void:
 		_menu.add_icon_item(get_theme_icon("Favorites", "EditorIcons"), "Plan: …", Item.PLAN)
 		_menu.set_item_disabled(-1, true)
 	else:
-		_menu.add_icon_item(get_theme_icon("Favorites", "EditorIcons"), "Plan: %s" % plan, Item.PLAN)
+		_menu.add_icon_item(_plan_icon(Plans.user_plan(auth.profile) if logged_in else "free"), "Plan: %s" % plan, Item.PLAN)
 		if logged_in:
 			_menu.set_item_tooltip(-1, plugin.SERVER + "/plans/pricing")
 		else:
@@ -291,6 +292,20 @@ func _mono_icon(path: String, size := 16) -> Texture2D:
 	if not _mono_icons.has(key):
 		_mono_icons[key] = Icons.render_svg(path, size * EditorInterface.get_editor_scale() / 16.0, true)
 	return _mono_icons[key]
+
+
+## The star of the plan item in the plan's color, when it stands out on the
+## menu.
+func _plan_icon(plan: String) -> Texture2D:
+	var star := get_theme_icon("Favorites", "EditorIcons")
+	var background := get_theme_color("base_color", "Editor")
+	var panel := _menu.get_theme_stylebox("panel")
+	if panel is StyleBoxFlat:
+		background = panel.bg_color
+	var key := "plan %s %s %s" % [plan, star.get_size(), background.to_html()]
+	if not _mono_icons.has(key):
+		_mono_icons[key] = Plans.tint_icon(star, plan, background)
+	return _mono_icons[key] if _mono_icons[key] else star
 
 
 ## The avatar as a round icon at its menu size.

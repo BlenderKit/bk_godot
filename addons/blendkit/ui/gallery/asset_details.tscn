@@ -29,6 +29,18 @@ layout_mode = 2
 expand_mode = 1
 stretch_mode = 5
 
+[node name="Plan" type="Label" parent="Content/Panes/Left/Preview"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 0
+grow_vertical = 0
+text = "Free"
+
 [node name="PreviewStrip" type="HBoxContainer" parent="Content/Panes/Left"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -59,7 +71,7 @@ text = "by"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = " · Free"
+text = " · CC0"
 clip_text = true
 text_overrun_behavior = 3
 
