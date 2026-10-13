@@ -12,6 +12,10 @@
   asset replaces the older one in its folder, so scenes using it keep working.
   **Short** keeps 8 characters of the UUIDs, **Full** all of them, as before.
   A hidden `.blendkit` file in each asset folder says which asset it is.
+- HDRs import in Godot: Blender re-saves their lossy DWAA-compressed EXRs,
+  which Godot can't read, as lossless ZIP-compressed EXRs before they move
+  into the project. It uses the Blender set up for Blender Import, or one
+  found on this computer. Without Blender, the original file is kept.
 
 ### Changed
 

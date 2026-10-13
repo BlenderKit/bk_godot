@@ -11,8 +11,9 @@ const STAGING_DIR := ".downloads"
 ## Leftover staging folders this old are no longer written to.
 const STAGING_STALE_SECONDS := 60
 ## Download statuses while it runs. A gallery download ends as finished,
-## error or cancelled, and is refreshing while it looks up its asset again.
-const ACTIVE_DOWNLOAD := ["posting", "refreshing", "created", "progress"]
+## error or cancelled, is refreshing while it looks up its asset again, and
+## converting while Blender makes the file importable, see Conversions.
+const ACTIVE_DOWNLOAD := ["posting", "refreshing", "created", "progress", "converting"]
 
 ## Asset types the gallery offers, in OptionButton order. These match what
 ## Send to Godot can deliver.
@@ -525,6 +526,22 @@ static func cancel_download(parent: Node, plugin: EditorPlugin, task_id: String)
 	var body: Dictionary = plugin.connection.client_data()
 	body["task_id"] = task_id
 	return await post_json(parent, plugin.connection.client_url("assets/cancel_download"), body)
+
+
+## Run [param script] in headless Blender with [param params], which it gets
+## as a JSON file. The task fails unless the script writes [param
+## output_path], and the Client skips the run if that exists already. An
+## empty [param blender] uses the Blender stored in the Client, if any.
+static func run_blender_script(parent: Node, plugin: EditorPlugin, blender: String, script: String, params: Dictionary, output_path: String, message: String) -> Array:
+	var body: Dictionary = plugin.connection.client_data()
+	body.merge({
+		"blender_exe_path": blender,
+		"script_path": ProjectSettings.globalize_path(script),
+		"params": params,
+		"output_path": output_path,
+		"status_message": message,
+	})
+	return task_id_from(await post_json(parent, plugin.connection.client_url("run_blender_script"), body))
 
 
 ## Fallback for a missed categories_update task. Returns the category tree

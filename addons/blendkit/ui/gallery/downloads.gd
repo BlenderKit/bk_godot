@@ -21,6 +21,7 @@ const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
+const Conversions = preload("res://addons/blendkit/conversions.gd")
 
 ## How long before a Send to Godot task first shows its asset folder may have
 ## changed, and how long after to keep looking for it, in seconds.
@@ -30,6 +31,8 @@ const WEB_FOLDER_SEARCH := 30
 ## were regenerated since the search that listed them.
 const STALE_FILE_ERROR := "No AssetFile matches"
 const STALE_FILE_MESSAGE := "The asset's files changed on Blendkit. Search again to download it."
+## A conversion still running after this long moves the file as it is.
+const CONVERSION_TIMEOUT_MS := 5 * 60 * 1000
 
 ## assetBaseId -> {task_id, status, progress, message, file_type, file_path,
 ## asset, reported, retried}
@@ -48,10 +51,15 @@ var _tasks: ClientTasks
 var index: ProjectAssets
 ## Whether leftover staging folders were cleared since connecting.
 var _staging_cleared := false
+## Conversions waiting for their task's final report, key -> {task}, see
+## _convert().
+var _conversions: Dictionary = {}
 ## The Client requests, replaced in the tests: post_download(asset,
-## file_type) and post_lookup(asset) return [task_id, error].
+## file_type), post_lookup(asset) and post_conversion(plan) return
+## [task_id, error].
 var post_download: Callable
 var post_lookup: Callable
+var post_conversion: Callable
 
 
 func _init(parent: Node, plugin: EditorPlugin, tasks: ClientTasks) -> void:
@@ -60,6 +68,7 @@ func _init(parent: Node, plugin: EditorPlugin, tasks: ClientTasks) -> void:
 	_tasks = tasks
 	post_download = _post_download
 	post_lookup = _post_lookup
+	post_conversion = _post_conversion
 
 
 func get_download(base_id: String) -> Dictionary:
@@ -138,7 +147,17 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 			dl.progress = int(task.get("progress", 0))
 			dl.message = str(task.get("message", ""))
 		"finished":
-			dl.file_path = ProjectAssets.finish_download(GalleryApi.task_file_path(task), _plugin.id_names, base_id)
+			var staged := GalleryApi.task_file_path(task)
+			var plan := Conversions.plan(staged)
+			if not plan.is_empty():
+				# Not reported anymore, see drop_vanished().
+				dl.reported = false
+				dl.status = "converting"
+				dl.progress = 100
+				dl.message = Conversions.MESSAGE
+				download_changed.emit(base_id)
+				await _convert(staged, "convert:" + base_id, plan)
+			dl.file_path = ProjectAssets.finish_download(staged, _plugin.id_names, base_id)
 			if dl.file_path.is_empty():
 				_end(base_id, "error", "Could not move the download into %s" % _plugin.download_dir)
 				return
@@ -248,12 +267,68 @@ static func _scan_download(file_path: String) -> void:
 		EditorInterface.get_resource_filesystem().scan_sources()
 
 
+# MARK: conversions
+
+## Make a finished download in staging importable before it moves into the
+## project, as [param plan] from Conversions.plan() says. Failing, the file
+## stays as it is. The reports of its task go to [param key].
+func _convert(staged: String, key: String, plan: Dictionary) -> void:
+	var output: String = plan.params.output_path
+	# The Client would take one left by an interrupted run as the result.
+	DirAccess.remove_absolute(output)
+	var state := {"task": {}}
+	_conversions[key] = state
+	var on_task := func(task: Dictionary) -> void:
+		if task.get("status") in ClientTasks.FINAL:
+			state.task = task
+	var response: Array = await _tasks.start(key, post_conversion.bind(plan), on_task)
+	var error := ""
+	if response.is_empty() or not _conversions.has(key):
+		error = "Blendkit Client disconnected"
+	elif response[0].is_empty():
+		error = response[1]
+	else:
+		var deadline := Time.get_ticks_msec() + CONVERSION_TIMEOUT_MS
+		while state.task.is_empty() and _conversions.has(key) and Time.get_ticks_msec() < deadline:
+			await _parent.get_tree().process_frame
+		if state.task.is_empty():
+			_tasks.forget(key)
+			error = "Blendkit Client disconnected" if not _conversions.has(key) else "Blender took too long"
+		elif state.task.status != "finished":
+			error = str(state.task.get("message", state.task.status))
+			_plugin.log_debug("Blender output:\n%s" % state.task.get("message_detailed", ""))
+		elif not Conversions.replace_file(output, staged):
+			error = "could not replace it with the converted file"
+	_conversions.erase(key)
+	DirAccess.remove_absolute(output)
+	var file := staged.get_file()
+	if error.is_empty():
+		_plugin.log_verbose("Converted %s for Godot" % file)
+	else:
+		_plugin.log_warning("Could not convert %s for Godot, which may not import it: %s" % [file, error])
+
+
+## Run the conversion with Blender, see Conversions.blender_path().
+func _post_conversion(plan: Dictionary) -> Array:
+	if not _plugin.connection.is_client_connected():
+		return ["", "Blendkit Client is not connected"]
+	var blender: String = await Conversions.blender_path()
+	var response := await GalleryApi.run_blender_script(_parent, _plugin, blender, plan.script,
+		plan.params, plan.params.output_path, Conversions.MESSAGE)
+	if response[0].is_empty() and blender.is_empty():
+		return ["", "Blender not found. Set it up in Blendkit > Settings > Blender Import."]
+	return response
+
+
 # MARK: Client connection
 
-## The Client cancels the app's tasks when it unsubscribes.
+## The Client cancels the app's tasks when it unsubscribes. Conversions
+## stop waiting and their downloads move into the project unconverted.
 func on_disconnected() -> void:
+	_conversions.clear()
 	for base_id in gallery_downloads:
-		if gallery_downloads[base_id].status in GalleryApi.ACTIVE_DOWNLOAD:
+		var status: String = gallery_downloads[base_id].status
+		if status in GalleryApi.ACTIVE_DOWNLOAD and status != "converting":
 			_end(base_id, "error", "Blendkit Client disconnected")
 	for task_id in web_downloads.keys():
 		_drop_web_download(task_id)
@@ -265,7 +340,7 @@ func on_disconnected() -> void:
 ## report's task ids.
 func drop_vanished(reported: Dictionary) -> void:
 	for task_id in web_downloads.keys():
-		if not reported.has(task_id):
+		if not reported.has(task_id) and web_downloads[task_id].status != "converting":
 			_drop_web_download(task_id)
 	# Once the report shows which downloads still run, clear the rest.
 	if not _staging_cleared:
@@ -286,10 +361,11 @@ func drop_vanished(reported: Dictionary) -> void:
 func handle_web_task(task: Dictionary) -> void:
 	var task_id: String = task.get("task_id", "")
 	var status: String = task.get("status", "")
+	if status == "finished":
+		_finish_web_download(task)
+		return
 	if not status in GalleryApi.ACTIVE_DOWNLOAD:
 		_drop_web_download(task_id)
-		if status == "finished":
-			_finish_web_download(task)
 		return
 	if not web_downloads.has(task_id):
 		web_downloads[task_id] = {"task_id": task_id, "folder": "", "id": "", "asset_type": "",
@@ -306,9 +382,21 @@ func handle_web_task(task: Dictionary) -> void:
 	download_changed.emit(task_id)
 
 
-## The asset's base id is known once its lookup finished, see index.
+## The asset's base id is known once its lookup finished, see index. A
+## download shown in progress shows converting meanwhile, if it does.
 func _finish_web_download(task: Dictionary) -> void:
+	var task_id: String = task.get("task_id", "")
 	var staged := GalleryApi.task_file_path(task)
+	var plan := Conversions.plan(staged)
+	if not plan.is_empty():
+		var web: Dictionary = web_downloads.get(task_id, {})
+		if web:
+			web.status = "converting"
+			web.progress = 100
+			web.message = Conversions.MESSAGE
+			download_changed.emit(task_id)
+		await _convert(staged, "convert:" + task_id, plan)
+	_drop_web_download(task_id)
 	var id := ProjectAssets.folder_asset_id(staged.replace("\\", "/").get_base_dir().get_file())
 	var base_id := GalleryApi.base_id(index.get_asset(id)) if index and id else ""
 	var path := ProjectAssets.finish_download(staged, _plugin.id_names, base_id)

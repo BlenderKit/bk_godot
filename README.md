@@ -137,6 +137,11 @@ Godot Editor.
   **Resolution** settings. A thin bar along the bottom of the asset's
   thumbnail shows the download progress, and a check mark in its corner shows
   the asset is in the project (or an error icon when the download failed).
+- Godot can't read the EXR files of Blendkit HDRs as they are, so Blender
+  re-saves them in a lossless form Godot imports before they move into the
+  project. This uses the Blender from **Blender Import** in **Settings**, or
+  one found on your computer. Without Blender, HDRs download but Godot shows
+  them as failed imports.
 - Logging in is optional. Free assets download without an account. To
   download Full Plan assets, click **Log In…** in the Blendkit menu at the end
   of the search bar and log in with a Full Plan account in the browser that

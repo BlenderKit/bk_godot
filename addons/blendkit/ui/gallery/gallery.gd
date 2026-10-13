@@ -216,7 +216,7 @@ func _on_tasks_reported(reported_tasks: Array) -> void:
 
 func handle_task(task: Dictionary) -> void:
 	match task.get("task_type"):
-		"search", "asset_download":
+		"search", "asset_download", "run_blender_script":
 			if not tasks.handle(task):
 				_on_unclaimed_task(task)
 		"thumbnail_download":

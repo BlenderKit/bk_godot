@@ -458,6 +458,13 @@ func _refresh_download() -> void:
 
 	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
 	var status: String = dl.get("status", "")
+	if status == "converting":
+		# can't be cancelled, the download is done
+		_cancel_since = -1
+		action_button.text = "Converting…"
+		action_button.disabled = true
+		note_label.text = str(dl.get("message", ""))
+		return
 	if status in GalleryApi.ACTIVE_DOWNLOAD and str(dl.get("task_id", "")):
 		action_button.text = "Cancel Download (%d%%)" % int(dl.get("progress", 0))
 		if _cancel_since < 0:
