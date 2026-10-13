@@ -20,12 +20,28 @@ const KEPT_FIELDS := ["id", "assetBaseId", "name", "displayName", "assetType", "
 	"license", "tags", "isFree", "score", "ratingsAverage", "ratingsCount", "ratingsMedian",
 	"filesSize", "created", "dictParameters", "description"]
 
+## How much of the asset and file ids the downloaded folders and files are
+## named with, see finish_download(): all of it like the Client, the first
+## SHORT_ID_LENGTH characters, or none.
+const ID_NAMES_FULL := "full"
+const ID_NAMES_SHORT := "short"
+const ID_NAMES_STRIP := "strip"
+const SHORT_ID_LENGTH := 8
+## Name of the assets whose name has no letters or digits.
+const NAMELESS_SLUG := "asset"
+## Hidden file in each asset folder with the asset's ids and the files
+## downloaded into it, as their names may not have the ids. Godot skips
+## hidden files, version control keeps it.
+const MANIFEST_FILE := ".blendkit"
+const MANIFEST_SECTION := "asset"
+
 static var _asset_id_regex := RegEx.create_from_string("_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
 ## A file the Client downloaded, named <slug>_<variant>_<file id>.<ext>, see
-## its ServerToLocalFilename(): the variant is gltf_godot, gltf or a
-## resolution like 2K, and the original .blend has none. Files Godot writes
-## next to them, like textures extracted from a .glb, have more after the id.
-static var _download_file_regex := RegEx.create_from_string("_(?:(gltf_godot|gltf|zip_file|[0-9_]+K)_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.[^.]+$")
+## its ServerToLocalFilename(): the slug has no "_", the variant is
+## gltf_godot, gltf or a resolution like 2K, and the original .blend has
+## none. Files Godot writes next to them, like textures extracted from a
+## .glb, have more after the id.
+static var _download_file_regex := RegEx.create_from_string("^([^_]*)_(?:(gltf_godot|gltf|zip_file|[0-9_]+K)_)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\.([^.]+)$")
 
 ## Absolute path of the index directory.
 var dir: String
@@ -162,8 +178,8 @@ func scan(abs_download_path: String) -> Array:
 		if not DirAccess.dir_exists_absolute(type_dir):
 			continue
 		for folder in DirAccess.get_directories_at(type_dir):
-			var id := folder_asset_id(folder)
 			var path := type_dir.path_join(folder)
+			var id := folder_id(path)
 			var files := downloaded_files(path) if id else {}
 			if files.is_empty():
 				continue
@@ -218,6 +234,13 @@ static func folder_asset_id(folder: String) -> String:
 	return m.get_string(1) if m else ""
 
 
+## The asset id of the folder at [param path] from its manifest or its
+## name, or "".
+static func folder_id(path: String) -> String:
+	var id := str(read_manifest(path).get("id", ""))
+	return id if id else folder_asset_id(path.get_file())
+
+
 ## The most recently written file the Client downloaded into the folder,
 ## or "".
 static func main_file(folder: String) -> String:
@@ -241,7 +264,7 @@ static func download_file_type(file_path: String) -> String:
 	var m := _download_file_regex.search(file_path.get_file())
 	if not m:
 		return ""
-	var variant := m.get_string(1)
+	var variant := m.get_string(2)
 	if variant.is_empty():
 		return "blend"
 	if variant.ends_with("K"):
@@ -249,15 +272,16 @@ static func download_file_type(file_path: String) -> String:
 	return variant
 
 
-## The files the Client downloaded into the folder: fileType -> path, the
-## newest of each type.
+## The files the Client downloaded into the folder, by its manifest or their
+## names: fileType -> path, the newest of each type.
 static func downloaded_files(folder: String) -> Dictionary:
 	var files := {}
 	var times := {}
 	if folder.is_empty() or not DirAccess.dir_exists_absolute(folder):
 		return files
+	var listed: Dictionary = read_manifest(folder).get("files", {})
 	for file in DirAccess.get_files_at(folder):
-		var file_type := download_file_type(file)
+		var file_type := str(listed.get(file, download_file_type(file)))
 		if file_type.is_empty():
 			continue
 		var path := folder.path_join(file)
@@ -266,6 +290,169 @@ static func downloaded_files(folder: String) -> Dictionary:
 			files[file_type] = path
 			times[file_type] = time
 	return files
+
+
+# MARK: folders
+
+## Move a finished download from the staging folder into the download
+## directory, replacing the file of its type there, whose .import and .uid
+## stay so references keep working. The older file is restored if the move
+## fails. The folder and file are named as [param id_names] says, see
+## destination_folder() and renamed_file(), and the folder's manifest lists
+## the file. Returns the new path; "" if there's no file to move or the move
+## failed.
+static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base_id: String = "") -> String:
+	path = path.replace("\\", "/")
+	var staged_folder := path.get_base_dir()
+	var client_folder := staged_folder.get_file()
+	var folder := GalleryApi.unstaged_path(staged_folder)
+	if folder == staged_folder:
+		return path if FileAccess.file_exists(path) else "" # not staged
+	var file_name := path.get_file()
+	var file_type := download_file_type(file_name)
+	var id := folder_asset_id(client_folder)
+	if id:
+		var m := _download_file_regex.search(file_name)
+		var slug := m.get_string(1) if m else client_folder.get_slice("_", 0)
+		folder = destination_folder(folder.get_base_dir(), client_folder, slug, id, base_id, id_names)
+	var target := folder.path_join(renamed_file(file_name, id_names) if id else file_name)
+	# A new file of a type downloaded before takes the older one's name.
+	if file_type:
+		target = downloaded_files(folder).get(file_type, target)
+	# Moved already: a task can be handled twice.
+	if not FileAccess.file_exists(path):
+		return target if FileAccess.file_exists(target) else ""
+	DirAccess.make_dir_recursive_absolute(folder)
+	var backup := ""
+	if FileAccess.file_exists(target):
+		backup = target + ".bk_old"
+		if DirAccess.rename_absolute(target, backup) != OK:
+			return ""
+	if DirAccess.rename_absolute(path, target) != OK:
+		if backup:
+			DirAccess.rename_absolute(backup, target)
+		return ""
+	if backup:
+		DirAccess.remove_absolute(backup)
+	DirAccess.remove_absolute(staged_folder) # only if empty
+	if id:
+		_write_manifest(folder, id, base_id, target.get_file(), file_type)
+	return target
+
+
+## The folder in [param type_dir] for a download of asset [param id]: the one
+## with this version already, else as [param id_names] says. Full keeps the
+## Client's [param client_folder] name, short is <slug>_<short id>, and
+## strip is <slug>, which an older version of the same asset is replaced in.
+## Taken by another asset, the id is added, short then whole.
+static func destination_folder(type_dir: String, client_folder: String, slug: String, id: String, base_id: String, id_names: String) -> String:
+	var found := find_folder(type_dir, client_folder, slug, id, base_id)
+	if found:
+		return found
+	var name := slug if slug else NAMELESS_SLUG
+	var whole := "%s_%s" % [name, id]
+	var names: Array
+	match id_names:
+		ID_NAMES_SHORT:
+			names = ["%s_%s" % [name, short_id(id)]]
+		ID_NAMES_STRIP:
+			names = [name, "%s_%s" % [name, short_id(base_id if base_id else id)]]
+		_:
+			return type_dir.path_join(client_folder)
+	for candidate in names:
+		var path := type_dir.path_join(candidate)
+		if _can_take(path, base_id if id_names == ID_NAMES_STRIP else ""):
+			return path
+	return type_dir.path_join(whole)
+
+
+## The folder in [param type_dir] with version [param id] of the asset,
+## named in any of the ways destination_folder() names them, or "".
+static func find_folder(type_dir: String, client_folder: String, slug: String, id: String, base_id: String = "") -> String:
+	if id.is_empty():
+		return ""
+	var name := slug if slug else NAMELESS_SLUG
+	var names := [client_folder, name, "%s_%s" % [name, short_id(id)], "%s_%s" % [name, id]]
+	if base_id:
+		names.append("%s_%s" % [name, short_id(base_id)])
+	for candidate in names:
+		var path := type_dir.path_join(candidate)
+		if DirAccess.dir_exists_absolute(path) and folder_id(path) == id:
+			return path
+	return ""
+
+
+## The folder in the download directory with the [param asset]'s version,
+## or "".
+static func asset_folder(abs_download_path: String, asset: Dictionary) -> String:
+	var client_dir := GalleryApi.asset_download_dir(abs_download_path, asset)
+	return find_folder(client_dir.get_base_dir(), client_dir.get_file(), GalleryApi.slugify(str(asset.get("name", ""))),
+		str(asset.get("id", "")), GalleryApi.base_id(asset))
+
+
+## Whether a download can go into the folder: it's new or empty, or it has
+## another version of the asset with [param base_id].
+static func _can_take(path: String, base_id: String) -> bool:
+	if not DirAccess.dir_exists_absolute(path):
+		return true
+	var manifest := read_manifest(path)
+	if manifest.is_empty():
+		return DirAccess.get_files_at(path).is_empty() and DirAccess.get_directories_at(path).is_empty()
+	return not base_id.is_empty() and manifest.assetBaseId == base_id
+
+
+## The name of a file the Client downloaded, with the file id as
+## [param id_names] says: chair_gltf_godot_<id>.glb stays in full,
+## becomes chair_gltf_godot_<short id>.glb in short and chair_gltf_godot.glb
+## in strip. Other names stay.
+static func renamed_file(file_name: String, id_names: String) -> String:
+	var m := _download_file_regex.search(file_name)
+	if not m or id_names == ID_NAMES_FULL:
+		return file_name
+	var parts := [m.get_string(1) if m.get_string(1) else NAMELESS_SLUG]
+	if m.get_string(2):
+		parts.append(m.get_string(2))
+	if id_names == ID_NAMES_SHORT:
+		parts.append(short_id(m.get_string(3)))
+	return "_".join(parts) + "." + m.get_string(4)
+
+
+static func short_id(id: String) -> String:
+	return id.left(SHORT_ID_LENGTH)
+
+
+## The folder's manifest: {id, assetBaseId, files: {file name: fileType}},
+## or {} if it has none.
+static func read_manifest(folder: String) -> Dictionary:
+	var path := folder.path_join(MANIFEST_FILE)
+	var config := ConfigFile.new()
+	if not FileAccess.file_exists(path) or config.load(path) != OK:
+		return {}
+	var files = config.get_value(MANIFEST_SECTION, "files", {})
+	return {"id": str(config.get_value(MANIFEST_SECTION, "id", "")),
+		"assetBaseId": str(config.get_value(MANIFEST_SECTION, "assetBaseId", "")),
+		"files": files if files is Dictionary else {}}
+
+
+## Note the downloaded file in the folder's manifest, now with version
+## [param id] of the asset, and forget the files that are gone.
+static func _write_manifest(folder: String, id: String, base_id: String, file_name: String, file_type: String) -> void:
+	var manifest := read_manifest(folder)
+	var files: Dictionary = manifest.get("files", {})
+	for name in files.keys():
+		if not FileAccess.file_exists(folder.path_join(name)):
+			files.erase(name)
+	if file_type:
+		files[file_name] = file_type
+	if base_id.is_empty() and manifest.get("id", "") == id:
+		base_id = manifest.assetBaseId
+	var config := ConfigFile.new()
+	config.set_value(MANIFEST_SECTION, "id", id)
+	if base_id:
+		config.set_value(MANIFEST_SECTION, "assetBaseId", base_id)
+	config.set_value(MANIFEST_SECTION, "files", files)
+	if config.save(folder.path_join(MANIFEST_FILE)) != OK:
+		push_warning("Blendkit: Could not save %s" % folder.path_join(MANIFEST_FILE))
 
 
 ## Readable name from a downloaded file named <slug>_<server name> by the

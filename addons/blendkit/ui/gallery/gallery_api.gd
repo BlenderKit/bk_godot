@@ -347,32 +347,6 @@ static func unstaged_path(path: String) -> String:
 	return path if i < 0 else path.left(i) + path.substr(i + marker.length() - 1)
 
 
-## Move a finished download from the staging folder to its place, replacing
-## an older copy there, whose .import and .uid stay so references keep
-## working. The older copy is restored if the move fails. Returns the new
-## path; "" if there's no file to move or the move failed.
-static func finish_download(path: String) -> String:
-	path = path.replace("\\", "/")
-	var target := unstaged_path(path)
-	# Not staged, or moved already (a task can be handled twice).
-	if target == path or not FileAccess.file_exists(path):
-		return target if FileAccess.file_exists(target) else ""
-	DirAccess.make_dir_recursive_absolute(target.get_base_dir())
-	var backup := ""
-	if FileAccess.file_exists(target):
-		backup = target + ".bk_old"
-		if DirAccess.rename_absolute(target, backup) != OK:
-			return ""
-	if DirAccess.rename_absolute(path, target) != OK:
-		if backup:
-			DirAccess.rename_absolute(backup, target)
-		return ""
-	if backup:
-		DirAccess.remove_absolute(backup)
-	DirAccess.remove_absolute(path.get_base_dir()) # only if empty
-	return target
-
-
 ## Delete asset folders left in the staging folder, e.g. by downloads the
 ## editor closed during, except those in [param keep] and ones still being
 ## written to. Returns how many were deleted.

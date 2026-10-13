@@ -52,6 +52,7 @@ func setup(new_gallery: Node) -> void:
 	grid.add_theme_constant_override("h_separation", int(GalleryItemScript.GAP * edscale))
 	grid.add_theme_constant_override("v_separation", int(GalleryItemScript.GAP * edscale))
 	project = ProjectAssets.new()
+	gallery.downloads.index = project
 	visibility_changed.connect(_on_visibility_changed)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(refresh_if_shown)
 	gallery.downloads.download_changed.connect(_on_download_changed)

@@ -7,6 +7,7 @@ const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
+const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
 const GalleryItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
 
@@ -549,5 +550,5 @@ func _on_download_dir_changed() -> void:
 func _on_web_download_finished(file_path: String) -> void:
 	var folder := file_path.get_base_dir()
 	for base_id in items:
-		if GalleryApi.asset_download_dir(plugin.absolute_download_path, items[base_id].asset) == folder:
+		if ProjectAssets.asset_folder(plugin.absolute_download_path, items[base_id].asset) == folder:
 			items[base_id].set_downloaded(true)

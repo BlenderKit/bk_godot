@@ -6,6 +6,12 @@
 
 - Clicking the author in asset details shows their assets. An **Author**
   filter appears in the gallery filters, remove it to show all authors again.
+- **UUIDs in Names** setting for how downloads are named. **Strip**, the
+  default, leaves the UUIDs out: `models/chair/chair_gltf_godot.glb`. An asset
+  with the name of another one gets a short UUID, and a newer version of an
+  asset replaces the older one in its folder, so scenes using it keep working.
+  **Short** keeps 8 characters of the UUIDs, **Full** all of them, as before.
+  A hidden `.blendkit` file in each asset folder says which asset it is.
 
 ### Changed
 

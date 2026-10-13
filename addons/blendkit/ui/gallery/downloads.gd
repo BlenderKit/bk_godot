@@ -44,6 +44,8 @@ var web_downloads: Dictionary = {}
 var _parent: Node
 var _plugin: EditorPlugin
 var _tasks: ClientTasks
+## The project's asset index, set by the project view.
+var index: ProjectAssets
 ## Whether leftover staging folders were cleared since connecting.
 var _staging_cleared := false
 ## The Client requests, replaced in the tests: post_download(asset,
@@ -136,10 +138,11 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 			dl.progress = int(task.get("progress", 0))
 			dl.message = str(task.get("message", ""))
 		"finished":
-			dl.file_path = GalleryApi.finish_download(GalleryApi.task_file_path(task))
+			dl.file_path = ProjectAssets.finish_download(GalleryApi.task_file_path(task), _plugin.id_names, base_id)
 			if dl.file_path.is_empty():
 				_end(base_id, "error", "Could not move the download into %s" % _plugin.download_dir)
 				return
+			_plugin.log_info("Downloaded %s" % ProjectSettings.localize_path(dl.file_path))
 			dl.status = "finished"
 			dl.progress = 100
 			dl.message = ""
@@ -303,11 +306,16 @@ func handle_web_task(task: Dictionary) -> void:
 	download_changed.emit(task_id)
 
 
+## The asset's base id is known once its lookup finished, see index.
 func _finish_web_download(task: Dictionary) -> void:
-	var path := GalleryApi.finish_download(GalleryApi.task_file_path(task))
+	var staged := GalleryApi.task_file_path(task)
+	var id := ProjectAssets.folder_asset_id(staged.replace("\\", "/").get_base_dir().get_file())
+	var base_id := GalleryApi.base_id(index.get_asset(id)) if index and id else ""
+	var path := ProjectAssets.finish_download(staged, _plugin.id_names, base_id)
 	if path.is_empty():
-		_plugin.log_warning("Could not move %s into %s" % [GalleryApi.task_file_path(task), _plugin.download_dir])
+		_plugin.log_warning("Could not move %s into %s" % [staged, _plugin.download_dir])
 		return
+	_plugin.log_info("Downloaded %s" % ProjectSettings.localize_path(path))
 	_scan_download(path)
 	web_download_finished.emit(path)
 

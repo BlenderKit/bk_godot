@@ -17,6 +17,7 @@ const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const Downloads = preload("res://addons/blendkit/ui/gallery/downloads.gd")
 const SearchView = preload("res://addons/blendkit/ui/gallery/search_view.gd")
 const ProjectView = preload("res://addons/blendkit/ui/gallery/project_view.gd")
+const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 
 const SPINNER_SIZE := 128
 ## Spinner turns per second.
@@ -394,8 +395,7 @@ func get_download(base_id: String) -> Dictionary:
 
 
 func is_downloaded(asset: Dictionary) -> bool:
-	var dir := GalleryApi.asset_download_dir(plugin.absolute_download_path, asset)
-	return DirAccess.dir_exists_absolute(dir) and not DirAccess.get_files_at(dir).is_empty()
+	return not ProjectAssets.downloaded_files(ProjectAssets.asset_folder(plugin.absolute_download_path, asset)).is_empty()
 
 
 ## Show the download state in the details when open, and in the badge.

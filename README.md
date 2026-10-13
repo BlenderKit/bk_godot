@@ -175,8 +175,8 @@ connecting, red when it failed and gray when it's off. The menu has:
   on and off.
 - **Settings** with the download directory (`res://bk_assets/` by default),
   **Blender Import**, **Model Format** (**Blender (.blend)** by default, or
-  **glTF (.glb)**), **Resolution**, the Client **Port** and the plugin's
-  **Log Level**.
+  **glTF (.glb)**), **Resolution**, **UUIDs in Names** (**Strip** by default,
+  **Short** or **Full**), the Client **Port** and the plugin's **Log Level**.
 - **Restart Client** when it failed.
 - The account: your avatar, name and email once you're logged in (click them
   for your profile), and your plan (click it for the plans). **Log In…** and

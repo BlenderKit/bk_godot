@@ -135,6 +135,11 @@ const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.g
 
 const ID_A := "17982784-2390-4999-83d7-c72ea929f352"
 const ID_B := "2f7f0000-0000-4000-8000-000000000001"
+const ID_C := "c0000000-0000-4000-8000-00000000000c"
+const ID_D := "d0000000-0000-4000-8000-00000000000d"
+const ID_E := "e0000000-0000-4000-8000-00000000000e"
+const ID_F := "f0000000-0000-4000-8000-00000000000f"
+const ID_G := "a1000000-0000-4000-8000-0000000000a1"
 
 var failures := 0
 
@@ -231,21 +236,71 @@ func _initialize():
     check(recent == {"folder": staged_a, "id": ID_A, "asset_type": "model"}, str(recent))
 
     # A finished download replaces the older copy; .import stays.
-    var moved := Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"))
+    var moved := ProjectAssets.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"))
     check(moved == dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"), moved)
     check(FileAccess.get_file_as_string(moved) == "new glb", "replaced")
     check(FileAccess.file_exists(moved + ".import"), "import kept")
     check(not DirAccess.dir_exists_absolute(staged_a), "staging folder removed")
-    check(Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb")) == moved, "moved twice")
+    check(ProjectAssets.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb")) == moved, "moved twice")
     check(not FileAccess.file_exists(moved + ".bk_old"), "older copy deleted")
-    check(Api.finish_download(staging.path_join("models/gone_" + ID_B + "/gone.glb")) == "", "nothing to move")
+    check(ProjectAssets.finish_download(staging.path_join("models/gone_" + ID_B + "/gone.glb")) == "", "nothing to move")
     # A new asset gets its folder.
     var staged_c := staging.path_join("models/new-one_" + ID_B)
     write(staged_c.path_join("new-one.glb"), "glb")
-    moved = Api.finish_download(staged_c.path_join("new-one.glb"))
+    moved = ProjectAssets.finish_download(staged_c.path_join("new-one.glb"))
     check(moved == downloads.path_join("models/new-one_" + ID_B + "/new-one.glb") and FileAccess.file_exists(moved), moved)
     DirAccess.remove_absolute(moved)
+    DirAccess.remove_absolute(moved.get_base_dir().path_join(ProjectAssets.MANIFEST_FILE))
     DirAccess.remove_absolute(moved.get_base_dir())
+
+    # Short and Strip names leave out the UUIDs, the manifest has them.
+    check(ProjectAssets.renamed_file("chair_gltf_godot_%s.glb" % file_id, "short") == "chair_gltf_godot_6c02715d.glb", ProjectAssets.renamed_file("chair_gltf_godot_%s.glb" % file_id, "short"))
+    check(ProjectAssets.renamed_file("chair_0_5K_%s.blend" % file_id, "strip") == "chair_0_5K.blend", "strip resolution")
+    check(ProjectAssets.renamed_file("chair_%s.blend" % file_id, "strip") == "chair.blend", "strip original")
+    check(ProjectAssets.renamed_file("_gltf_%s.glb" % file_id, "strip") == "asset_gltf.glb", "nameless")
+    check(ProjectAssets.renamed_file("chair_gltf_%s.glb" % file_id, "full") == "chair_gltf_%s.glb" % file_id, "full")
+    check(ProjectAssets.renamed_file("notes.txt", "strip") == "notes.txt", "not downloaded")
+    var models := downloads.path_join("models")
+    var chair := {"id": ID_C, "assetBaseId": "base-chair", "name": "Wooden Chair!", "assetType": "model"}
+    var staged_chair := staging.path_join("models/wooden-chair_" + ID_C).path_join("wooden-chair_gltf_godot_%s.glb" % file_id)
+    write(staged_chair, "v1")
+    var chair_file := ProjectAssets.finish_download(staged_chair, "strip", "base-chair")
+    check(chair_file == models.path_join("wooden-chair/wooden-chair_gltf_godot.glb"), chair_file)
+    var manifest := ProjectAssets.read_manifest(chair_file.get_base_dir())
+    check(manifest == {"id": ID_C, "assetBaseId": "base-chair", "files": {"wooden-chair_gltf_godot.glb": "gltf_godot"}}, str(manifest))
+    check(ProjectAssets.folder_id(chair_file.get_base_dir()) == ID_C, "id from the manifest")
+    check(ProjectAssets.downloaded_files(chair_file.get_base_dir()) == {"gltf_godot": chair_file}, "files from the manifest")
+    check(ProjectAssets.asset_folder(downloads, chair) == chair_file.get_base_dir(), ProjectAssets.asset_folder(downloads, chair))
+    check(ProjectAssets.finish_download(staged_chair, "strip", "base-chair") == chair_file, "strip moved twice")
+    # A newer version replaces the older one in its folder; .import stays.
+    write(chair_file + ".import", "import")
+    var staged_v2 := staging.path_join("models/wooden-chair_" + ID_D).path_join("wooden-chair_gltf_godot_22222222-2222-4222-8222-222222222222.glb")
+    write(staged_v2, "v2")
+    check(ProjectAssets.finish_download(staged_v2, "strip", "base-chair") == chair_file, "newer version in place")
+    check(FileAccess.get_file_as_string(chair_file) == "v2" and FileAccess.file_exists(chair_file + ".import"), "newer version replaced")
+    check(ProjectAssets.folder_id(chair_file.get_base_dir()) == ID_D, "manifest has the newer version")
+    check(ProjectAssets.asset_folder(downloads, chair) == "", "older version gone")
+    # Another asset by the same name gets a short UUID, of its base id if known.
+    var staged_other := staging.path_join("models/wooden-chair_" + ID_E).path_join("wooden-chair_2K_%s.blend" % file_id)
+    write(staged_other, "other")
+    moved = ProjectAssets.finish_download(staged_other, "strip", "otherbase-1234")
+    check(moved == models.path_join("wooden-chair_otherbas/wooden-chair_2K.blend"), moved)
+    # A folder without a manifest isn't taken.
+    var staged_user := staging.path_join("models/user-stuff_" + ID_F).path_join("user-stuff_gltf_%s.glb" % file_id)
+    write(staged_user, "glb")
+    moved = ProjectAssets.finish_download(staged_user, "strip")
+    check(moved == models.path_join("user-stuff_f0000000/user-stuff_gltf.glb"), moved)
+    var staged_short := staging.path_join("models/old-desk-table_" + ID_G).path_join("old-desk-table_2K_%s.blend" % file_id)
+    write(staged_short, "blend")
+    moved = ProjectAssets.finish_download(staged_short, "short")
+    check(moved == models.path_join("old-desk-table_a1000000/old-desk-table_2K_6c02715d.blend"), moved)
+    check(ProjectAssets.asset_folder(downloads, {"id": ID_G, "name": "Old desk table", "assetType": "model"}) == moved.get_base_dir(), "short found")
+    # A folder downloaded with whole UUIDs keeps them for newer files.
+    var staged_full := staging.path_join("models/travel-wooden-ch_" + ID_A).path_join("travel-wooden-chess-set_gltf_godot_33333333-3333-4333-8333-333333333333.glb")
+    write(staged_full, "newer file")
+    moved = ProjectAssets.finish_download(staged_full, "strip")
+    check(moved == dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"), moved)
+    check(FileAccess.get_file_as_string(moved) == "newer file", "older file replaced")
 
     # Leftovers are cleared unless kept or still written to.
     var stale := OS.get_environment("BK_STALE_DIR")
@@ -351,6 +406,7 @@ func check_downloads(gallery):
     # Finished, it moves into the project.
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "finished", "result": {"file_path": file}})
     print("FINISHED=%d BADGE_HIDDEN=%s" % [gallery.downloads.active_count(), not badge.visible])
+    print("MOVED=%s" % FileAccess.file_exists(gallery.plugin.absolute_download_path.path_join("models/wooden-chair/wooden-chair_gltf_godot.glb")))
     await get_tree().process_frame
     print("PROJECT_TILES=%s" % [gallery.project_view.entries.map(func(e): return [e.id, e.asset.name])])
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-2", "status": "created"})
@@ -381,6 +437,8 @@ def test_gallery_main_screen(godot_executable, tmp_path):
     assert "TILE_TOOLTIP=Wooden Chair|Downloading 1.0MB (40%)" in stdout, output
     assert "KEPT=1 STAGED=true" in stdout, output
     assert "FINISHED=0 BADGE_HIDDEN=true" in stdout, output
+    # the default Strip names leave out the UUIDs
+    assert "MOVED=true" in stdout, output
     assert "WEB_NAME=Send to Godot" in stdout, output
     assert "DROPPED=0" in stdout, output
     assert (
@@ -429,9 +487,9 @@ func check():
     details.file_option.select(0)
     details.file_option.item_selected.emit(0)
     print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
-    # From the search, the files are in the folder it downloads to.
+    # From the search, the files are in the folder it's downloaded to; none yet.
     details.show_asset(full, {})
-    print("SEARCH_FOLDER=%s" % (details.folder == gallery.plugin.absolute_download_path.path_join("models/tangerines_" + ID)))
+    print("SEARCH_FOLDER=%s" % details.folder.is_empty())
     print("SEARCH_SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     details.hide()
 """

@@ -9,12 +9,14 @@ signal download_dir_changed
 const SERVER = "https://blendkit.com"
 # [value, label] pairs for the settings dialog and the Format filter
 const MODEL_FORMATS = [["blend", "Blender (.blend)"], ["gltf_godot", "glTF (.glb)"]]
+const ID_NAMES = [[ProjectAssets.ID_NAMES_FULL, "Full"], [ProjectAssets.ID_NAMES_SHORT, "Short"], [ProjectAssets.ID_NAMES_STRIP, "Strip"]]
 const RESOLUTIONS = [["", "Auto"], ["ORIGINAL", "Original"], ["resolution_4K", "4K"], ["resolution_2K", "2K"], ["resolution_1K", "1K"], ["resolution_0_5K", "0.5K"]]
 # Project settings live in project.godot and are shared with the team, editor
 # settings stay on this computer. All of them show in Godot's settings dialogs.
 const SETTING_DOWNLOAD_DIR = "blendkit/downloads/directory"
 const SETTING_MODEL_FORMAT = "blendkit/downloads/model_format"
 const SETTING_RESOLUTION = "blendkit/downloads/resolution"
+const SETTING_ID_NAMES = "blendkit/downloads/uuids_in_names"
 const SETTING_CLIENT_ENABLED = "blendkit/client/enabled"
 const SETTING_PORT = "blendkit/client/port"
 const SETTING_LOG_LEVEL = "blendkit/client/log_level"
@@ -34,6 +36,7 @@ const BlenderImport = preload("res://addons/blendkit/blender_import.gd")
 const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const Icons = preload("res://addons/blendkit/ui/icons.gd")
 
 
@@ -89,6 +92,8 @@ var download_dir: String = "res://bk_assets/"
 var absolute_download_path: String
 var model_format: String = "blend"
 var resolution: String = ""
+# How much of the UUIDs downloaded folders and files are named with.
+var id_names: String = ProjectAssets.ID_NAMES_STRIP
 # Godot sets up .blend import when the editor starts, so changes to these
 # apply after a restart.
 var startup_blend_enabled: bool
@@ -259,6 +264,13 @@ func download_resolution() -> String:
 	return AUTO_RESOLUTION if resolution.is_empty() else resolution
 
 
+func set_id_names(new_id_names: String) -> void:
+	if new_id_names == id_names:
+		return
+	id_names = new_id_names
+	save_project_setting(SETTING_ID_NAMES, id_names)
+
+
 func set_resolution(new_resolution: String) -> void:
 	if new_resolution == resolution:
 		return
@@ -274,6 +286,7 @@ func init_settings() -> void:
 		",".join(MODEL_FORMATS.map(func(f): return f[0])))
 	add_project_setting(SETTING_RESOLUTION, RESOLUTION_AUTO, PROPERTY_HINT_ENUM,
 		",".join(RESOLUTIONS.map(func(r): return r[0] if r[0] else RESOLUTION_AUTO)))
+	add_project_setting(SETTING_ID_NAMES, id_names, PROPERTY_HINT_ENUM, ",".join(ID_NAMES.map(func(n): return n[0])))
 	add_editor_setting(SETTING_CLIENT_ENABLED, client_enabled)
 	add_editor_setting(SETTING_PORT, preferred_port, PROPERTY_HINT_ENUM, ",".join(ClientConnection.CLIENT_PORTS))
 	add_editor_setting(SETTING_LOG_LEVEL, log_level, PROPERTY_HINT_ENUM, ",".join(LogLevel.keys()))
@@ -289,6 +302,7 @@ func init_settings() -> void:
 	download_dir = ProjectSettings.get_setting(SETTING_DOWNLOAD_DIR)
 	model_format = ProjectSettings.get_setting(SETTING_MODEL_FORMAT)
 	resolution = _resolution_setting()
+	id_names = ProjectSettings.get_setting(SETTING_ID_NAMES)
 	client_enabled = editor_settings.get_setting(SETTING_CLIENT_ENABLED)
 	preferred_port = editor_settings.get_setting(SETTING_PORT)
 	log_level = editor_settings.get_setting(SETTING_LOG_LEVEL)
@@ -301,6 +315,7 @@ func load_settings() -> void:
 	set_download_dir(ProjectSettings.get_setting(SETTING_DOWNLOAD_DIR))
 	set_model_format(ProjectSettings.get_setting(SETTING_MODEL_FORMAT))
 	set_resolution(_resolution_setting())
+	set_id_names(ProjectSettings.get_setting(SETTING_ID_NAMES))
 	set_preferred_port(editor_settings.get_setting(SETTING_PORT))
 	set_client_enabled(editor_settings.get_setting(SETTING_CLIENT_ENABLED))
 
@@ -332,12 +347,10 @@ static func save_project_setting(key: String, value: Variant) -> void:
 	ProjectSettings.save()
 
 
-# Failed downloads from Send to Godot on blendkit.com show only here.
+# Failed downloads from Send to Godot on blendkit.com show only here. The
+# gallery logs finished ones, once it moved them into the project.
 func log_download_task(task: Dictionary) -> void:
 	match task.get("status"):
-		"finished":
-			var path := GalleryApi.unstaged_path(GalleryApi.task_file_path(task))
-			log_info("Downloaded %s" % ProjectSettings.localize_path(path))
 		"error":
 			log_warning("Download failed: %s" % task.get("message", ""))
 		"cancelled":

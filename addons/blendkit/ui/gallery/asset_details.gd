@@ -131,10 +131,10 @@ func _ready() -> void:
 
 
 ## Show the asset with the files in [param new_folder], by default the
-## folder it downloads to.
+## folder it's downloaded to, see _refresh_download().
 func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: String = "") -> void:
 	asset = new_asset
-	folder = new_folder if new_folder else GalleryApi.asset_download_dir(gallery.plugin.absolute_download_path, asset)
+	folder = new_folder if new_folder else ProjectAssets.asset_folder(gallery.plugin.absolute_download_path, asset)
 	local_files = ProjectAssets.downloaded_files(folder)
 	title = str(asset.get("displayName", asset.get("name", "Asset")))
 	title_label.text = title
@@ -441,7 +441,9 @@ func refresh_download() -> void:
 
 
 func _refresh_download() -> void:
-	# A finished download adds its file.
+	# A finished download adds its file, and its folder if it's the first.
+	if folder.is_empty():
+		folder = ProjectAssets.asset_folder(gallery.plugin.absolute_download_path, asset)
 	var files := ProjectAssets.downloaded_files(folder)
 	if files != local_files:
 		local_files = files
