@@ -1,11 +1,11 @@
 @tool
-extends ConfirmationDialog
-## Asset details with a preview, description, key parameters and tags, and a
-## file chooser next to the OK button. OK downloads, or opens the asset web
-## page (or the plans for a Free plan account) when the user can't download
-## it. The chooser marks the files already in the project, and for those OK
-## shows the file instead. It isn't modal: clicking the editor outside closes
-## it.
+extends AcceptDialog
+## Asset details with a preview, description, key parameters and tags, and
+## under them a file chooser with the action button. The action downloads, or
+## opens the asset web page (or the plans for a Free plan account) when the
+## user can't download it. The chooser marks the files already in the
+## project, and for those the action shows the file instead. It isn't modal:
+## clicking the editor outside closes it.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
@@ -26,8 +26,15 @@ const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
 @onready var info_label: Label = %Info
 @onready var description: RichTextLabel = %Description
 @onready var params_grid: GridContainer = %Params
+@onready var tags_row: HBoxContainer = %TagsRow
+@onready var tags_key: Label = %TagsKey
 @onready var tags_flow: HFlowContainer = %Tags
 @onready var note_label: Label = %Note
+@onready var file_option: OptionButton = %FileOption
+@onready var action_button: Button = %ActionButton
+@onready var _cancel_download_button: Button = %CancelDownload
+@onready var _login_button: Button = %LogIn
+@onready var _web_button: Button = %WebButton
 
 ## Set by the gallery, used to read download state and the download settings.
 var gallery: Node
@@ -38,31 +45,39 @@ var folder := ""
 var local_files: Dictionary = {}
 var _textures: Dictionary = {}
 var _preview_type := ""
-var _web_button: Button
-var _cancel_download_button: Button
-var _login_button: Button
 var _shown_frame := -1
-var file_option: OptionButton
 
 
 func _ready() -> void:
-	dialog_hide_on_ok = false
 	preview.custom_minimum_size = Vector2.ONE * 400 * EditorInterface.get_editor_scale()
-	# clicking outside closes it
-	get_cancel_button().hide()
-	# the file chooser sits right before the OK button, which acts on its file
-	file_option = OptionButton.new()
-	file_option.tooltip_text = "File to download, or to show when it's marked as downloaded. The default follows the Model Format and Resolution in Blendkit Settings."
-	var ok := get_ok_button()
-	ok.get_parent().add_child(file_option)
-	ok.get_parent().move_child(file_option, ok.get_index())
-	_web_button = add_button("View on blendkit.com", true, "web")
-	_cancel_download_button = add_button("Cancel Download", true, "cancel_download")
-	_cancel_download_button.hide()
-	_login_button = add_button("Log In…", true, "login")
-	_login_button.hide()
-	confirmed.connect(_on_ok)
-	custom_action.connect(_on_custom_action)
+	# clicking outside closes it, the own footer centers the action
+	get_ok_button().hide()
+	# no space for the empty button row under the footer
+	add_theme_constant_override("buttons_separation", 0)
+	action_button.pressed.connect(_on_action)
+	_web_button.pressed.connect(_on_custom_action.bind("web"))
+	_login_button.pressed.connect(_on_custom_action.bind("login"))
+	_cancel_download_button.pressed.connect(_on_custom_action.bind("cancel_download"))
+	var dim := get_theme_color("font_disabled_color", "Editor")
+	info_label.add_theme_color_override("font_color", dim)
+	tags_key.add_theme_color_override("font_color", dim)
+	# The tags are labels like the key, so they share its margins and
+	# baseline, with the rows overlapping by the vertical margins.
+	var label_box := tags_key.get_theme_stylebox("normal")
+	tags_flow.add_theme_constant_override("v_separation",
+		-int(label_box.get_margin(SIDE_TOP) + label_box.get_margin(SIDE_BOTTOM)))
+	tags_flow.add_theme_constant_override("h_separation",
+		int(12 * EditorInterface.get_editor_scale() - label_box.get_margin(SIDE_LEFT) - label_box.get_margin(SIDE_RIGHT)))
+	# no gap between the author and the rest of the byline
+	var author_box: StyleBox = label_box.duplicate()
+	author_box.content_margin_right = 0
+	author_label.add_theme_stylebox_override("normal", author_box)
+	var info_box: StyleBox = label_box.duplicate()
+	info_box.content_margin_left = 0
+	info_label.add_theme_stylebox_override("normal", info_box)
+	# the tags line up with the parameter values
+	params_grid.sort_children.connect(func():
+		tags_key.custom_minimum_size.x = params_grid.get_child(0).size.x if params_grid.get_child_count() else 0.0)
 	file_option.item_selected.connect(func(_i): refresh_download())
 	exclusive = false
 	# A separate window gets focus_entered on the editor window, an embedded
@@ -89,6 +104,9 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 		GalleryApi.ASSET_TYPE_LABELS.get(asset.get("assetType", ""), "").trim_suffix("s"),
 	])
 	info_label.text = " · ".join(PackedStringArray(Array(info).filter(func(s): return not s.is_empty())))
+	if author and info_label.text:
+		info_label.text = " · " + info_label.text
+	info_label.tooltip_text = info_label.text.trim_prefix(" · ")
 	description.text = str(asset.get("description", "")).strip_edges()
 	_fill_params()
 	_fill_tags()
@@ -107,7 +125,18 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 	refresh_download()
 	var edscale := EditorInterface.get_editor_scale()
 	_shown_frame = Engine.get_process_frames()
-	popup_centered_clamped(Vector2i(Vector2(960, 600) * edscale), 0.9)
+	# As tall as the content, the description takes what's left and scrolls.
+	# A zero height keeps the current one, so start from the minimum.
+	reset_size()
+	popup_centered_clamped(Vector2i(Vector2(960, 0) * edscale), 0.9)
+	# The tags wrap only once laid out at their width, and until then the
+	# dialog grows for one tag per row.
+	await get_tree().process_frame
+	if visible:
+		size.y = 0
+		# Enter acts like on the OK button the dialog hides
+		if not action_button.disabled:
+			action_button.grab_focus()
 
 
 ## Close when the focus went to the editor, not when it went to another app
@@ -200,13 +229,21 @@ func _fill_tags() -> void:
 	for child in tags_flow.get_children():
 		tags_flow.remove_child(child)
 		child.queue_free()
-	for tag in asset.get("tags", []):
-		var button := Button.new()
-		button.text = str(tag)
-		button.flat = true
-		button.tooltip_text = "Search for \"%s\"" % tag
-		button.pressed.connect(func(): tag_selected.emit(str(tag)))
-		tags_flow.add_child(button)
+	var tags: Array = asset.get("tags", [])
+	tags_row.visible = not tags.is_empty()
+	var hover := get_theme_color("accent_color", "Editor")
+	for tag in tags:
+		var label := Label.new()
+		label.text = str(tag)
+		label.tooltip_text = "Search for \"%s\"" % tag
+		label.mouse_filter = Control.MOUSE_FILTER_STOP
+		label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		label.mouse_entered.connect(func(): label.add_theme_color_override("font_color", hover))
+		label.mouse_exited.connect(func(): label.remove_theme_color_override("font_color"))
+		label.gui_input.connect(func(event: InputEvent):
+			if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.is_released():
+				tag_selected.emit(str(tag)))
+		tags_flow.add_child(label)
 
 
 ## List the files to download and the downloaded ones, marked. Keeps the
@@ -264,14 +301,18 @@ func selected_file_type() -> String:
 func refresh_download() -> void:
 	if asset.is_empty():
 		return
+	_refresh_download()
+	note_label.visible = not note_label.text.is_empty()
+
+
+func _refresh_download() -> void:
 	# A finished download adds its file.
 	var files := ProjectAssets.downloaded_files(folder)
 	if files != local_files:
 		local_files = files
 		_fill_files(false)
-	var ok := get_ok_button()
-	ok.disabled = false
-	ok.tooltip_text = ""
+	action_button.disabled = false
+	action_button.tooltip_text = ""
 	_cancel_download_button.hide()
 	_login_button.hide()
 	note_label.text = ""
@@ -281,19 +322,19 @@ func refresh_download() -> void:
 	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
 	var status: String = dl.get("status", "")
 	if status in GalleryApi.ACTIVE_DOWNLOAD:
-		ok.text = "Downloading %d %%" % int(dl.get("progress", 0))
-		ok.disabled = true
+		action_button.text = "Downloading %d %%" % int(dl.get("progress", 0))
+		action_button.disabled = true
 		_cancel_download_button.visible = not str(dl.get("task_id", "")).is_empty()
 		note_label.text = str(dl.get("message", ""))
 		return
 	if local_files.has(selected_file_type()):
-		ok.text = "Show File"
-		ok.tooltip_text = "Show the file in the FileSystem dock if Godot imports it, otherwise in the file manager."
+		action_button.text = "Show File"
+		action_button.tooltip_text = "Show the file in the FileSystem dock if Godot imports it, otherwise in the file manager."
 		note_label.text = local_files[selected_file_type()].get_file()
 		return
 	if asset.get("canDownload") != true:
 		var auth = gallery.plugin.auth
-		ok.text = "Get on blendkit.com"
+		action_button.text = "Get on blendkit.com"
 		if not auth.is_logged_in():
 			_login_button.show()
 			_login_button.disabled = auth.login_pending
@@ -306,18 +347,18 @@ func refresh_download() -> void:
 		if reason and not reason.ends_with("."):
 			reason += "."
 		if _needs_full_plan():
-			ok.text = "Get Full Plan"
+			action_button.text = "Get Full Plan"
 			note_label.text = reason if reason else "This asset needs Full Plan."
 		else:
 			note_label.text = reason if reason else "This asset can't be downloaded here. Try blendkit.com."
 		return
 	if file_option.item_count == 0:
-		ok.text = "Download"
-		ok.disabled = true
+		action_button.text = "Download"
+		action_button.disabled = true
 		note_label.text = "No downloadable file for this asset."
 		return
 
-	ok.text = "Download"
+	action_button.text = "Download"
 	var same_file: bool = dl.get("file_type", "") == selected_file_type()
 	if status == "error" and same_file:
 		note_label.text = "Download failed: %s" % dl.get("message", "")
@@ -342,7 +383,7 @@ func _needs_full_plan() -> bool:
 	return asset.get("isFree") != true and auth.is_logged_in() and Auth.plan_label(auth.profile) == "Free"
 
 
-func _on_ok() -> void:
+func _on_action() -> void:
 	var file_type := selected_file_type()
 	if local_files.has(file_type):
 		FileReveal.reveal(local_files[file_type])

@@ -2,42 +2,43 @@
 
 [ext_resource type="Script" path="res://addons/blendkit/ui/gallery/asset_details.gd" id="1_details"]
 
-[node name="AssetDetails" type="ConfirmationDialog"]
+[node name="AssetDetails" type="AcceptDialog"]
 title = "Asset"
-size = Vector2i(960, 600)
-ok_button_text = "Download"
-dialog_hide_on_ok = false
+size = Vector2i(960, 480)
 script = ExtResource("1_details")
 
-[node name="Content" type="HBoxContainer" parent="."]
+[node name="Content" type="VBoxContainer" parent="."]
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 952.0
-offset_bottom = 551.0
+offset_bottom = 431.0
+theme_override_constants/separation = 12
+
+[node name="Panes" type="HBoxContainer" parent="Content"]
+layout_mode = 2
+size_flags_vertical = 3
 theme_override_constants/separation = 16
 
-[node name="Left" type="VBoxContainer" parent="Content"]
+[node name="Left" type="VBoxContainer" parent="Content/Panes"]
 layout_mode = 2
-size_flags_horizontal = 3
 
-[node name="Preview" type="TextureRect" parent="Content/Left"]
+[node name="Preview" type="TextureRect" parent="Content/Panes/Left"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 400)
 layout_mode = 2
-size_flags_vertical = 3
 expand_mode = 1
 stretch_mode = 5
 
-[node name="PreviewStrip" type="HBoxContainer" parent="Content/Left"]
+[node name="PreviewStrip" type="HBoxContainer" parent="Content/Panes/Left"]
 unique_name_in_owner = true
 layout_mode = 2
 alignment = 1
 
-[node name="Right" type="VBoxContainer" parent="Content"]
+[node name="Right" type="VBoxContainer" parent="Content/Panes"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Title" type="Label" parent="Content/Right"]
+[node name="Title" type="Label" parent="Content/Panes/Right"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HeaderMedium"
@@ -45,35 +46,94 @@ text = "Asset"
 clip_text = true
 text_overrun_behavior = 3
 
-[node name="Author" type="Label" parent="Content/Right"]
+[node name="Byline" type="HBoxContainer" parent="Content/Panes/Right"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Author" type="Label" parent="Content/Panes/Right/Byline"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "by"
 
-[node name="Info" type="Label" parent="Content/Right"]
+[node name="Info" type="Label" parent="Content/Panes/Right/Byline"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Free"
+size_flags_horizontal = 3
+text = " · Free"
+clip_text = true
+text_overrun_behavior = 3
 
-[node name="Description" type="RichTextLabel" parent="Content/Right"]
+[node name="Description" type="RichTextLabel" parent="Content/Panes/Right"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 size_flags_vertical = 3
 selection_enabled = true
 
-[node name="Params" type="GridContainer" parent="Content/Right"]
+[node name="Params" type="GridContainer" parent="Content/Panes/Right"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/h_separation = 16
 columns = 4
 
-[node name="Tags" type="HFlowContainer" parent="Content/Right"]
+[node name="TagsRow" type="HBoxContainer" parent="Content/Panes/Right"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_constants/separation = 16
 
-[node name="Note" type="Label" parent="Content/Right"]
+[node name="TagsKey" type="Label" parent="Content/Panes/Right/TagsRow"]
 unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 0
+text = "Tags"
+
+[node name="Tags" type="HFlowContainer" parent="Content/Panes/Right/TagsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Note" type="Label" parent="Content/Panes/Right"]
+unique_name_in_owner = true
+visible = false
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 autowrap_mode = 3
+
+[node name="Footer" type="HBoxContainer" parent="Content"]
+layout_mode = 2
+
+[node name="FooterLeft" type="HBoxContainer" parent="Content/Footer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="WebButton" type="Button" parent="Content/Footer/FooterLeft"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "View on blendkit.com"
+
+[node name="FileOption" type="OptionButton" parent="Content/Footer"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "File to download, or to show when it's marked as downloaded. The default follows the Model Format and Resolution in Blendkit Settings."
+
+[node name="ActionButton" type="Button" parent="Content/Footer"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Download"
+
+[node name="FooterRight" type="HBoxContainer" parent="Content/Footer"]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 2
+
+[node name="CancelDownload" type="Button" parent="Content/Footer/FooterRight"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+text = "Cancel Download"
+
+[node name="LogIn" type="Button" parent="Content/Footer/FooterRight"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+text = "Log In…"

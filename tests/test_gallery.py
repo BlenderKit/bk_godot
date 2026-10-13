@@ -409,12 +409,12 @@ func check():
     var asset := {"id": ID, "assetBaseId": "base", "name": "Tangerines", "assetType": "model"}
     details.show_asset(asset, {}, folder)
     print("ITEMS=%s" % [items(details)])
-    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     print("NOTE=%s" % details.note_label.text)
-    print("TOOLTIP=%s" % details.get_ok_button().tooltip_text)
+    print("TOOLTIP=%s" % details.action_button.tooltip_text)
     details.file_option.select(1)
     details.file_option.item_selected.emit(1)
-    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     # Looked up, the other files can be downloaded too.
     var full := asset.duplicate()
     full.canDownload = true
@@ -424,11 +424,11 @@ func check():
     print("SELECTED=%s" % details.selected_file_type())
     details.file_option.select(0)
     details.file_option.item_selected.emit(0)
-    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     # From the search, the files are in the folder it downloads to.
     details.show_asset(full, {})
     print("SEARCH_FOLDER=%s" % (details.folder == gallery.plugin.absolute_download_path.path_join("models/tangerines_" + ID)))
-    print("SEARCH_SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    print("SEARCH_SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     details.hide()
 """
 

@@ -61,7 +61,7 @@ func download(gallery, asset: Dictionary):
     print("ASSET=%s %s" % [asset.id, base_id])
     gallery.open_details(asset)
     print("FILE_TYPE=%s" % gallery.details.selected_file_type())
-    gallery.details.confirmed.emit()
+    gallery.details.action_button.pressed.emit()
     var seen := {}
     var final := func():
         var status: String = gallery.get_download(base_id).get("status", "")
@@ -72,7 +72,7 @@ func download(gallery, asset: Dictionary):
     print("STATUSES=%s" % [seen.keys()])
     print("STATUS=%s %s" % [dl.status, dl.message])
     print("FILE=%s" % dl.file_path)
-    print("BUTTON=%s" % gallery.details.get_ok_button().text)
+    print("BUTTON=%s" % gallery.details.action_button.text)
     print("STAGED_LEFT=%s" % FileAccess.file_exists(Api.staging_path(gallery.plugin.absolute_download_path).path_join(dl.file_path.trim_prefix(gallery.plugin.absolute_download_path))))
     gallery.details.hide()
 
