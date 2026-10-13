@@ -119,6 +119,7 @@ func _ready() -> void:
 	details.download_requested.connect(downloads.start)
 	details.cancel_requested.connect(downloads.cancel)
 	details.tag_selected.connect(_on_tag_selected)
+	details.author_selected.connect(_on_author_selected)
 
 	_updating_theme = true
 	_update_theme()
@@ -318,6 +319,14 @@ func _on_tag_selected(tag: String) -> void:
 	details.hide()
 	search_edit.text = tag
 	_on_search_text_submitted(tag)
+
+
+## Searches Blendkit for the author's assets, also from the project assets.
+func _on_author_selected(author_id: String, author_name: String) -> void:
+	details.hide()
+	project_toggle.button_pressed = false
+	search_edit.text = ""
+	search.search_author(author_id, author_name)
 
 
 ## Switches between the search and the project assets. Each keeps its query

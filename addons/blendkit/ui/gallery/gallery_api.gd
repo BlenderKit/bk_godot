@@ -110,8 +110,9 @@ static func encode_text(text: String) -> String:
 
 
 ## Polygon counts from [param min_faces] to [param max_faces], which may be
-## NO_LIMIT, apply to POLYGON_TYPES.
-static func build_search_url(server: String, text: String, asset_type: String, category_slug: String, sort: String, free_only: bool, godot_ready: bool, min_faces: int, max_faces: int, page: int, page_size: int, addon_version: String) -> String:
+## NO_LIMIT, apply to POLYGON_TYPES. An [param author_id] shows only that
+## author's assets.
+static func build_search_url(server: String, text: String, asset_type: String, category_slug: String, sort: String, free_only: bool, godot_ready: bool, min_faces: int, max_faces: int, page: int, page_size: int, addon_version: String, author_id: String = "") -> String:
 	var tokens := PackedStringArray()
 	var encoded := encode_text(text)
 	if not encoded.is_empty():
@@ -120,6 +121,8 @@ static func build_search_url(server: String, text: String, asset_type: String, c
 	# category_subtree:<type> gives irrelevant results, so skip the root
 	if not category_slug.is_empty() and category_slug != asset_type:
 		tokens.append("category_subtree:" + category_slug.uri_encode())
+	if not author_id.is_empty():
+		tokens.append("author_id:" + author_id.uri_encode())
 	if free_only:
 		tokens.append("is_free:true")
 	if asset_type == "model":

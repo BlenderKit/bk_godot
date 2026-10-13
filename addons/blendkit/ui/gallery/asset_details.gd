@@ -11,29 +11,39 @@ extends AcceptDialog
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
 signal tag_selected(tag: String)
+signal author_selected(author_id: String, author_name: String)
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const Plans = preload("res://addons/blendkit/ui/plans.gd")
+const Icons = preload("res://addons/blendkit/ui/icons.gd")
+## Font Awesome icons, like on the web.
+const SCORE_ICON_PATH := "res://addons/blendkit/ui/icons/trophy.svg"
+const COMPLEXITY_ICON_PATH := "res://addons/blendkit/ui/icons/dumbbell.svg"
 const PREVIEW_TYPES := ["full", "photo_full", "wire_full"]
 const PREVIEW_LABELS := {"full": "Render", "photo_full": "Photo", "wire_full": "Wireframe"}
 const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
+const MONTHS := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 ## Presses right after the action turned into Cancel are a double click on
 ## Download, not a cancel.
 const CANCEL_GUARD_MS := 500
+## Taller descriptions scroll.
+const DESCRIPTION_MAX_HEIGHT := 200
 
+@onready var preview_frame: PanelContainer = %PreviewFrame
 @onready var preview: TextureRect = %Preview
 @onready var preview_strip: HBoxContainer = %PreviewStrip
+@onready var right_pane: VBoxContainer = %Right
 @onready var title_label: Label = %Title
-@onready var author_label: Label = %Author
-@onready var info_label: Label = %Info
+@onready var heading: VBoxContainer = %Heading
+@onready var type_label: Label = %AssetType
 @onready var plan_label: Label = %Plan
 @onready var description: RichTextLabel = %Description
 @onready var params_grid: GridContainer = %Params
 @onready var tags_row: HBoxContainer = %TagsRow
 @onready var tags_key: Label = %TagsKey
-@onready var tags_flow: HFlowContainer = %Tags
+@onready var tags_text: RichTextLabel = %Tags
 @onready var note_label: Label = %Note
 @onready var file_option: OptionButton = %FileOption
 @onready var action_button: Button = %ActionButton
@@ -58,7 +68,20 @@ var _index_deadlines: Dictionary = {}
 
 func _ready() -> void:
 	preview.custom_minimum_size = Vector2.ONE * 400 * EditorInterface.get_editor_scale()
+	# the properties as wide as the preview, with the description under it
+	right_pane.custom_minimum_size.x = preview.custom_minimum_size.x
+	var title_size := get_theme_font_size("font_size", "Label") * 2
+	title_label.add_theme_font_size_override("font_size", title_size)
+	# the font leaves room above its capitals on every wrapped line too
+	title_label.add_theme_constant_override("line_spacing", -int(title_size * 0.3))
 	preview.resized.connect(_place_badge)
+	var edscale := EditorInterface.get_editor_scale()
+	# Only the mask's shape shows: the preview with rounded corners, like
+	# the thumbnails of the gallery cards.
+	var mask := StyleBoxFlat.new()
+	mask.bg_color = Color.WHITE
+	mask.set_corner_radius_all(int(8 * edscale))
+	preview_frame.add_theme_stylebox_override("panel", mask)
 	# clicking outside closes it, the own footer centers the action
 	get_ok_button().hide()
 	# no space for the empty button row under the footer
@@ -71,25 +94,34 @@ func _ready() -> void:
 		if visible:
 			refresh_download())
 	var dim := get_theme_color("font_disabled_color", "Editor")
-	info_label.add_theme_color_override("font_color", dim)
+	type_label.add_theme_color_override("font_color", dim)
 	tags_key.add_theme_color_override("font_color", dim)
-	# The tags are labels like the key, so they share its margins and
-	# baseline, with the rows overlapping by the vertical margins.
+	# plain text like the web, not a panel
+	description.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	description.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	description.add_theme_constant_override("line_separation", int(4 * EditorInterface.get_editor_scale()))
+	# The tags are text with links, with the key's margins and color so they
+	# share its baseline and look like the other values.
 	var label_box := tags_key.get_theme_stylebox("normal")
-	tags_flow.add_theme_constant_override("v_separation",
-		-int(label_box.get_margin(SIDE_TOP) + label_box.get_margin(SIDE_BOTTOM)))
-	tags_flow.add_theme_constant_override("h_separation",
-		int(12 * EditorInterface.get_editor_scale() - label_box.get_margin(SIDE_LEFT) - label_box.get_margin(SIDE_RIGHT)))
-	# no gap between the author and the rest of the byline
-	var author_box: StyleBox = label_box.duplicate()
-	author_box.content_margin_right = 0
-	author_label.add_theme_stylebox_override("normal", author_box)
-	var info_box: StyleBox = label_box.duplicate()
-	info_box.content_margin_left = 0
-	info_label.add_theme_stylebox_override("normal", info_box)
-	# the tags line up with the parameter values
-	params_grid.sort_children.connect(func():
-		tags_key.custom_minimum_size.x = params_grid.get_child(0).size.x if params_grid.get_child_count() else 0.0)
+	var tags_box := StyleBoxEmpty.new()
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		tags_box.set_content_margin(side, label_box.get_margin(side))
+	tags_text.add_theme_stylebox_override("normal", tags_box)
+	tags_text.add_theme_stylebox_override("focus", tags_box)
+	# the key's color is overridden, the dialog has the plain label one
+	tags_text.add_theme_color_override("default_color", get_theme_color("font_color", "Label"))
+	tags_text.meta_clicked.connect(func(meta): tag_selected.emit(asset.get("tags", [])[int(meta)]))
+	# a tooltip per tag, [hint] would underline them
+	tags_text.meta_hover_started.connect(func(meta):
+		tags_text.tooltip_text = "Search for \"%s\"" % asset.get("tags", [])[int(meta)]
+		_fill_tags(int(meta)))
+	tags_text.meta_hover_ended.connect(func(_meta):
+		tags_text.tooltip_text = ""
+		_fill_tags())
+	# The type right above the title, also over the room the title font has
+	# above its capitals, about a quarter of its size.
+	heading.add_theme_constant_override("separation",
+		-int(label_box.get_margin(SIDE_TOP) + label_box.get_margin(SIDE_BOTTOM) + title_size * 0.25))
 	file_option.item_selected.connect(func(_i): refresh_download())
 	exclusive = false
 	# A separate window gets focus_entered on the editor window, an embedded
@@ -106,21 +138,14 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 	local_files = ProjectAssets.downloaded_files(folder)
 	title = str(asset.get("displayName", asset.get("name", "Asset")))
 	title_label.text = title
-	title_label.tooltip_text = title
-	var author := GalleryApi.author_name(asset)
-	author_label.text = "by " + author if author else ""
-	var license := str(asset.get("license", ""))
 	var plan := Plans.asset_plan(asset)
 	Plans.style_badge(plan_label, plan, Plans.ASSET_LABELS.get(plan, ""))
-	var info := PackedStringArray([
-		LICENSE_LABELS.get(license, license.replace("_", " ").capitalize()),
-		GalleryApi.ASSET_TYPE_LABELS.get(asset.get("assetType", ""), "").trim_suffix("s"),
-	])
-	info_label.text = " · ".join(PackedStringArray(Array(info).filter(func(s): return not s.is_empty())))
-	if author and info_label.text:
-		info_label.text = " · " + info_label.text
-	info_label.tooltip_text = info_label.text.trim_prefix(" · ")
+	type_label.text = GalleryApi.ASSET_TYPE_LABELS.get(asset.get("assetType", ""), "").trim_suffix("s")
+	type_label.visible = not type_label.text.is_empty()
 	description.text = str(asset.get("description", "")).strip_edges()
+	description.visible = not description.text.is_empty()
+	description.fit_content = true
+	description.custom_minimum_size.y = 0
 	_fill_params()
 	_fill_tags()
 	_fill_files(true)
@@ -137,23 +162,51 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 	_place_badge()
 
 	refresh_download()
-	var edscale := EditorInterface.get_editor_scale()
 	_shown_frame = Engine.get_process_frames()
-	# As tall as the content, the description takes what's left and scrolls.
-	# A zero height keeps the current one, so start from the minimum.
+	# The wrapped text is as tall as it is at its width, which it only gets
+	# once laid out, so give it that width first. Then the dialog opens as
+	# big as its content, the panes go below the preview as needed.
+	_set_text_widths()
+	var max_height := DESCRIPTION_MAX_HEIGHT * EditorInterface.get_editor_scale()
+	if description.get_content_height() > max_height:
+		description.fit_content = false
+		description.custom_minimum_size.y = max_height
+	# A zero size keeps the current one, so start from the minimum.
 	reset_size()
-	popup_centered_clamped(Vector2i(Vector2(960, 0) * edscale), 0.9)
-	# The tags wrap only once laid out at their width, and until then the
-	# dialog grows for one tag per row.
+	popup_centered_clamped(Vector2i.ZERO, 0.9)
 	await get_tree().process_frame
 	if visible:
-		size.y = 0
 		# Enter acts like on the OK button the dialog hides. Logging in comes
 		# first, an account may have Full Plan already.
 		if _login_button.visible:
 			_login_button.grab_focus()
 		elif not action_button.disabled:
 			action_button.grab_focus()
+
+
+## The widths the panes give the wrapped text, before they are laid out.
+## Also to the boxes around it, which would lay it out at their old width
+## first.
+func _set_text_widths() -> void:
+	var pane := preview.custom_minimum_size.x
+	var panes := right_pane.get_parent() as Container
+	var content_width := pane * 2 + panes.get_theme_constant("separation")
+	for box: Control in [panes.get_parent(), panes]:
+		box.size.x = content_width
+	for box: Control in [description.get_parent(), right_pane, heading, tags_row]:
+		box.size.x = pane
+	_set_text_width(title_label, pane)
+	_set_text_width(description, pane)
+	_set_text_width(tags_text, pane - tags_key.get_combined_minimum_size().x - tags_row.get_theme_constant("separation"))
+	_set_text_width(note_label, content_width)
+
+
+## Measures [param control] again at [param width] only when asked, and
+## drops the height it had at the old width, which would grow the dialog.
+func _set_text_width(control: Control, width: float) -> void:
+	control.size.x = width
+	control.update_minimum_size()
+	control.size.y = 0
 
 
 ## Close when the focus went to the editor, not when it went to another app
@@ -214,59 +267,114 @@ func _rebuild_strip() -> void:
 		preview_strip.add_child(button)
 
 
+## The properties in rows like on the web: the author, ratings, size and
+## parameters, then license and date.
 func _fill_params() -> void:
 	for child in params_grid.get_children():
 		params_grid.remove_child(child)
 		child.queue_free()
-	var p = asset.get("dictParameters", {})
-	if not p is Dictionary:
-		return
 	var rows: Array = []
-	if p.get("faceCount"):
-		rows.append(["Polygons", _thousands(int(p.faceCount))])
-	if p.has("dimensionX") and p.has("dimensionY") and p.has("dimensionZ"):
-		rows.append(["Dimensions", "%s × %s × %s m" % [_num(p.dimensionX), _num(p.dimensionY), _num(p.dimensionZ)]])
-	if p.get("textureResolutionMax"):
-		rows.append(["Max texture", "%d px" % int(p.textureResolutionMax)])
-	if p.get("textureSizeMeters"):
-		rows.append(["Texture size", "%s m" % _num(p.textureSizeMeters)])
-	if p.get("resolutionMax"):
-		rows.append(["Resolution", "%d px" % int(p.resolutionMax)])
-	for key in ["animated", "rig", "procedural"]:
-		if p.has(key) and p[key] is bool:
-			rows.append([{"animated": "Animated", "rig": "Rigged", "procedural": "Procedural"}[key], "Yes" if p[key] else "No"])
-	if p.get("modelStyle"):
-		rows.append(["Style", str(p.modelStyle).capitalize()])
+	var counts = asset.get("ratingsCount", {})
+	if counts is Dictionary and counts.get("quality"):
+		var edscale := EditorInterface.get_editor_scale()
+		rows.append(["Score", "%.1f" % float(asset.get("score", 0)),
+			"Asset score = average quality × median complexity × 10",
+			Icons.render_svg(SCORE_ICON_PATH, edscale, true)])
+		var average = asset.get("ratingsAverage", {})
+		if average is Dictionary and average.get("quality") != null:
+			rows.append(["Quality", "%.1f" % float(average.quality), "",
+				get_theme_icon("Favorites", "EditorIcons")])
+		var median = asset.get("ratingsMedian", {})
+		if median is Dictionary and median.get("workingHours") != null:
+			rows.append(["Complexity", "%.1f" % float(median.workingHours), "",
+				Icons.render_svg(COMPLEXITY_ICON_PATH, edscale, true)])
+	if asset.get("filesSize"):
+		rows.append(["File size", String.humanize_size(int(asset.filesSize))])
+	var p = asset.get("dictParameters", {})
+	if p is Dictionary:
+		if p.get("faceCount"):
+			rows.append(["Polygons", _thousands(int(p.faceCount))])
+		if p.has("dimensionX") and p.has("dimensionY") and p.has("dimensionZ"):
+			rows.append(["Dimensions", "%s × %s × %s m" % [_num(p.dimensionX), _num(p.dimensionY), _num(p.dimensionZ)]])
+		if p.get("textureSizeMeters"):
+			rows.append(["Texture size", "%s m" % _num(p.textureSizeMeters)])
+		if p.get("resolutionMax"):
+			rows.append(["Resolution", "%d px" % int(p.resolutionMax)])
+		for key in ["animated", "rig", "procedural"]:
+			if p.get(key) is bool and p[key]:
+				rows.append([{"animated": "Animated", "rig": "Rigged", "procedural": "Procedural"}[key], "Yes"])
+		if p.get("modelStyle"):
+			rows.append(["Style", str(p.modelStyle).capitalize()])
+	var license := str(asset.get("license", ""))
+	if license:
+		rows.append(["License", LICENSE_LABELS.get(license, license.replace("_", " ").capitalize())])
+	var created := _date(str(asset.get("created", "")))
+	if created:
+		rows.append(["Created", created])
 	var dim := get_theme_color("font_disabled_color", "Editor")
+	var author := GalleryApi.author_name(asset)
+	if author:
+		var author_key := Label.new()
+		author_key.text = "Author"
+		author_key.add_theme_color_override("font_color", dim)
+		params_grid.add_child(author_key)
+		var author_label := Label.new()
+		author_label.text = author
+		var author_id := str(asset.get("author", {}).get("id", ""))
+		if author_id:
+			_make_link(author_label, "Search for assets by %s" % author,
+				func(): author_selected.emit(author_id, author))
+		params_grid.add_child(author_label)
 	for row in rows:
 		var key_label := Label.new()
 		key_label.text = row[0]
 		key_label.add_theme_color_override("font_color", dim)
+		if row.size() > 2 and row[2]:
+			key_label.tooltip_text = row[2]
+			key_label.mouse_filter = Control.MOUSE_FILTER_STOP
 		params_grid.add_child(key_label)
 		var value_label := Label.new()
 		value_label.text = row[1]
-		params_grid.add_child(value_label)
+		if row.size() < 4 or row[3] == null:
+			params_grid.add_child(value_label)
+			continue
+		# the value with its icon after it, like on the web
+		var value_box := HBoxContainer.new()
+		value_box.add_theme_constant_override("separation", int(3 * EditorInterface.get_editor_scale()
+			- tags_key.get_theme_stylebox("normal").get_margin(SIDE_RIGHT)))
+		value_box.add_child(value_label)
+		var icon := TextureRect.new()
+		icon.texture = row[3]
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		value_box.add_child(icon)
+		params_grid.add_child(value_box)
 
 
-func _fill_tags() -> void:
-	for child in tags_flow.get_children():
-		tags_flow.remove_child(child)
-		child.queue_free()
+## The tags as links separated by commas, the one at [param hovered]
+## highlighted.
+func _fill_tags(hovered := -1) -> void:
 	var tags: Array = asset.get("tags", [])
 	tags_row.visible = not tags.is_empty()
+	var hover := get_theme_color("accent_color", "Editor").to_html()
+	var links := PackedStringArray()
+	for i in tags.size():
+		var tag := str(tags[i]).replace("[", "[lb]")
+		var link := "[url=%d]%s[/url]" % [i, tag]
+		links.append("[color=#%s]%s[/color]" % [hover, link] if i == hovered else link)
+	tags_text.text = ", ".join(links)
+
+
+## Make [param label] clickable, highlighted on hover, calling [param on_click].
+func _make_link(label: Label, tooltip: String, on_click: Callable) -> void:
 	var hover := get_theme_color("accent_color", "Editor")
-	for tag in tags:
-		var label := Label.new()
-		label.text = str(tag)
-		label.tooltip_text = "Search for \"%s\"" % tag
-		label.mouse_filter = Control.MOUSE_FILTER_STOP
-		label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		label.mouse_entered.connect(func(): label.add_theme_color_override("font_color", hover))
-		label.mouse_exited.connect(func(): label.remove_theme_color_override("font_color"))
-		label.gui_input.connect(func(event: InputEvent):
-			if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.is_released():
-				tag_selected.emit(str(tag)))
-		tags_flow.add_child(label)
+	label.tooltip_text = tooltip
+	label.mouse_filter = Control.MOUSE_FILTER_STOP
+	label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	label.mouse_entered.connect(func(): label.add_theme_color_override("font_color", hover))
+	label.mouse_exited.connect(func(): label.remove_theme_color_override("font_color"))
+	label.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.is_released():
+			on_click.call())
 
 
 ## List the files to download and the downloaded ones, marked. Keeps the
@@ -383,9 +491,9 @@ func _refresh_download() -> void:
 			Plans.style_button(action_button, "full")
 			action_button.tooltip_text = "See the Blendkit plans in the browser."
 			if auth.is_logged_in():
-				note_label.text = "Get Blendkit Full Plan to download and support human artists ♥"
+				note_label.text = "Get Blendkit Full Plan to download any asset and support human artists ♥"
 			else:
-				note_label.text = "Log in with Blendkit Full Plan to download and support human artists ♥"
+				note_label.text = "Log in with Blendkit Full Plan to download any asset and support human artists ♥"
 		else:
 			action_button.disabled = true
 			var reason := GalleryApi.cant_download_message(asset).strip_edges()
@@ -463,6 +571,14 @@ func _on_login() -> void:
 	else:
 		auth.login()
 	refresh_download()
+
+
+## "07 Oct 2026" from an ISO date like "2026-10-07T12:00:00", or "".
+static func _date(iso: String) -> String:
+	var parts := iso.left(10).split("-")
+	if parts.size() != 3 or not parts[1].is_valid_int() or int(parts[1]) < 1 or int(parts[1]) > 12:
+		return ""
+	return "%s %s %s" % [parts[2], MONTHS[int(parts[1]) - 1], parts[0]]
 
 
 static func _num(value) -> String:

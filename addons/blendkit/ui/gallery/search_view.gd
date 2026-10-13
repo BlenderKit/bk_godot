@@ -8,6 +8,7 @@ const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
+const GalleryItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
 
 const PAGE_SIZE := 30
 ## How long to keep polling fast for thumbnails after results arrive. Tiles
@@ -24,6 +25,7 @@ const POLYGONS_DELAY := 0.5
 @onready var free_check: CheckBox = %FreeCheck
 @onready var format_option: OptionButton = %FormatOption
 @onready var polygon_filter: Button = %PolygonFilter
+@onready var author_filter: Button = %AuthorFilter
 @onready var message_box: VBoxContainer = %MessageBox
 @onready var message_label: Label = %MessageLabel
 @onready var message_button: Button = %MessageButton
@@ -35,6 +37,8 @@ const POLYGONS_DELAY := 0.5
 var gallery: Node
 var plugin: EditorPlugin
 var page := 1
+## Shows only this author's assets when set, until its filter is removed.
+var author_id := ""
 var count := 0
 var results: Array = []
 ## assetBaseId -> GalleryItem on the current page.
@@ -66,8 +70,8 @@ func setup(new_gallery: Node) -> void:
 	filter_row.add_theme_constant_override("h_separation", int(12 * edscale))
 	filter_row.add_theme_constant_override("v_separation", int(6 * edscale))
 	category_option.custom_minimum_size.x = 140 * edscale
-	grid.add_theme_constant_override("h_separation", int(10 * edscale))
-	grid.add_theme_constant_override("v_separation", int(10 * edscale))
+	grid.add_theme_constant_override("h_separation", int(GalleryItemScript.GAP * edscale))
+	grid.add_theme_constant_override("v_separation", int(GalleryItemScript.GAP * edscale))
 
 	for sort in GalleryApi.SORTS:
 		sort_option.add_item(sort[1])
@@ -93,6 +97,8 @@ func setup(new_gallery: Node) -> void:
 	category_option.item_selected.connect(func(_i): request_search())
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
 	polygon_filter.range_changed.connect(_on_polygons_changed)
+	author_filter.icon = get_theme_icon("Close", "EditorIcons")
+	author_filter.pressed.connect(search_author.bind("", ""))
 	_polygons_timer.timeout.connect(request_search)
 	# Closing the popup searches right away.
 	polygon_filter.closed.connect(func():
@@ -177,13 +183,21 @@ func request_search(new_page: int = 1, force: bool = false) -> void:
 	_run_search(force)
 
 
+## Show only the assets by [param new_author_id], or by all authors when empty.
+func search_author(new_author_id: String, author_name: String) -> void:
+	author_id = new_author_id
+	author_filter.text = author_name
+	author_filter.get_parent().visible = not author_id.is_empty()
+	request_search()
+
+
 func _run_search(force: bool = true) -> void:
 	var asset_type := _asset_type()
 	var text: String = gallery.blendkit_query()
 	var url := GalleryApi.build_search_url(plugin.SERVER, text, asset_type,
 		_category_slug(), _sort(), free_check.button_pressed,
 		asset_type == "model" and plugin.model_format != "blend",
-		polygon_filter.min_faces, polygon_filter.max_faces, page, PAGE_SIZE, plugin.get_addon_version())
+		polygon_filter.min_faces, polygon_filter.max_faces, page, PAGE_SIZE, plugin.get_addon_version(), author_id)
 	if url == _search_url and _search_error.is_empty() and not force:
 		return
 	_pending_search = false

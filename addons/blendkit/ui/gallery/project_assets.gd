@@ -17,7 +17,8 @@ const META_SECTION := "index"
 ## Asset fields kept in the index; account-specific ones like canDownload
 ## are left out.
 const KEPT_FIELDS := ["id", "assetBaseId", "name", "displayName", "assetType", "author",
-	"license", "tags", "isFree", "ratingsAverage", "dictParameters", "description"]
+	"license", "tags", "isFree", "score", "ratingsAverage", "ratingsCount", "ratingsMedian",
+	"filesSize", "created", "dictParameters", "description"]
 
 static var _asset_id_regex := RegEx.create_from_string("_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
 ## A file the Client downloaded, named <slug>_<variant>_<file id>.<ext>, see

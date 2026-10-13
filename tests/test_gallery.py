@@ -40,6 +40,9 @@ func _initialize():
     check(url.contains("+faceCount_gte:1000+order:") and not url.contains("faceCount_lte"), url)
     url = Api.build_search_url("https://blendkit.com", "", "model", "", "newest", false, false, 0, 10000, 1, 30, "0.6.1")
     check(url.contains("+faceCount_lte:10000+order:") and not url.contains("faceCount_gte"), url)
+    # an author shows only their assets
+    url = Api.build_search_url("https://blendkit.com", "", "model", "", "newest", false, false, 0, Api.NO_LIMIT, 1, 30, "", "1234")
+    check(url.contains("?query=asset_type:model+author_id:1234+sexualizedContent:false+"), url)
 
     check(Api.polygon_label(0, Api.NO_LIMIT) == "Any", "any")
     check(Api.polygon_label(1000, Api.NO_LIMIT) == "> 1k", "more than")
@@ -546,6 +549,45 @@ func check():
 """
 
 
+DETAILS_LAYOUT_PROBE = r"""
+func show_and_watch(details, asset: Dictionary) -> void:
+    details.show_asset(asset, {})
+    var first := Rect2i(details.position, details.size)
+    for f in 3:
+        await get_tree().process_frame
+    print("STEADY=%s" % (Rect2i(details.position, details.size) == first))
+
+func check():
+    var details = find_gallery().details
+    var tags := []
+    for i in 30:
+        tags.append("tag%d" % i)
+    var asset := {"id": "x", "assetBaseId": "base", "name": "A rather long asset title that wraps",
+        "assetType": "model", "description": "word ".repeat(400), "tags": tags,
+        "author": {"id": 1, "fullName": "Some Author"}}
+    await show_and_watch(details, asset)
+    print("CAPPED=%s" % (not details.description.fit_content))
+    details.hide()
+    await get_tree().process_frame
+    await show_and_watch(details, {"id": "y", "assetBaseId": "other", "name": "Short",
+        "assetType": "model", "description": "Short.", "tags": ["a", "b"]})
+    print("FITS=%s" % details.description.fit_content)
+    details.hide()
+"""
+
+
+def test_gallery_details_layout(godot_executable, tmp_path):
+    """The details open at their final size and place, without a jump."""
+    project = make_probe_project(tmp_path / "project", DETAILS_LAYOUT_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = [line for line in stdout.splitlines() if "=" in line]
+    assert lines.count("STEADY=true") == 2, output
+    assert "CAPPED=true" in lines, output
+    assert "FITS=true" in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
 def test_gallery_details_actions(godot_executable, tmp_path):
     """The action follows the account, the download and the editor import."""
     project = make_probe_project(
@@ -558,7 +600,7 @@ def test_gallery_details_actions(godot_executable, tmp_path):
     lines = [line for line in stdout.splitlines() if "=" in line]
     assert (
         "ANONYMOUS=Get Full Plan…|false|"
-        "Log in with Blendkit Full Plan to download and support human artists ♥"
+        "Log in with Blendkit Full Plan to download any asset and support human artists ♥"
     ) in lines, output
     assert "BADGE=Full Plan|b35935" in lines, output
     assert "PLANS_BUTTON=b35935" in lines, output
@@ -566,7 +608,7 @@ def test_gallery_details_actions(godot_executable, tmp_path):
     assert "LOGIN_PENDING=true|Cancel Login" in lines, output
     assert (
         "FREE_PLAN=Get Full Plan…|false|"
-        "Get Blendkit Full Plan to download and support human artists ♥"
+        "Get Blendkit Full Plan to download any asset and support human artists ♥"
     ) in lines, output
     assert "LOGGED_IN=false" in lines, output
     assert "OTHER=Download|true|This asset can't be downloaded here." in lines, output

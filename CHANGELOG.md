@@ -2,7 +2,19 @@
 
 ## 0.7.1 - UNRELEASED
 
+### Added
+
+- Clicking the author in asset details shows their assets. An **Author**
+  filter appears in the gallery filters, remove it to show all authors again.
+
 ### Changed
+
+- Asset details follow the blendkit.com layout: a bigger title with the asset
+  type above it, the description under the preview, and one column of
+  properties with score, quality and complexity and their icons, file size,
+  license and date. Animated, Rigged and Procedural show only when they apply.
+  Long descriptions scroll. The tags are a comma-separated list.
+- Asset details open at their final size, without a jump in the first frame.
 
 - Asset details list the formats already downloaded to the project, marked
   with a check. **Show File** shows the selected downloaded file, in the

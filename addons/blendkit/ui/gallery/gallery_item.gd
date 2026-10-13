@@ -12,6 +12,8 @@ const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const Plans = preload("res://addons/blendkit/ui/plans.gd")
 ## Narrowest card; the gallery widens the cards to fill each row.
 const MIN_WIDTH := 256
+## Space between cards, as on the web gallery.
+const GAP := 16
 ## Pixel size of the "small" thumbnail. Wider cards show the "full" one.
 const SMALL_THUMB_SIZE := 256
 const CORNER_RADIUS := 8

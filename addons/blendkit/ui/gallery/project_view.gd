@@ -10,6 +10,7 @@ const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
+const GalleryItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
 
 const WEB_DOWNLOAD_NAME := "Send to Godot"
 const LOOKUP_TASK := "lookup"
@@ -46,7 +47,10 @@ var _thumbnail_queue: Dictionary = {}
 ## Called by the gallery once the plugin is known.
 func setup(new_gallery: Node) -> void:
 	gallery = new_gallery
-	add_theme_constant_override("separation", int(20 * EditorInterface.get_editor_scale()))
+	var edscale := EditorInterface.get_editor_scale()
+	add_theme_constant_override("separation", int(20 * edscale))
+	grid.add_theme_constant_override("h_separation", int(GalleryItemScript.GAP * edscale))
+	grid.add_theme_constant_override("v_separation", int(GalleryItemScript.GAP * edscale))
 	project = ProjectAssets.new()
 	visibility_changed.connect(_on_visibility_changed)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(refresh_if_shown)
