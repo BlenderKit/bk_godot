@@ -153,17 +153,42 @@ func _initialize():
 
     check(ProjectAssets.folder_asset_id("travel-wooden-ch_" + ID_A) == ID_A, "folder id")
     check(ProjectAssets.folder_asset_id("my-folder") == "", "not an asset folder")
-    check(ProjectAssets.placeholder_name("/x/travel-wooden-chess-set_gltf_godot.glb") == "Travel Wooden Chess Set", ProjectAssets.placeholder_name("/x/travel-wooden-chess-set_gltf_godot.glb"))
+    check(ProjectAssets.placeholder_name("/x/travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb") == "Travel Wooden Chess Set", ProjectAssets.placeholder_name("/x/travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"))
 
     # A known asset, an unknown one, and folders that aren't assets.
     var dir_a := downloads.path_join("models/travel-wooden-ch_" + ID_A)
-    write(dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), "glb")
-    write(dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb.import"), "import")
+    write(dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"), "glb")
+    write(dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb.import"), "import")
+    # Godot extracts the textures after the .glb, so they're newer.
+    write(dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90_Board.webp"), "webp")
     var dir_b := downloads.path_join("materials/old-planks_" + ID_B)
-    write(dir_b.path_join("old-planks_2K.blend"), "blend")
+    write(dir_b.path_join("old-planks_2K_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.blend"), "blend")
     DirAccess.make_dir_recursive_absolute(downloads.path_join("models/empty_" + ID_B))
     write(downloads.path_join("models/user-stuff/a.glb"), "glb")
-    check(ProjectAssets.main_file(dir_a) == dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), ProjectAssets.main_file(dir_a))
+    check(ProjectAssets.main_file(dir_a) == dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"), ProjectAssets.main_file(dir_a))
+
+    # Downloaded files by the Client's names, not Godot's or the user's.
+    var file_id := "6c02715d-2e81-4a9a-ae57-a961f7d3cc37"
+    check(ProjectAssets.download_file_type("/x/tangerines_gltf_godot_%s.glb" % file_id) == "gltf_godot", "gltf_godot")
+    check(ProjectAssets.download_file_type("tangerines_gltf_%s.glb" % file_id) == "gltf", "gltf")
+    check(ProjectAssets.download_file_type("tangerines_2K_%s.blend" % file_id) == "resolution_2K", "2K")
+    check(ProjectAssets.download_file_type("tangerines_0_5K_%s.blend" % file_id) == "resolution_0_5K", "0.5K")
+    check(ProjectAssets.download_file_type("tangerines_%s.blend" % file_id) == "blend", "original")
+    check(ProjectAssets.download_file_type("tangerines_gltf_godot_%s_Naartjie.webp" % file_id) == "", "extracted texture")
+    check(ProjectAssets.download_file_type("tangerines_gltf_%s.glb.import" % file_id) == "", "import file")
+    check(ProjectAssets.download_file_type("tangerines_gltf.glb") == "", "no file id")
+    var dir_files := downloads.path_join("models/tangerines_" + ID_B)
+    write(dir_files.path_join("tangerines_gltf_godot_%s.glb" % file_id), "glb")
+    write(dir_files.path_join("tangerines_gltf_godot_%s_Naartjie.webp" % file_id), "webp")
+    write(dir_files.path_join("tangerines_2K_%s.blend" % file_id), "blend")
+    write(dir_files.path_join("notes.txt"), "mine")
+    var found := ProjectAssets.downloaded_files(dir_files)
+    check(found == {"gltf_godot": dir_files.path_join("tangerines_gltf_godot_%s.glb" % file_id),
+        "resolution_2K": dir_files.path_join("tangerines_2K_%s.blend" % file_id)}, str(found))
+    check(ProjectAssets.downloaded_files(root.path_join("nowhere")).is_empty(), "no folder")
+    for file in DirAccess.get_files_at(dir_files):
+        DirAccess.remove_absolute(dir_files.path_join(file))
+    DirAccess.remove_absolute(dir_files)
 
     var project := ProjectAssets.new(index_dir)
     var thumb := root.path_join("thumb.jpg")
@@ -177,7 +202,7 @@ func _initialize():
     check(project.get_asset(ID_B).is_empty(), "unknown asset")
 
     var entries := project.scan(downloads)
-    check(entries.size() == 2, "two asset folders: %s" % [entries.map(func(e): return e.file_path)])
+    check(entries.size() == 2, "two asset folders: %s" % [entries.map(func(e): return e.folder)])
 
     # Downloads are staged in a hidden folder and moved when complete.
     var staging := Api.staging_path(downloads)
@@ -191,7 +216,7 @@ func _initialize():
 
     # Send to Godot downloads go to the folder changed last.
     var staged_a := staging.path_join("models/travel-wooden-ch_" + ID_A)
-    write(staged_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), "new glb")
+    write(staged_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"), "new glb")
     var staged_b := staging.path_join("materials/old-planks_" + ID_B)
     DirAccess.make_dir_recursive_absolute(staged_b)
     var now := int(Time.get_unix_time_from_system())
@@ -202,12 +227,12 @@ func _initialize():
     check(recent == {"folder": staged_a, "id": ID_A, "asset_type": "model"}, str(recent))
 
     # A finished download replaces the older copy; .import stays.
-    var moved := Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot.glb"))
-    check(moved == dir_a.path_join("travel-wooden-chess-set_gltf_godot.glb"), moved)
+    var moved := Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"))
+    check(moved == dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"), moved)
     check(FileAccess.get_file_as_string(moved) == "new glb", "replaced")
     check(FileAccess.file_exists(moved + ".import"), "import kept")
     check(not DirAccess.dir_exists_absolute(staged_a), "staging folder removed")
-    check(Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot.glb")) == moved, "moved twice")
+    check(Api.finish_download(staged_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb")) == moved, "moved twice")
     check(not FileAccess.file_exists(moved + ".bk_old"), "older copy deleted")
     check(Api.finish_download(staging.path_join("models/gone_" + ID_B + "/gone.glb")) == "", "nothing to move")
     # A new asset gets its folder.
@@ -229,6 +254,9 @@ func _initialize():
     for e in entries:
         by_id[e.id] = e
     check(by_id[ID_A].known and by_id[ID_A].asset.name == "Travel wooden chess set", "known asset")
+    check(by_id[ID_A].folder == dir_a, by_id[ID_A].folder)
+    check(by_id[ID_A].files == {"gltf_godot": dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb")}, str(by_id[ID_A].files))
+    check(ProjectAssets.matches(by_id[ID_A], "gltf_godot"), "matches file names")
     check(not by_id[ID_B].known and by_id[ID_B].asset.name == "Old Planks" and by_id[ID_B].asset.assetType == "material", str(by_id[ID_B].asset))
     check(ProjectAssets.matches(by_id[ID_A], "CHESS board"), "matches name and tags")
     check(ProjectAssets.matches(by_id[ID_A], ""), "empty query matches")
@@ -291,7 +319,7 @@ func check_downloads(gallery):
     print("BADGE_HIDDEN=%s" % (not badge.visible))
     # A Send to Godot download goes to the staging folder the Client just made.
     var folder: String = gallery.plugin.absolute_download_path.path_join(".downloads/models/wooden-chair_" + ID)
-    var file := folder.path_join("wooden-chair_gltf_godot.glb")
+    var file := folder.path_join("wooden-chair_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb")
     DirAccess.make_dir_recursive_absolute(folder)
     # A minimal glTF (a .glb may hold JSON), so the editor imports it cleanly.
     FileAccess.open(file, FileAccess.WRITE).store_string('{"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"name": "Chair"}]}')
@@ -355,6 +383,82 @@ def test_gallery_main_screen(godot_executable, tmp_path):
         'PROJECT_TILES=[["17982784-2390-4999-83d7-c72ea929f352", "Wooden Chair"]]'
         in stdout
     ), output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
+DETAILS_PROBE = r"""
+const ID := "676596bd-d7fd-47db-a9b5-a4b0e35738e7"
+const FILE_ID := "b9d80621-bb1f-4335-894a-18e41438be00"
+
+func items(details) -> Array:
+    var result := []
+    for i in details.file_option.item_count:
+        result.append([details.file_option.get_item_metadata(i), details.file_option.get_item_icon(i) != null])
+    return result
+
+func check():
+    var gallery = find_gallery()
+    var details = gallery.details
+    # Outside the project, so the editor doesn't import the fake files.
+    var folder := OS.get_user_data_dir().path_join("bk_details_test/tangerines_" + ID)
+    DirAccess.make_dir_recursive_absolute(folder)
+    for file in ["tangerines_gltf_godot_%s.glb" % FILE_ID, "tangerines_gltf_godot_%s_Naartjie.webp" % FILE_ID,
+            "tangerines_2K_%s.blend" % FILE_ID, "notes.txt"]:
+        FileAccess.open(folder.path_join(file), FileAccess.WRITE).store_string("x")
+    # From the project assets: the index entry has no files to download.
+    var asset := {"id": ID, "assetBaseId": "base", "name": "Tangerines", "assetType": "model"}
+    details.show_asset(asset, {}, folder)
+    print("ITEMS=%s" % [items(details)])
+    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    print("NOTE=%s" % details.note_label.text.replace("\n", "|"))
+    details.file_option.select(1)
+    details.file_option.item_selected.emit(1)
+    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    # Looked up, the other files can be downloaded too.
+    var full := asset.duplicate()
+    full.canDownload = true
+    full.files = ["gltf", "gltf_godot", "blend", "resolution_2K", "resolution_1K"].map(func(t): return {"fileType": t})
+    details.update_asset(full)
+    print("ITEMS=%s" % [items(details)])
+    print("SELECTED=%s" % details.selected_file_type())
+    details.file_option.select(0)
+    details.file_option.item_selected.emit(0)
+    print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    # From the search, the files are in the folder it downloads to.
+    details.show_asset(full, {})
+    print("SEARCH_FOLDER=%s" % (details.folder == gallery.plugin.absolute_download_path.path_join("models/tangerines_" + ID)))
+    print("SEARCH_SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.get_ok_button().text])
+    details.hide()
+"""
+
+
+def test_gallery_details_files(godot_executable, tmp_path):
+    """The details list the downloaded files, marked, and show them."""
+    project = make_probe_project(
+        tmp_path / "project",
+        DETAILS_PROBE,
+        settings='[blendkit]\n\ndownloads/model_format="gltf_godot"\n',
+    )
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = [line for line in stdout.splitlines() if "=" in line]
+    # Only the Client's files: no extracted texture, no user file.
+    assert 'ITEMS=[["gltf_godot", true], ["resolution_2K", true]]' in lines, output
+    assert "SELECTED=gltf_godot BUTTON=Show File" in lines, output
+    assert (
+        "NOTE=tangerines_gltf_godot_b9d80621-bb1f-4335-894a-18e41438be00.glb||"
+        "Show the file in the FileSystem dock if Godot imports it, otherwise in the file manager."
+    ) in lines, output
+    assert "SELECTED=resolution_2K BUTTON=Show File" in lines, output
+    assert (
+        'ITEMS=[["gltf_godot", true], ["gltf", false], ["blend", false], '
+        '["resolution_2K", true], ["resolution_1K", false]]'
+    ) in lines, output
+    # the lookup keeps the selection
+    assert "SELECTED=resolution_2K" in lines, output
+    assert "SELECTED=gltf_godot BUTTON=Show File" in lines, output
+    assert "SEARCH_FOLDER=true" in lines, output
+    assert "SEARCH_SELECTED=gltf_godot BUTTON=Download" in lines, output
     assert "SCRIPT ERROR" not in stderr, output
 
 

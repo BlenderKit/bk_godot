@@ -3,8 +3,9 @@ extends ConfirmationDialog
 ## Asset details with a preview, description, key parameters and tags, and a
 ## file chooser next to the OK button. OK downloads, or opens the asset web
 ## page (or the plans for a Free plan account) when the user can't download
-## it. For an asset already in the project, OK shows its file instead. It isn't
-## modal: clicking the editor outside closes it.
+## it. The chooser marks the files already in the project, and for those OK
+## shows the file instead. It isn't modal: clicking the editor outside closes
+## it.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
@@ -13,6 +14,7 @@ signal tag_selected(tag: String)
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const Auth = preload("res://addons/blendkit/auth.gd")
 const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
+const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const PREVIEW_TYPES := ["full", "photo_full", "wire_full"]
 const PREVIEW_LABELS := {"full": "Render", "photo_full": "Photo", "wire_full": "Wireframe"}
 const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
@@ -30,8 +32,10 @@ const LICENSE_LABELS := {"royalty_free": "Royalty Free", "cc_zero": "CC0"}
 ## Set by the gallery, used to read download state and the download settings.
 var gallery: Node
 var asset: Dictionary = {}
-## The asset's file when it's shown from the project assets, else "".
-var local_path := ""
+## The asset's folder in the download directory.
+var folder := ""
+## The files downloaded to the folder: fileType -> path.
+var local_files: Dictionary = {}
 var _textures: Dictionary = {}
 var _preview_type := ""
 var _web_button: Button
@@ -46,12 +50,12 @@ func _ready() -> void:
 	preview.custom_minimum_size = Vector2.ONE * 400 * EditorInterface.get_editor_scale()
 	# clicking outside closes it
 	get_cancel_button().hide()
-	# the file chooser sits right after the OK button, showing what it downloads
+	# the file chooser sits right before the OK button, which acts on its file
 	file_option = OptionButton.new()
-	file_option.tooltip_text = "File to download. The default follows the Model Format and Resolution in Blendkit Settings."
+	file_option.tooltip_text = "File to download, or to show when it's marked as downloaded. The default follows the Model Format and Resolution in Blendkit Settings."
 	var ok := get_ok_button()
 	ok.get_parent().add_child(file_option)
-	ok.get_parent().move_child(file_option, ok.get_index() + 1)
+	ok.get_parent().move_child(file_option, ok.get_index())
 	_web_button = add_button("View on blendkit.com", true, "web")
 	_cancel_download_button = add_button("Cancel Download", true, "cancel_download")
 	_cancel_download_button.hide()
@@ -67,9 +71,12 @@ func _ready() -> void:
 	focus_exited.connect(func(): _close_if_outside.call_deferred())
 
 
-func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_local_path: String = "") -> void:
+## Show the asset with the files in [param new_folder], by default the
+## folder it downloads to.
+func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: String = "") -> void:
 	asset = new_asset
-	local_path = new_local_path
+	folder = new_folder if new_folder else GalleryApi.asset_download_dir(gallery.plugin.absolute_download_path, asset)
+	local_files = ProjectAssets.downloaded_files(folder)
 	title = str(asset.get("displayName", asset.get("name", "Asset")))
 	title_label.text = title
 	title_label.tooltip_text = title
@@ -85,7 +92,7 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_local_path: S
 	description.text = str(asset.get("description", "")).strip_edges()
 	_fill_params()
 	_fill_tags()
-	_fill_files()
+	_fill_files(true)
 
 	_textures.clear()
 	_preview_type = ""
@@ -202,15 +209,49 @@ func _fill_tags() -> void:
 		tags_flow.add_child(button)
 
 
-func _fill_files() -> void:
+## List the files to download and the downloaded ones, marked. Keeps the
+## selection unless [param reset], which selects the preferred file.
+func _fill_files(reset: bool) -> void:
+	var selected := "" if reset else selected_file_type()
+	if selected.is_empty():
+		selected = _preferred_file_type()
 	file_option.clear()
-	var preferred := GalleryApi.pick_file_type(asset, gallery.plugin.model_format, gallery.plugin.download_resolution())
-	for file_type in GalleryApi.downloadable_file_types(asset):
-		file_option.add_item(GalleryApi.file_type_label(file_type))
-		file_option.set_item_metadata(file_option.item_count - 1, file_type)
-		if file_type == preferred:
-			file_option.select(file_option.item_count - 1)
+	var downloadable := GalleryApi.downloadable_file_types(asset)
+	var check := get_theme_icon("StatusSuccess", "EditorIcons")
+	for entry in GalleryApi.FILE_TYPES:
+		var file_type: String = entry[0]
+		if local_files.has(file_type):
+			file_option.add_icon_item(check, entry[1])
+		elif file_type in downloadable:
+			file_option.add_item(entry[1])
+		else:
+			continue
+		var index := file_option.item_count - 1
+		file_option.set_item_metadata(index, file_type)
+		if local_files.has(file_type):
+			file_option.set_item_tooltip(index, "Downloaded")
+		if file_type == selected:
+			file_option.select(index)
+	if file_option.selected < 0 and file_option.item_count > 0:
+		file_option.select(0)
 	file_option.disabled = file_option.item_count == 0
+
+
+## The file the settings prefer among the downloaded ones, or among all.
+func _preferred_file_type() -> String:
+	var choice := asset
+	if not local_files.is_empty():
+		choice = {"assetType": asset.get("assetType", ""),
+			"files": local_files.keys().map(func(t): return {"fileType": t})}
+	return GalleryApi.pick_file_type(choice, gallery.plugin.model_format, gallery.plugin.download_resolution())
+
+
+## Show newer asset data, e.g. looked up for an asset from the project, with
+## the same files selected.
+func update_asset(new_asset: Dictionary) -> void:
+	asset = new_asset
+	_fill_files(false)
+	refresh_download()
 
 
 func selected_file_type() -> String:
@@ -223,6 +264,11 @@ func selected_file_type() -> String:
 func refresh_download() -> void:
 	if asset.is_empty():
 		return
+	# A finished download adds its file.
+	var files := ProjectAssets.downloaded_files(folder)
+	if files != local_files:
+		local_files = files
+		_fill_files(false)
 	var ok := get_ok_button()
 	ok.disabled = false
 	_cancel_download_button.hide()
@@ -230,11 +276,19 @@ func refresh_download() -> void:
 	note_label.text = ""
 	note_label.remove_theme_color_override("font_color")
 	_web_button.visible = not GalleryApi.base_id(asset).is_empty()
-	file_option.visible = local_path.is_empty()
 
-	if not local_path.is_empty():
-		ok.text = "Show in FileSystem"
-		note_label.text = "In the project at %s" % ProjectSettings.localize_path(local_path)
+	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
+	var status: String = dl.get("status", "")
+	if status in GalleryApi.ACTIVE_DOWNLOAD:
+		ok.text = "Downloading %d %%" % int(dl.get("progress", 0))
+		ok.disabled = true
+		_cancel_download_button.visible = not str(dl.get("task_id", "")).is_empty()
+		note_label.text = str(dl.get("message", ""))
+		return
+	if local_files.has(selected_file_type()):
+		ok.text = "Show File"
+		note_label.text = "%s\n\nShow the file in the FileSystem dock if Godot imports it, otherwise in the file manager." \
+			% local_files[selected_file_type()].get_file()
 		return
 	if asset.get("canDownload") != true:
 		var auth = gallery.plugin.auth
@@ -262,28 +316,15 @@ func refresh_download() -> void:
 		note_label.text = "No downloadable file for this asset."
 		return
 
-	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
-	var status: String = dl.get("status", "")
+	ok.text = "Download"
 	var same_file: bool = dl.get("file_type", "") == selected_file_type()
-	if status in GalleryApi.ACTIVE_DOWNLOAD:
-		ok.text = "Downloading %d %%" % int(dl.get("progress", 0))
-		ok.disabled = true
-		_cancel_download_button.visible = not str(dl.get("task_id", "")).is_empty()
-		note_label.text = str(dl.get("message", ""))
-	elif status == "finished" and same_file and not str(dl.get("file_path", "")).is_empty():
-		ok.text = "Show in FileSystem"
-		note_label.text = "Downloaded to %s" % ProjectSettings.localize_path(dl.file_path)
-	else:
-		ok.text = "Download"
-		if status == "error":
-			note_label.text = "Download failed: %s" % dl.get("message", "")
-			note_label.add_theme_color_override("font_color", get_theme_color("error_color", "Editor"))
-		elif status == "cancelled":
-			note_label.text = "Download cancelled."
-		elif gallery.is_downloaded(asset):
-			note_label.text = "Already in the project; downloading again reuses the files on disk."
-		elif _gltf_unavailable():
-			note_label.text = "No glTF for this asset, using %s." % GalleryApi.file_type_label(selected_file_type())
+	if status == "error" and same_file:
+		note_label.text = "Download failed: %s" % dl.get("message", "")
+		note_label.add_theme_color_override("font_color", get_theme_color("error_color", "Editor"))
+	elif status == "cancelled" and same_file:
+		note_label.text = "Download cancelled."
+	elif _gltf_unavailable():
+		note_label.text = "No glTF for this asset, using %s." % GalleryApi.file_type_label(selected_file_type())
 
 
 ## glTF is the Model Format but the model has none, so a .blend is picked.
@@ -301,8 +342,9 @@ func _needs_full_plan() -> bool:
 
 
 func _on_ok() -> void:
-	if not local_path.is_empty():
-		FileReveal.reveal(local_path)
+	var file_type := selected_file_type()
+	if local_files.has(file_type):
+		FileReveal.reveal(local_files[file_type])
 		hide()
 		return
 	if asset.get("canDownload") != true:
@@ -311,12 +353,6 @@ func _on_ok() -> void:
 		else:
 			OS.shell_open(GalleryApi.web_url(gallery.plugin.SERVER, asset))
 		return
-	var dl: Dictionary = gallery.get_download(GalleryApi.base_id(asset))
-	if dl.get("status") == "finished" and dl.get("file_type", "") == selected_file_type() and dl.get("file_path"):
-		FileReveal.reveal(dl.file_path)
-		hide()
-		return
-	var file_type := selected_file_type()
 	if not file_type.is_empty():
 		download_requested.emit(asset, file_type)
 

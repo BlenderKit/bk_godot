@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.1 - UNRELEASED
+
+### Changed
+
+- Asset details list the formats already downloaded to the project, marked
+  with a check. **Show File** shows the selected downloaded file, in the
+  FileSystem dock if Godot imports it, otherwise in the file manager. The
+  other formats can still be downloaded.
+- Asset details opened from project assets look the asset up on blendkit.com
+  to offer the formats not downloaded yet. Offline, they show the downloaded
+  ones.
+- The file selector in asset details sits before the button it applies to.
+
+### Fixed
+
+- Project assets support several downloaded formats per asset, e.g. glTF and
+  .blend, instead of showing only the newest file.
+- Project assets no longer pick textures Godot extracts from a .glb, such as
+  .png or .webp, as the asset file.
+
 ## 0.7.0 - 2026-10-12
 
 The plugin moves into a new **Blendkit** main screen tab in the Godot editor,

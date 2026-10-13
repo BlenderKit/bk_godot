@@ -13,6 +13,7 @@ const gallery_item_scene = preload("res://addons/blendkit/ui/gallery/gallery_ite
 
 const WEB_DOWNLOAD_NAME := "Send to Godot"
 const LOOKUP_TASK := "lookup"
+const DETAILS_LOOKUP_TASK := "details_lookup"
 ## Seconds the index waits to be saved after it changes, so the lookups of a
 ## project's unknown folders save it once or a few times rather than each.
 const SAVE_DELAY := 5.0
@@ -183,7 +184,7 @@ func _show_indexed(id: String) -> void:
 
 
 ## Project entries for the downloads in progress, like ProjectAssets.scan()
-## with the download and its staging folder.
+## with the download and its staging folder, without files.
 func _download_entries() -> Array:
 	var result: Array = []
 	var downloads = gallery.downloads
@@ -191,13 +192,13 @@ func _download_entries() -> Array:
 	for base_id in downloads.gallery_downloads:
 		var dl: Dictionary = downloads.gallery_downloads[base_id]
 		if dl.status in GalleryApi.ACTIVE_DOWNLOAD:
-			result.append({"id": base_id, "file_path": "", "time": -1, "asset": dl.asset, "known": true,
+			result.append({"id": base_id, "time": -1, "asset": dl.asset, "known": true,
 				"thumbnail": gallery.small_thumbnail(base_id), "download": dl,
 				"folder": GalleryApi.asset_download_dir(staging, dl.asset)})
 	for task_id in downloads.web_downloads:
 		var web: Dictionary = downloads.web_downloads[task_id]
 		var known: bool = not web.id.is_empty() and project.has(web.id)
-		result.append({"id": task_id, "file_path": "", "time": -1, "asset": _web_download_asset(web),
+		result.append({"id": task_id, "time": -1, "asset": _web_download_asset(web),
 			"known": known, "thumbnail": project.thumbnail(web.id) if known else "", "download": web,
 			"folder": web.folder})
 	return result
@@ -269,7 +270,8 @@ func _open_details(entry: Dictionary) -> void:
 	var thumbs: Dictionary = gallery.thumb_cache.get(GalleryApi.base_id(entry.asset), {}).duplicate()
 	if entry.thumbnail and not thumbs.has("small"):
 		thumbs.small = entry.thumbnail
-	gallery.details.show_asset(entry.asset, thumbs, entry.file_path)
+	gallery.details.show_asset(entry.asset, thumbs, entry.folder)
+	_look_up_details(entry.id, str(entry.asset.get("assetType", "")))
 
 
 # MARK: downloads
@@ -348,6 +350,39 @@ func _finish_lookup(task: Dictionary) -> void:
 		gallery.plugin.log_verbose("Asset %s not found on Blendkit" % id)
 		_lookup_failed[id] = true
 	next_lookup()
+
+
+## Look up the asset shown in the details, whose index entry has neither
+## the files to download nor whether the account can. Offline or not found,
+## the details show only the downloaded files.
+func _look_up_details(id: String, asset_type: String) -> void:
+	if _lookup_failed.has(id) or not gallery.plugin.connection.is_client_connected():
+		return
+	var plugin: EditorPlugin = gallery.plugin
+	var url := GalleryApi.build_lookup_url(plugin.SERVER, id, plugin.get_addon_version())
+	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
+	var post := func() -> Array:
+		return await GalleryApi.search(self, plugin, url, asset_type, tempdir, 1)
+	var response: Array = await gallery.tasks.start(DETAILS_LOOKUP_TASK, post, _finish_details_lookup.bind(id))
+	if not response.is_empty() and response[0].is_empty():
+		plugin.log_debug("Asset lookup failed: %s" % response[1])
+
+
+func _finish_details_lookup(task: Dictionary, id: String) -> void:
+	if task.get("status") != "finished":
+		return
+	var result = task.get("result")
+	var results = result.get("results") if result is Dictionary else null
+	if not results is Array or results.is_empty() or not results[0] is Dictionary \
+			or str(results[0].get("id", "")) != id:
+		return
+	var asset: Dictionary = results[0]
+	project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
+	_queue_save()
+	_show_indexed(id)
+	var details = gallery.details
+	if details.visible and str(details.asset.get("id", "")) == id:
+		details.update_asset(asset)
 
 
 ## A lookup in flight goes back into the queue.

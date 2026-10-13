@@ -18,10 +18,13 @@ const META_SECTION := "index"
 ## are left out.
 const KEPT_FIELDS := ["id", "assetBaseId", "name", "displayName", "assetType", "author",
 	"license", "tags", "isFree", "ratingsAverage", "dictParameters", "description"]
-## Files in an asset folder that are not the asset itself.
-const SIDE_EXTENSIONS := ["import", "uid"]
 
 static var _asset_id_regex := RegEx.create_from_string("_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
+## A file the Client downloaded, named <slug>_<variant>_<file id>.<ext>, see
+## its ServerToLocalFilename(): the variant is gltf_godot, gltf or a
+## resolution like 2K, and the original .blend has none. Files Godot writes
+## next to them, like textures extracted from a .glb, have more after the id.
+static var _download_file_regex := RegEx.create_from_string("_(?:(gltf_godot|gltf|zip_file|[0-9_]+K)_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.[^.]+$")
 
 ## Absolute path of the index directory.
 var dir: String
@@ -147,9 +150,10 @@ static func trim_asset(asset: Dictionary) -> Dictionary:
 
 # MARK: scanning
 
-## Asset folders in the download directory, newest first:
-## [{id, file_path, time, asset, known, thumbnail}]. Folders not in the
-## index get a placeholder asset named after their file.
+## Asset folders with downloaded files in the download directory, newest
+## first: [{id, folder, files, time, asset, known, thumbnail}], files as in
+## downloaded_files(). Folders not in the index get a placeholder asset named
+## after their newest file.
 func scan(abs_download_path: String) -> Array:
 	var entries: Array = []
 	for asset_type in GalleryApi.ASSET_TYPES:
@@ -158,15 +162,18 @@ func scan(abs_download_path: String) -> Array:
 			continue
 		for folder in DirAccess.get_directories_at(type_dir):
 			var id := folder_asset_id(folder)
-			var file := main_file(type_dir.path_join(folder))
-			if id.is_empty() or file.is_empty():
+			var path := type_dir.path_join(folder)
+			var files := downloaded_files(path) if id else {}
+			if files.is_empty():
 				continue
+			var file := newest_file(files.values())
 			var known := has(id)
 			var asset: Dictionary = get_asset(id) if known else \
 				{"id": id, "name": placeholder_name(file), "assetType": asset_type}
 			entries.append({
 				"id": id,
-				"file_path": file,
+				"folder": path,
+				"files": files,
 				"time": FileAccess.get_modified_time(file),
 				"asset": asset,
 				"known": known,
@@ -210,19 +217,54 @@ static func folder_asset_id(folder: String) -> String:
 	return m.get_string(1) if m else ""
 
 
-## The most recently written asset file in the folder, or "".
+## The most recently written file the Client downloaded into the folder,
+## or "".
 static func main_file(folder: String) -> String:
+	return newest_file(downloaded_files(folder).values())
+
+
+static func newest_file(paths: Array) -> String:
 	var newest := ""
 	var newest_time := -1
-	for file in DirAccess.get_files_at(folder):
-		if file.begins_with(".") or file.get_extension() in SIDE_EXTENSIONS:
-			continue
-		var path := folder.path_join(file)
+	for path in paths:
 		var time := FileAccess.get_modified_time(path)
 		if time > newest_time:
 			newest = path
 			newest_time = time
 	return newest
+
+
+## The fileType of a file the Client downloaded, e.g. "resolution_2K" for
+## "chair_2K_<file id>.blend", or "" for other files.
+static func download_file_type(file_path: String) -> String:
+	var m := _download_file_regex.search(file_path.get_file())
+	if not m:
+		return ""
+	var variant := m.get_string(1)
+	if variant.is_empty():
+		return "blend"
+	if variant.ends_with("K"):
+		return "resolution_" + variant
+	return variant
+
+
+## The files the Client downloaded into the folder: fileType -> path, the
+## newest of each type.
+static func downloaded_files(folder: String) -> Dictionary:
+	var files := {}
+	var times := {}
+	if folder.is_empty() or not DirAccess.dir_exists_absolute(folder):
+		return files
+	for file in DirAccess.get_files_at(folder):
+		var file_type := download_file_type(file)
+		if file_type.is_empty():
+			continue
+		var path := folder.path_join(file)
+		var time := FileAccess.get_modified_time(path)
+		if time >= times.get(file_type, -1):
+			files[file_type] = path
+			times[file_type] = time
+	return files
 
 
 ## Readable name from a downloaded file named <slug>_<server name> by the
@@ -232,7 +274,7 @@ static func placeholder_name(file_path: String) -> String:
 
 
 ## Whether every word of the query appears in the asset's name, author,
-## tags, type or file name.
+## tags, type or file names.
 static func matches(entry: Dictionary, query: String) -> bool:
 	var asset: Dictionary = entry.asset
 	var tags = asset.get("tags", [])
@@ -240,7 +282,7 @@ static func matches(entry: Dictionary, query: String) -> bool:
 		asset.get("displayName", ""), asset.get("name", ""), GalleryApi.author_name(asset),
 		" ".join(PackedStringArray(tags if tags is Array else [])),
 		GalleryApi.ASSET_TYPE_LABELS.get(asset.get("assetType", ""), ""),
-		entry.file_path.get_file(),
+		" ".join(PackedStringArray(entry.get("files", {}).values().map(func(p): return p.get_file()))),
 	])).to_lower()
 	for word in query.to_lower().split(" ", false):
 		if not haystack.contains(word):

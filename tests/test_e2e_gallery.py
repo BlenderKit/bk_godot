@@ -130,7 +130,7 @@ def test_gallery_search_and_download(godot_executable, tmp_path):
     assert path.is_file() and path.suffix == ".glb", output
     assert path.parent.parent == project / "bk_assets" / "models", output
     assert value("STAGED_LEFT") == "false", output
-    assert value("BUTTON") == "Show in FileSystem", output
+    assert value("BUTTON") == "Show File", output
     assert value("IMPORTED") == "true", output
     assert value("TILE_DOWNLOADED") == "true", output
     assert value("PROJECT_TILE") == "[[true, true]]", output
