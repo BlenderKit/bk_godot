@@ -86,6 +86,7 @@ func _ready() -> void:
 	tasks.unclaimed.connect(_on_unclaimed_task)
 	downloads = Downloads.new(self, plugin, tasks)
 	downloads.download_changed.connect(_on_download_changed)
+	downloads.asset_refreshed.connect(_on_asset_refreshed)
 	search.setup(self)
 	project_view.setup(self)
 
@@ -388,6 +389,11 @@ func _on_download_changed(id: String) -> void:
 		details.refresh_download()
 	_update_download_badge()
 	_update_poll_rate()
+
+
+func _on_asset_refreshed(asset: Dictionary) -> void:
+	if details.visible and GalleryApi.base_id(details.asset) == GalleryApi.base_id(asset):
+		details.update_asset(asset)
 
 
 func _update_download_badge() -> void:

@@ -531,6 +531,87 @@ def test_gallery_early_task_race(godot_executable, tmp_path):
     assert "SCRIPT ERROR" not in stderr, output
 
 
+STALE_FILE_PROBE = r"""
+const ID := "676596bd-d7fd-47db-a9b5-a4b0e35738e7"
+const NOT_FOUND := 'server returned non-OK status (404): {"detail":"No AssetFile matches the given query.","statusCode":404}'
+
+func asset(id: String, url: String) -> Dictionary:
+    return {"id": id, "assetBaseId": "base", "name": "Tangerines", "assetType": "model", "canDownload": true,
+        "files": [{"fileType": "gltf_godot", "downloadUrl": url}]}
+
+func lookup(task_id: String, found: Dictionary) -> void:
+    find_gallery().handle_task({"task_type": "search", "task_id": task_id, "status": "finished",
+        "result": {"results": [found]}})
+
+func fail(task_id: String) -> void:
+    find_gallery().handle_task({"task_type": "asset_download", "task_id": task_id, "status": "error", "message": NOT_FOUND})
+
+func state(gallery) -> String:
+    var dl: Dictionary = gallery.downloads.get_download("base")
+    return "%s|%s" % [dl.status, dl.message]
+
+func check():
+    var gallery = find_gallery()
+    var downloads = gallery.downloads
+    var posts := []
+    downloads.post_download = func(a: Dictionary, file_type: String) -> Array:
+        posts.append(["download", a.files[0].downloadUrl, file_type])
+        return ["task-%d" % posts.size(), ""]
+    downloads.post_lookup = func(a: Dictionary) -> Array:
+        posts.append(["lookup", a.id])
+        return ["task-%d" % posts.size(), ""]
+    var stale := asset(ID, "old")
+    gallery.search.results = [stale]
+    gallery.details.show_asset(stale, {})
+    await downloads.start(stale, "gltf_godot")
+    print("STARTED=%s" % state(gallery))
+    # The file is gone: look the asset up once and download its new file.
+    fail("task-1")
+    print("REFRESHING=%s ACTIVE=%d" % [state(gallery), downloads.active_count()])
+    lookup("task-2", asset(ID, "new"))
+    print("POSTS=%s" % [posts])
+    print("RETRIED=%s" % state(gallery))
+    print("RESULTS=%s" % gallery.search.results[0].files[0].downloadUrl)
+    print("DETAILS=%s" % gallery.details.asset.files[0].downloadUrl)
+    # Gone again, it gives up.
+    fail("task-3")
+    print("GAVE_UP=%s POSTS=%d" % [state(gallery), posts.size()])
+    # A lookup that finds another asset doesn't retry.
+    posts.clear()
+    await downloads.start(stale, "gltf_godot")
+    fail("task-1")
+    lookup("task-2", asset("other", "new"))
+    print("OTHER=%s POSTS=%s" % [state(gallery), posts])
+    gallery.details.hide()
+"""
+
+
+def test_gallery_stale_file_retry(godot_executable, tmp_path):
+    """A download whose file was regenerated on the server looks the asset
+    up and retries once with its new files."""
+    project = make_probe_project(tmp_path / "project", STALE_FILE_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    stale = "The asset's files changed on Blendkit. Search again to download it."
+    assert "STARTED=created|Starting download" in lines, output
+    assert "REFRESHING=refreshing|Refreshing asset data ACTIVE=1" in lines, output
+    assert (
+        'POSTS=[["download", "old", "gltf_godot"], '
+        '["lookup", "676596bd-d7fd-47db-a9b5-a4b0e35738e7"], '
+        '["download", "new", "gltf_godot"]]'
+    ) in lines, output
+    assert "RETRIED=created|Starting download" in lines, output
+    assert "RESULTS=new" in lines, output
+    assert "DETAILS=new" in lines, output
+    assert f"GAVE_UP=error|{stale} POSTS=3" in lines, output
+    assert (
+        f'OTHER=error|{stale} POSTS=[["download", "old", "gltf_godot"], '
+        '["lookup", "676596bd-d7fd-47db-a9b5-a4b0e35738e7"]]'
+    ) in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
 POLYGONS_PROBE = r"""
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 

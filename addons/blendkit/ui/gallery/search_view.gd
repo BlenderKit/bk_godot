@@ -107,6 +107,7 @@ func setup(new_gallery: Node) -> void:
 	gallery.downloads.download_changed.connect(_on_download_changed)
 	gallery.downloads.download_finished.connect(_on_download_finished)
 	gallery.downloads.web_download_finished.connect(_on_web_download_finished)
+	gallery.downloads.asset_refreshed.connect(_on_asset_refreshed)
 	plugin.download_dir_changed.connect(_on_download_dir_changed)
 
 
@@ -512,6 +513,16 @@ func _on_download_changed(id: String) -> void:
 func _on_download_finished(base_id: String) -> void:
 	if items.has(base_id):
 		items[base_id].set_downloaded(true)
+
+
+## Later downloads from the results use the asset's new files.
+func _on_asset_refreshed(asset: Dictionary) -> void:
+	var base_id := GalleryApi.base_id(asset)
+	for i in results.size():
+		if results[i] is Dictionary and GalleryApi.base_id(results[i]) == base_id:
+			results[i] = asset
+	if items.has(base_id):
+		items[base_id].setup(asset)
 
 
 func _on_download_dir_changed() -> void:

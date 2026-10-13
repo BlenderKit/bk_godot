@@ -54,6 +54,7 @@ func setup(new_gallery: Node) -> void:
 	gallery.downloads.download_finished.connect(_on_download_finished)
 	gallery.downloads.web_download_finished.connect(func(_path): refresh_if_shown())
 	gallery.downloads.web_asset_found.connect(_on_web_asset_found)
+	gallery.downloads.asset_refreshed.connect(_on_asset_refreshed)
 	gallery.plugin.download_dir_changed.connect(refresh_if_shown)
 
 
@@ -292,6 +293,17 @@ func _on_download_finished(base_id: String) -> void:
 	refresh_if_shown()
 
 
+## Assets in the project keep their index entry up to date; others are
+## stored once their download finishes.
+func _on_asset_refreshed(asset: Dictionary) -> void:
+	var id := str(asset.get("id", ""))
+	if not project.has(id):
+		return
+	project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
+	_queue_save()
+	_show_indexed(id)
+
+
 ## Look up the guessed asset for its name and thumbnail.
 func _on_web_asset_found(task_id: String) -> void:
 	var web: Dictionary = gallery.downloads.web_downloads[task_id]
@@ -338,11 +350,8 @@ func _finish_lookup(task: Dictionary) -> void:
 		return
 	var id := _lookup_id
 	_lookup_id = ""
-	var result = task.get("result")
-	var results = result.get("results") if result is Dictionary else null
-	if task.get("status") == "finished" and results is Array and not results.is_empty() \
-			and results[0] is Dictionary and str(results[0].get("id", "")) == id:
-		var asset: Dictionary = results[0]
+	var asset := GalleryApi.lookup_result(task, id)
+	if not asset.is_empty():
 		project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
 		_queue_save()
 		_show_indexed(id)
@@ -369,14 +378,9 @@ func _look_up_details(id: String, asset_type: String) -> void:
 
 
 func _finish_details_lookup(task: Dictionary, id: String) -> void:
-	if task.get("status") != "finished":
+	var asset := GalleryApi.lookup_result(task, id)
+	if asset.is_empty():
 		return
-	var result = task.get("result")
-	var results = result.get("results") if result is Dictionary else null
-	if not results is Array or results.is_empty() or not results[0] is Dictionary \
-			or str(results[0].get("id", "")) != id:
-		return
-	var asset: Dictionary = results[0]
 	project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
 	_queue_save()
 	_show_indexed(id)

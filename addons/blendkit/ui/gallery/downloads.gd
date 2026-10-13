@@ -13,7 +13,10 @@ signal download_finished(base_id: String)
 signal web_download_finished(file_path: String)
 ## The asset folder of a Send to Godot download was guessed.
 signal web_asset_found(task_id: String)
+## A gallery download looked up its asset again, see _refresh().
+signal asset_refreshed(asset: Dictionary)
 
+const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
@@ -22,9 +25,13 @@ const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.g
 ## changed, and how long after to keep looking for it, in seconds.
 const WEB_FOLDER_SLACK := 5
 const WEB_FOLDER_SEARCH := 30
+## The server's error for a file that no longer exists: the asset's files
+## were regenerated since the search that listed them.
+const STALE_FILE_ERROR := "No AssetFile matches"
+const STALE_FILE_MESSAGE := "The asset's files changed on Blendkit. Search again to download it."
 
 ## assetBaseId -> {task_id, status, progress, message, file_type, file_path,
-## asset, reported}
+## asset, reported, retried}
 var gallery_downloads: Dictionary = {}
 ## Send to Godot downloads from blendkit.com, task_id -> {task_id, status,
 ## progress, message, since, folder, id, asset_type}. Their tasks don't say
@@ -38,12 +45,18 @@ var _plugin: EditorPlugin
 var _tasks: ClientTasks
 ## Whether leftover staging folders were cleared since connecting.
 var _staging_cleared := false
+## The Client requests, replaced in the tests: post_download(asset,
+## file_type) and post_lookup(asset) return [task_id, error].
+var post_download: Callable
+var post_lookup: Callable
 
 
 func _init(parent: Node, plugin: EditorPlugin, tasks: ClientTasks) -> void:
 	_parent = parent
 	_plugin = plugin
 	_tasks = tasks
+	post_download = _post_download
+	post_lookup = _post_lookup
 
 
 func get_download(base_id: String) -> Dictionary:
@@ -83,17 +96,21 @@ func start(asset: Dictionary, file_type: String) -> void:
 	var base_id := GalleryApi.base_id(asset)
 	if get_download(base_id).get("status", "") in GalleryApi.ACTIVE_DOWNLOAD:
 		return
-	var dl := {"task_id": "", "status": "posting", "progress": 0, "message": "Starting download",
-		"file_type": file_type, "file_path": "", "asset": asset}
-	gallery_downloads[base_id] = dl
-	if not _plugin.connection.is_client_connected():
-		_end(base_id, "error", "Blendkit Client is not connected")
-		return
+	gallery_downloads[base_id] = {"task_id": "", "status": "", "progress": 0, "message": "",
+		"file_type": file_type, "file_path": "", "asset": asset, "retried": false}
+	_post(base_id)
+
+
+## Start the Client's task for the download, also again after _refresh().
+func _post(base_id: String) -> void:
+	var dl: Dictionary = gallery_downloads[base_id]
+	dl.task_id = ""
+	dl.status = "posting"
+	dl.progress = 0
+	dl.message = "Starting download"
+	dl.reported = false
 	download_changed.emit(base_id)
-	GalleryApi.ensure_staging(_plugin.absolute_download_path)
-	var staging := GalleryApi.staging_path(_plugin.absolute_download_path)
-	var post := func() -> Array:
-		return await GalleryApi.download(_parent, _plugin, asset, file_type, staging)
+	var post := post_download.bind(dl.asset, dl.file_type)
 	var response: Array = await _tasks.start("download:" + base_id, post, _apply_task.bind(base_id))
 	if response.is_empty():
 		return # reset by a disconnect meanwhile
@@ -128,9 +145,48 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 			download_finished.emit(base_id)
 			_scan_download(dl.file_path)
 		"error", "cancelled":
+			var message := str(task.get("message", "")) if status == "error" else ""
+			if message.contains(STALE_FILE_ERROR):
+				if not dl.retried:
+					_refresh(base_id)
+					return
+				message = STALE_FILE_MESSAGE
 			dl.status = status
-			dl.message = str(task.get("message", "")) if status == "error" else ""
+			dl.message = message
 	download_changed.emit(base_id)
+
+
+## The asset's files changed on Blendkit since the search, so look the asset
+## up for the new ones and download again, once. The download stays active
+## meanwhile, without a task to cancel or to vanish from the reports.
+func _refresh(base_id: String) -> void:
+	var dl: Dictionary = gallery_downloads[base_id]
+	dl.retried = true
+	dl.task_id = ""
+	dl.status = "refreshing"
+	dl.reported = false
+	dl.message = "Refreshing asset data"
+	download_changed.emit(base_id)
+	var post := post_lookup.bind(dl.asset)
+	var response: Array = await _tasks.start("download:" + base_id, post, _finish_refresh.bind(base_id))
+	if response.is_empty():
+		return # reset by a disconnect meanwhile
+	if response[0].is_empty():
+		_plugin.log_debug("Asset lookup failed: %s" % response[1])
+		_end(base_id, "error", STALE_FILE_MESSAGE)
+
+
+func _finish_refresh(task: Dictionary, base_id: String) -> void:
+	var dl: Dictionary = gallery_downloads[base_id]
+	if not task.get("status") in ClientTasks.FINAL or dl.status != "refreshing":
+		return
+	var asset := GalleryApi.lookup_result(task, str(dl.asset.get("id", "")))
+	if not dl.file_type in GalleryApi.file_types(asset):
+		_end(base_id, "error", STALE_FILE_MESSAGE)
+		return
+	dl.asset = asset
+	asset_refreshed.emit(asset)
+	_post(base_id)
 
 
 ## The Client cancels asynchronously and answers once it got the request,
@@ -158,6 +214,22 @@ func _end(base_id: String, status: String, message: String = "") -> void:
 	dl.message = message
 	_tasks.forget("download:" + base_id)
 	download_changed.emit(base_id)
+
+
+func _post_download(asset: Dictionary, file_type: String) -> Array:
+	if not _plugin.connection.is_client_connected():
+		return ["", "Blendkit Client is not connected"]
+	GalleryApi.ensure_staging(_plugin.absolute_download_path)
+	var staging := GalleryApi.staging_path(_plugin.absolute_download_path)
+	return await GalleryApi.download(_parent, _plugin, asset, file_type, staging)
+
+
+## Search for the asset by its id, like the project view's lookups.
+func _post_lookup(asset: Dictionary) -> Array:
+	var asset_type := str(asset.get("assetType", ""))
+	var url := GalleryApi.build_lookup_url(_plugin.SERVER, str(asset.get("id", "")), _plugin.get_addon_version())
+	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
+	return await GalleryApi.search(_parent, _plugin, url, asset_type, tempdir, 1)
 
 
 ## Let the editor import a finished download in the project. Looking for

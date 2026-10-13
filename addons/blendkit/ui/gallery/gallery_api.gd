@@ -11,8 +11,8 @@ const STAGING_DIR := ".downloads"
 ## Leftover staging folders this old are no longer written to.
 const STAGING_STALE_SECONDS := 60
 ## Download statuses while it runs. A gallery download ends as finished,
-## error or cancelled.
-const ACTIVE_DOWNLOAD := ["posting", "created", "progress"]
+## error or cancelled, and is refreshing while it looks up its asset again.
+const ACTIVE_DOWNLOAD := ["posting", "refreshing", "created", "progress"]
 
 ## Asset types the gallery offers, in OptionButton order. These match what
 ## Send to Godot can deliver.
@@ -195,6 +195,17 @@ static func polygon_position(n: int) -> float:
 static func build_lookup_url(server: String, asset_id: String, addon_version: String) -> String:
 	return "%s/api/v1/search/?query=asset_id:%s&dict_parameters=1&page_size=1&addon_version=%s" % [
 		server, asset_id.uri_encode(), addon_version.uri_encode()]
+
+
+## The asset a finished lookup task found, or {} if it found no asset with
+## [param asset_id].
+static func lookup_result(task: Dictionary, asset_id: String) -> Dictionary:
+	var result = task.get("result")
+	var results = result.get("results") if result is Dictionary else null
+	if task.get("status") != "finished" or not results is Array or results.is_empty() \
+			or not results[0] is Dictionary or str(results[0].get("id", "")) != asset_id:
+		return {}
+	return results[0]
 
 
 ## Pages reachable by the server, which serves only the first 10000 results.

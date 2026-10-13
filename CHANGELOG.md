@@ -19,6 +19,9 @@
   .blend, instead of showing only the newest file.
 - Project assets no longer pick textures Godot extracts from a .glb, such as
   .png or .webp, as the asset file.
+- Downloading an asset whose files changed on Blendkit since the search no
+  longer fails with a 404. The gallery looks the asset up again and retries
+  once with its new files.
 
 ## 0.7.0 - 2026-10-12
 
