@@ -74,7 +74,6 @@ icon_alignment = 2
 
 [node name="Sort" type="HBoxContainer" parent="Main/FilterRow"]
 layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="Label" type="Label" parent="Main/FilterRow/Sort"]
 layout_mode = 2
@@ -83,11 +82,9 @@ text = "Sort:"
 [node name="SortOption" type="OptionButton" parent="Main/FilterRow/Sort"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="Type" type="HBoxContainer" parent="Main/FilterRow"]
 layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="Label" type="Label" parent="Main/FilterRow/Type"]
 layout_mode = 2
@@ -96,11 +93,9 @@ text = "Type:"
 [node name="TypeOption" type="OptionButton" parent="Main/FilterRow/Type"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="Category" type="HBoxContainer" parent="Main/FilterRow"]
 layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="Label" type="Label" parent="Main/FilterRow/Category"]
 layout_mode = 2
@@ -109,7 +104,6 @@ text = "Category:"
 [node name="CategoryOption" type="OptionButton" parent="Main/FilterRow/Category"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
 clip_text = true
 fit_to_longest_item = false
 
