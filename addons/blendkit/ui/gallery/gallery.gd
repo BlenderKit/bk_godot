@@ -244,12 +244,18 @@ func content_width() -> float:
 	return scroll.size.x - border.get_theme_stylebox("panel").get_minimum_size().x
 
 
+## As many cards as fit next to each other, widened to fill the row. A
+## shorter last row keeps the same card width.
 func update_columns() -> void:
-	var item_width := GalleryItemScript.THUMB_SIZE * EditorInterface.get_editor_scale()
+	var min_width := GalleryItemScript.MIN_WIDTH * EditorInterface.get_editor_scale()
 	var separation := search.grid.get_theme_constant("h_separation")
 	var available := content_width() - scroll.get_v_scroll_bar().size.x
-	search.grid.columns = maxi(1, int((available + separation) / (item_width + separation)))
-	project_view.grid.columns = search.grid.columns
+	var columns := maxi(1, int((available + separation) / (min_width + separation)))
+	var width := maxf(min_width, floorf((available + separation) / columns - separation))
+	for grid in [search.grid, project_view.grid]:
+		grid.columns = columns
+		for item in grid.get_children():
+			item.set_width(width)
 	if search.has_pages():
 		search.update_pages()
 

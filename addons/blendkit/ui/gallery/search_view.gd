@@ -264,12 +264,11 @@ func _show_results() -> void:
 		item.set_download(gallery.downloads.get_download(base_id))
 		items[base_id] = item
 		var thumbs: Dictionary = gallery.thumb_cache.get(base_id, {})
-		if thumbs.has("small"):
-			item.set_thumbnail(GalleryApi.cached_texture(thumbs.small))
-		else:
-			_thumbs_missing += 1
-		if not thumbs.has("full"):
-			_thumbs_missing += 1
+		for type in ["small", "full"]:
+			if thumbs.has(type):
+				item.set_thumbnail(GalleryApi.cached_texture(thumbs[type]), type)
+			else:
+				_thumbs_missing += 1
 	_thumbs_deadline = Time.get_ticks_msec() + THUMBS_WAIT_MS
 	get_tree().create_timer(THUMBS_WAIT_MS / 1000.0).timeout.connect(_on_thumbs_timeout.bind(_thumbs_deadline))
 	gallery.update_columns()
@@ -288,13 +287,13 @@ func _show_results() -> void:
 func on_thumbnail(base_id: String, type: String, path: String) -> void:
 	if not items.has(base_id):
 		return
-	if type in ["small", "full"] and _thumbs_missing > 0:
-		_thumbs_missing -= 1
-	if type != "small":
+	if not type in ["small", "full"]:
 		return
+	if _thumbs_missing > 0:
+		_thumbs_missing -= 1
 	if path:
-		items[base_id].set_thumbnail(GalleryApi.cached_texture(path))
-	else:
+		items[base_id].set_thumbnail(GalleryApi.cached_texture(path), type)
+	elif type == "small":
 		items[base_id].set_thumbnail_failed()
 
 

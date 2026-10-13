@@ -340,7 +340,7 @@ func check_downloads(gallery):
     var entries: Array = gallery.project_view.entries
     print("PROJECT_TILES=%s" % [entries.map(func(e): return [e.id, e.asset.name])])
     var item = gallery.project_view.download_items["web-1"]
-    print("TILE_TOOLTIP=%s" % item.thumb_button.tooltip_text.replace("\n", "|"))
+    print("TILE_TOOLTIP=%s" % item.tooltip_text.replace("\n", "|"))
     # Unfinished tasks are reported every poll; a missing one is gone.
     gallery.drop_vanished_downloads({"web-1": true})
     print("KEPT=%d STAGED=%s" % [gallery.downloads.active_count(), FileAccess.file_exists(file)])

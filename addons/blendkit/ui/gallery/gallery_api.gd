@@ -69,12 +69,14 @@ const FILE_TYPES := [
 	["zip_file", "Archive (.zip)"],
 ]
 
-## Small thumbnails kept decoded, about 5 pages of search results.
-const TEXTURE_CACHE_SIZE := 150
+## Decoded thumbnails kept, in bytes: about 2 pages of search results with
+## both thumbnail sizes, or 250 small ones.
+const TEXTURE_CACHE_BYTES := 64 << 20
 
 static var _slug_regex := RegEx.create_from_string("[^a-z0-9]+")
 ## Path -> {texture, time}, least recently used first, see cached_texture().
 static var _texture_cache: Dictionary = {}
+static var _texture_cache_bytes := 0
 
 
 ## Index of [param value] in [code][value, label][/code] [param options],
@@ -569,16 +571,28 @@ static func cached_texture(path: String) -> Texture2D:
 		return null
 	var time := FileAccess.get_modified_time(path)
 	var hit = _texture_cache.get(path)
-	_texture_cache.erase(path)
 	if hit and hit.time == time:
+		_texture_cache.erase(path)
 		_texture_cache[path] = hit # most recently used last
 		return hit.texture
+	if hit:
+		_uncache_texture(path)
 	var texture := load_texture(path)
 	if texture:
 		_texture_cache[path] = {"texture": texture, "time": time}
-		if _texture_cache.size() > TEXTURE_CACHE_SIZE:
-			_texture_cache.erase(_texture_cache.keys()[0])
+		_texture_cache_bytes += _texture_bytes(texture)
+		while _texture_cache_bytes > TEXTURE_CACHE_BYTES and _texture_cache.size() > 1:
+			_uncache_texture(_texture_cache.keys()[0])
 	return texture
+
+
+static func _uncache_texture(path: String) -> void:
+	_texture_cache_bytes -= _texture_bytes(_texture_cache[path].texture)
+	_texture_cache.erase(path)
+
+
+static func _texture_bytes(texture: Texture2D) -> int:
+	return texture.get_width() * texture.get_height() * 4
 
 
 ## Image.load() picks the decoder by extension, but the client's cached files
