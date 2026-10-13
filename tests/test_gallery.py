@@ -140,6 +140,7 @@ const ID_D := "d0000000-0000-4000-8000-00000000000d"
 const ID_E := "e0000000-0000-4000-8000-00000000000e"
 const ID_F := "f0000000-0000-4000-8000-00000000000f"
 const ID_G := "a1000000-0000-4000-8000-0000000000a1"
+const ID_H := "b1000000-0000-4000-8000-0000000000b1"
 
 var failures := 0
 
@@ -301,6 +302,39 @@ func _initialize():
     moved = ProjectAssets.finish_download(staged_full, "strip")
     check(moved == dir_a.path_join("travel-wooden-chess-set_gltf_godot_0e8f0b52-6a51-4c3e-9d2e-6f1d4a7c8b90.glb"), moved)
     check(FileAccess.get_file_as_string(moved) == "newer file", "older file replaced")
+    # A converted material replaces the .blend of its resolution, its
+    # textures move along, and it gets a uid.
+    var rock := downloads.path_join("materials/rock-road")
+    write(rock.path_join("rock-road_2K.blend"), "blend")
+    write(rock.path_join("rock-road_2K.blend.import"), "import")
+    write(rock.path_join("rock-road_4K.blend"), "4K blend")
+    write(rock.path_join("textures_2K/kept.jpg"), "kept")
+    write(rock.path_join("textures_2K/albedo.jpg"), "old albedo")
+    var rock_manifest := ConfigFile.new()
+    rock_manifest.set_value("asset", "id", ID_H)
+    rock_manifest.set_value("asset", "files", {"rock-road_2K.blend": "resolution_2K", "rock-road_4K.blend": "resolution_4K"})
+    rock_manifest.save(rock.path_join(ProjectAssets.MANIFEST_FILE))
+    var staged_rock := staging.path_join("materials/rock-road_" + ID_H)
+    var tres := '[gd_resource type="StandardMaterial3D" format=3]\n\n[resource]\n'
+    write(staged_rock.path_join("rock-road_2K_%s.tres" % file_id), tres)
+    write(staged_rock.path_join("textures_2K/albedo.jpg"), "new albedo")
+    moved = ProjectAssets.finish_download(staged_rock.path_join("rock-road_2K_%s.tres" % file_id), "strip")
+    check(moved == rock.path_join("rock-road_2K.tres"), moved)
+    check(not FileAccess.file_exists(rock.path_join("rock-road_2K.blend")), "older .blend deleted")
+    check(not FileAccess.file_exists(rock.path_join("rock-road_2K.blend.import")), "its .import deleted")
+    check(FileAccess.file_exists(rock.path_join("rock-road_4K.blend")), "other resolution kept")
+    check(FileAccess.get_file_as_string(rock.path_join("textures_2K/albedo.jpg")) == "new albedo", "texture replaced")
+    check(FileAccess.file_exists(rock.path_join("textures_2K/kept.jpg")), "other texture kept")
+    check(not DirAccess.dir_exists_absolute(staged_rock), "staged folder with textures removed")
+    check(ProjectAssets.downloaded_files(rock) == {"resolution_2K": moved, "resolution_4K": rock.path_join("rock-road_4K.blend")}, str(ProjectAssets.downloaded_files(rock)))
+    var header := FileAccess.get_file_as_string(moved).get_slice("\n", 0)
+    check(header.begins_with('[gd_resource type="StandardMaterial3D" format=3 uid="uid://') and header.ends_with('"]'), header)
+    check(FileAccess.get_file_as_string(moved).ends_with("\n\n[resource]\n"), "rest kept")
+    # A newer one keeps that uid, so references to it keep working.
+    write(staged_rock.path_join("rock-road_2K_%s.tres" % file_id), tres.replace("[resource]", "[resource]\nroughness = 0.5"))
+    check(ProjectAssets.finish_download(staged_rock.path_join("rock-road_2K_%s.tres" % file_id), "strip") == moved, "replaced in place")
+    check(FileAccess.get_file_as_string(moved).get_slice("\n", 0) == header, "uid kept")
+    check(FileAccess.get_file_as_string(moved).contains("roughness = 0.5"), "newer material")
 
     # Leftovers are cleared unless kept or still written to.
     var stale := OS.get_environment("BK_STALE_DIR")
@@ -347,6 +381,8 @@ def test_project_assets(godot_executable, tmp_path):
     stale = tmp_path / "data" / "bk_assets" / ".downloads" / "models" / "old_x"
     stale.mkdir(parents=True)
     (stale / "old.glb").write_text("partial")
+    (stale / "textures_2K").mkdir()
+    (stale / "textures_2K" / "albedo.jpg").write_text("partial")
     hour_ago = time.time() - 3600
     for path in (stale / "old.glb", stale):
         os.utime(path, (hour_ago, hour_ago))

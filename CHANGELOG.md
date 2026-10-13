@@ -16,6 +16,14 @@
   which Godot can't read, as lossless ZIP-compressed EXRs before they move
   into the project. It uses the Blender set up for Blender Import, or one
   found on this computer. Without Blender, the original file is kept.
+- Materials download as Godot materials: Blender turns the material `.blend`,
+  which Godot imports as an empty scene, into a `StandardMaterial3D` `.tres`
+  with its textures in `textures_<resolution>/` next to it, and the `.blend`
+  is deleted. With the texture's real size known, the material maps it
+  triplanar at that size, so it fits any mesh, e.g. a CSG box. Turning
+  triplanar off uses the mesh's UVs, and the height map is there to turn on,
+  as Godot has none with triplanar mapping. Procedural materials
+  become a flat color. Without Blender, the `.blend` is kept.
 
 ### Changed
 

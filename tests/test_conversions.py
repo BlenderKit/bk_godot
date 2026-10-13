@@ -1,7 +1,14 @@
 """Tests for making downloads importable with Blender before they move into
 the project."""
 
-from .conftest import make_probe_project, run_editor_probe, run_godot_script
+import json
+import os
+import shutil
+import subprocess
+
+import pytest
+
+from .conftest import ADDON_DIR, make_probe_project, run_editor_probe, run_godot_script
 
 
 # Writes an OpenEXR header with the given compression and channels, and a few
@@ -81,6 +88,20 @@ func _initialize():
     var hdr := dir.path_join("sky.hdr")
     FileAccess.open(hdr, FileAccess.WRITE).store_string("#?RADIANCE\n")
     check(Conversions.plan(hdr).is_empty(), "Radiance HDR")
+
+    # Material .blend files become Godot materials with their textures.
+    var materials := dir.path_join("materials/rock-road_0000")
+    var blend := materials.path_join("rock-road_2K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend")
+    plan = Conversions.plan(blend)
+    var material := materials.path_join("rock-road_2K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.tres")
+    check(plan == {"script": Conversions.MATERIAL_SCRIPT, "params": {"input_path": blend, "output_path": material,
+        "textures_dir": materials.path_join("textures_2K")}, "file": material,
+        "dirs": [materials.path_join("textures_2K")]}, str(plan))
+    check(Conversions.plan(dir.path_join("models/chair_0000/chair_2K.blend")).is_empty(), "model .blend")
+    check(Conversions.plan("C:\\bk\\materials\\rock_0000\\rock_2K.blend").get("file") == "C:\\bk\\materials\\rock_0000\\rock_2K.tres", "Windows path")
+    check(Conversions.textures_dir_name("rock_0_5K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend") == "textures_0_5K", "0.5K")
+    check(Conversions.textures_dir_name("rock_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend") == "textures", "original")
+    check(Conversions.textures_dir_name("rock.blend") == "textures", "other name")
 
     # The converted file takes the original's place.
     var target := dir.path_join("target.exr")
@@ -240,3 +261,186 @@ def test_download_conversion(godot_executable, tmp_path):
     assert "Could not convert sky_2K.exr for Godot, which may not import it: Blender not found" in stderr, output
     assert "Could not convert sky_2K.exr for Godot, which may not import it: Blendkit Client disconnected" in stderr, output
     assert "SCRIPT ERROR" not in stderr, output
+
+
+MATERIAL_PROBE = r"""
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+
+var mode := "convert"
+
+func asset(n: int) -> Dictionary:
+    return {"id": "0000000%d-2390-4999-83d7-c72ea929f352" % n, "assetBaseId": "base-%d" % n,
+        "name": "Rock Road %d" % n, "assetType": "material", "canDownload": true,
+        "files": [{"fileType": "resolution_2K", "downloadUrl": "x"}]}
+
+func write(path: String, text: String) -> void:
+    DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+    FileAccess.open(path, FileAccess.WRITE).store_string(text)
+
+## Download material [param n], its conversion reported as [param report].
+## Prints the files in its folder in the project.
+func download(gallery, n: int, report: String) -> void:
+    var a := asset(n)
+    var staging := GalleryApi.staging_path(gallery.plugin.absolute_download_path)
+    var path := GalleryApi.asset_download_dir(staging, a).path_join("rock-road_2K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend")
+    write(path, "blend")
+    await gallery.downloads.start(a, "resolution_2K")
+    gallery.handle_task({"task_type": "asset_download", "task_id": "task-%d" % n, "status": "finished",
+        "result": {"file_paths": [path]}})
+    gallery.handle_task({"task_type": "run_blender_script", "task_id": "conv-%d" % n,
+        "status": report, "message": "script produced no output"})
+    await wait_until(func(): return gallery.downloads.get_download(a.assetBaseId).status == "finished", 5)
+    var file: String = gallery.downloads.get_download(a.assetBaseId).file_path
+    var folder := file.get_base_dir()
+    print("CASE%d=%s FILES=%s DIRS=%s TEXTURES=%s LEFT=%s" % [n, file.get_file(), ",".join(DirAccess.get_files_at(folder)),
+        ",".join(DirAccess.get_directories_at(folder)), ",".join(DirAccess.get_files_at(folder.path_join("textures_2K"))),
+        DirAccess.dir_exists_absolute(path.get_base_dir())])
+
+func check():
+    var gallery = find_gallery()
+    var downloads = gallery.downloads
+    downloads.post_download = func(a: Dictionary, _file_type: String) -> Array:
+        return ["task-%s" % a.assetBaseId.get_slice("-", 1), ""]
+    downloads.post_conversion = func(plan: Dictionary) -> Array:
+        print("PLAN=%s" % plan.script.get_file())
+        # what's written either way, the material last
+        write(plan.params.textures_dir.path_join("albedo.jpg"), "jpg")
+        if mode == "convert":
+            write(plan.params.output_path, '[gd_resource type="StandardMaterial3D" format=3]\n\n[resource]\n')
+        return ["conv-%s" % plan.params.input_path.get_base_dir().get_file().get_slice("-", 2).left(1), ""]
+    # Converted, the material moves into the project with its textures, and
+    # the .blend is gone.
+    await download(gallery, 1, "finished")
+    # A failed conversion moves the .blend, without textures.
+    mode = "fail"
+    await download(gallery, 2, "error")
+"""
+
+
+def test_material_conversion(godot_executable, tmp_path):
+    """Material .blend downloads become Godot materials with their textures."""
+    project = make_probe_project(tmp_path / "project", MATERIAL_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    assert "PLAN=material_to_godot.py" in lines, output
+    assert "CASE1=rock-road_2K.tres FILES=rock-road_2K.tres DIRS=textures_2K TEXTURES=albedo.jpg LEFT=false" in lines, output
+    assert "CASE2=rock-road_2K.blend FILES=rock-road_2K.blend DIRS= TEXTURES= LEFT=false" in lines, output
+    assert "Could not convert rock-road_2K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend for Godot" in stderr, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
+# Makes a material asset .blend like Blendkit's at sys.argv[-1]: its images
+# packed, the roughness in the green channel, the height map a TIFF Godot
+# can't import.
+BUILD_MATERIAL_BLEND = r'''
+import os
+import sys
+
+import bpy
+
+out = sys.argv[-1]
+images = {}
+for name, ext, fmt in [("albedo", "png", "PNG"), ("orm", "png", "PNG"), ("normal", "png", "PNG"), ("height", "tif", "TIFF")]:
+    image = bpy.data.images.new(name + "." + ext, 4, 4, alpha=True)
+    image.pixels = [0.5] * 64
+    image.filepath_raw = os.path.join(os.path.dirname(out), name + "." + ext)
+    image.file_format = fmt
+    image.save()
+    image.pack()
+    images[name] = image
+
+mat = bpy.data.materials.new("Rock Road")
+mat.use_nodes = True
+mat["blenderkit"] = {"texture_size_meters": 2.0}
+mat.asset_mark()
+nodes, links = mat.node_tree.nodes, mat.node_tree.links
+bsdf = nodes["Principled BSDF"]
+bsdf.inputs["Specular IOR Level" if "Specular IOR Level" in bsdf.inputs else "Specular"].default_value = 0.25
+mapping = nodes.new("ShaderNodeMapping")
+mapping.inputs["Scale"].default_value = (3, 3, 3)
+links.new(nodes.new("ShaderNodeTexCoord").outputs["UV"], mapping.inputs["Vector"])
+
+def texture(name):
+    node = nodes.new("ShaderNodeTexImage")
+    node.image = images[name]
+    links.new(mapping.outputs["Vector"], node.inputs["Vector"])
+    return node
+
+albedo = texture("albedo")
+links.new(albedo.outputs["Color"], bsdf.inputs["Base Color"])
+links.new(albedo.outputs["Alpha"], bsdf.inputs["Alpha"])
+separate = nodes.new("ShaderNodeSeparateColor" if hasattr(bpy.types, "ShaderNodeSeparateColor") else "ShaderNodeSeparateRGB")
+links.new(texture("orm").outputs["Color"], separate.inputs[0])
+links.new(separate.outputs[1], bsdf.inputs["Roughness"])
+normal_map = nodes.new("ShaderNodeNormalMap")
+normal_map.inputs["Strength"].default_value = 0.5
+links.new(texture("normal").outputs["Color"], normal_map.inputs["Color"])
+links.new(normal_map.outputs["Normal"], bsdf.inputs["Normal"])
+displacement = nodes.new("ShaderNodeDisplacement")
+displacement.inputs["Scale"].default_value = 0.1
+links.new(texture("height").outputs["Color"], displacement.inputs["Height"])
+links.new(displacement.outputs["Displacement"], nodes["Material Output"].inputs["Displacement"])
+mat.use_fake_user = True
+bpy.ops.wm.save_as_mainfile(filepath=out)
+'''
+
+
+def find_blender():
+    path = os.environ.get("BLENDER") or shutil.which("blender")
+    if not path:
+        pytest.skip("Blender not found, set BLENDER to run this test")
+    return path
+
+
+def run_blender(blender, script, *args):
+    result = subprocess.run(
+        [blender, "--background", "--factory-startup", "--python-exit-code", "1",
+         "--python", str(script), "--", *map(str, args)],
+        capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result.stdout
+
+
+def test_material_script(tmp_path):
+    """Blender turns a material .blend into a StandardMaterial3D."""
+    blender = find_blender()
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "build.py").write_text(BUILD_MATERIAL_BLEND)
+    data = tmp_path / "data"
+    data.mkdir()
+    blend = data / "rock-road_2K.blend"
+    run_blender(blender, scripts / "build.py", blend)
+    for name in ("albedo.png", "orm.png", "normal.png", "height.tif"):
+        (data / name).unlink()  # packed, so these aren't needed
+    params = scripts / "params.json"
+    params.write_text(json.dumps({"input_path": str(blend), "output_path": str(data / "rock-road_2K.tres"),
+                                  "textures_dir": str(data / "textures_2K")}))
+    run_blender(blender, ADDON_DIR / "blender" / "material_to_godot.py", params)
+
+    tres = (data / "rock-road_2K.tres").read_text()
+    lines = tres.splitlines()
+    assert lines[0] == '[gd_resource type="StandardMaterial3D" format=3]', tres
+    resources = {line.split(' id="')[1][:-2]: line.split('path="')[1].split('"')[0]
+                 for line in lines if line.startswith("[ext_resource")}
+    props = dict(line.split(" = ", 1) for line in lines[lines.index("[resource]") + 1:])
+    texture = {prop: resources[value[len('ExtResource("'):-2]]
+               for prop, value in props.items() if value.startswith("ExtResource")}
+    assert texture == {"albedo_texture": "textures_2K/albedo.png", "roughness_texture": "textures_2K/orm.png",
+                       "normal_texture": "textures_2K/normal.png", "heightmap_texture": "textures_2K/height.png"}, tres
+    assert props["resource_name"] == '"Rock Road"', tres
+    assert props["roughness_texture_channel"] == "1", tres  # green
+    assert props["metallic_specular"] == "0.25", tres
+    assert props["normal_enabled"] == "true" and props["normal_scale"] == "0.5", tres
+    assert props["transparency"] == "2" and props["cull_mode"] == "2", tres  # alpha scissor, both sides
+    # Godot warns of height mapping with triplanar mapping.
+    assert "heightmap_enabled" not in props, tres
+    # tiled 3 times per 2 m, the height in hundredths of the tile
+    assert props["uv1_triplanar"] == "true" and props["uv1_scale"] == "Vector3(1.5, 1.5, 1.5)", tres
+    assert float(props["heightmap_scale"]) == pytest.approx(0.1 * 3 / 2 * 100), tres
+    assert "metallic_texture" not in props and "emission_enabled" not in props, tres
+    # Packed images are copied as they are, the TIFF re-saved as PNG.
+    textures = data / "textures_2K"
+    assert sorted(p.name for p in textures.iterdir()) == ["albedo.png", "height.png", "normal.png", "orm.png"]
+    assert (textures / "height.png").read_bytes().startswith(b"\x89PNG"), "re-saved"

@@ -42,6 +42,8 @@ static var _asset_id_regex := RegEx.create_from_string("_([0-9a-f]{8}-[0-9a-f]{4
 ## none. Files Godot writes next to them, like textures extracted from a
 ## .glb, have more after the id.
 static var _download_file_regex := RegEx.create_from_string("^([^_]*)_(?:(gltf_godot|gltf|zip_file|[0-9_]+K)_)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\.([^.]+)$")
+## The uid in a text resource's header.
+static var _uid_regex := RegEx.create_from_string(" uid=\"(uid://[^\"]+)\"")
 
 ## Absolute path of the index directory.
 var dir: String
@@ -296,11 +298,14 @@ static func downloaded_files(folder: String) -> Dictionary:
 
 ## Move a finished download from the staging folder into the download
 ## directory, replacing the file of its type there, whose .import and .uid
-## stay so references keep working. The older file is restored if the move
-## fails. The folder and file are named as [param id_names] says, see
-## destination_folder() and renamed_file(), and the folder's manifest lists
-## the file. Returns the new path; "" if there's no file to move or the move
-## failed.
+## stay so references keep working. An older file in another format, like a
+## material .blend before it was converted, is deleted instead. The older
+## file is restored if the move fails. Folders next to the download, like
+## the textures of a converted material, move along, replacing files in the
+## folders of the same name. The folder and file are named as [param
+## id_names] says, see destination_folder() and renamed_file(), and the
+## folder's manifest lists the file. Returns the new path; "" if there's no
+## file to move or the move failed.
 static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base_id: String = "") -> String:
 	path = path.replace("\\", "/")
 	var staged_folder := path.get_base_dir()
@@ -317,12 +322,15 @@ static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base
 		folder = destination_folder(folder.get_base_dir(), client_folder, slug, id, base_id, id_names)
 	var target := folder.path_join(renamed_file(file_name, id_names) if id else file_name)
 	# A new file of a type downloaded before takes the older one's name.
-	if file_type:
-		target = downloaded_files(folder).get(file_type, target)
+	var older: String = downloaded_files(folder).get(file_type, "") if file_type else ""
+	if older.get_extension() == target.get_extension():
+		target = older
+		older = ""
 	# Moved already: a task can be handled twice.
 	if not FileAccess.file_exists(path):
 		return target if FileAccess.file_exists(target) else ""
 	DirAccess.make_dir_recursive_absolute(folder)
+	_keep_resource_uid(path, target)
 	var backup := ""
 	if FileAccess.file_exists(target):
 		backup = target + ".bk_old"
@@ -334,10 +342,49 @@ static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base
 		return ""
 	if backup:
 		DirAccess.remove_absolute(backup)
+	if older:
+		DirAccess.remove_absolute(older)
+		DirAccess.remove_absolute(older + ".import")
+	for dir in DirAccess.get_directories_at(staged_folder):
+		_move_dir(staged_folder.path_join(dir), folder.path_join(dir))
 	DirAccess.remove_absolute(staged_folder) # only if empty
 	if id:
 		_write_manifest(folder, id, base_id, target.get_file(), file_type)
 	return target
+
+
+## Give a text resource at [param path], like a converted material, the uid
+## of the one at [param target] it replaces, so references to it keep
+## working, or a new one. Godot keeps a text resource's uid in its header.
+static func _keep_resource_uid(path: String, target: String) -> void:
+	if path.get_extension() != "tres":
+		return
+	var text := FileAccess.get_file_as_string(path)
+	var header := text.get_slice("\n", 0)
+	if not header.begins_with("[gd_resource ") or header.contains(" uid=\""):
+		return
+	var uid := ""
+	if FileAccess.file_exists(target):
+		var m := _uid_regex.search(FileAccess.get_file_as_string(target).get_slice("\n", 0))
+		uid = m.get_string(1) if m else ""
+	if uid.is_empty():
+		uid = ResourceUID.id_to_text(ResourceUID.create_id())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file:
+		file.store_string(header.trim_suffix("]") + " uid=\"%s\"]" % uid + text.substr(header.length()))
+
+
+## Move the files in folder [param from] into folder [param to], replacing
+## the files there, and keeping the others.
+static func _move_dir(from: String, to: String) -> void:
+	DirAccess.make_dir_recursive_absolute(to)
+	for dir in DirAccess.get_directories_at(from):
+		_move_dir(from.path_join(dir), to.path_join(dir))
+	for file in DirAccess.get_files_at(from):
+		var target := to.path_join(file)
+		DirAccess.remove_absolute(target)
+		DirAccess.rename_absolute(from.path_join(file), target)
+	DirAccess.remove_absolute(from) # only if empty
 
 
 ## The folder in [param type_dir] for a download of asset [param id]: the one

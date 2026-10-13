@@ -142,6 +142,16 @@ Godot Editor.
   project. This uses the Blender from **Blender Import** in **Settings**, or
   one found on your computer. Without Blender, HDRs download but Godot shows
   them as failed imports.
+- Materials download as Godot materials (`.tres`) with their textures, which
+  Blender converts the material `.blend` into, also with the Blender from
+  **Blender Import** or one found on your computer. Drop one on a mesh in
+  the 3D view to use it. Materials map their textures triplanar at their
+  real size, so they fit any mesh without UVs, like CSG shapes. Turn off
+  **UV1 › Triplanar** to use the mesh's UVs instead, and turn on **Height**
+  for the height map, which Godot doesn't do with triplanar mapping.
+  Procedural materials have no textures to convert, so they become a flat
+  color. Without Blender, materials download as `.blend` files, which Godot
+  can't use.
 - Logging in is optional. Free assets download without an account. To
   download Full Plan assets, click **Log In…** in the Blendkit menu at the end
   of the search bar and log in with a Full Plan account in the browser that
@@ -154,7 +164,8 @@ downloading two models and one material:
 bk_assets
 ├── materials
 │   └── stylized-wooden-_42daf872-0c07-4f9f-bd51-2d741043096b
-│       └── stylized-wooden-floor_2K_724059e9-51b8-4d19-8088-3a11745347a2.blend
+│       ├── stylized-wooden-floor_2K_724059e9-51b8-4d19-8088-3a11745347a2.tres
+│       └── textures_2K
 └── models
     ├── 19th-century-pap_6c28bfad-6678-4e85-abbc-41b36c436c96
     │   └── 19th-century-paper-clutter-waste_2K_2e96ac1b-aae0-4c49-b352-6553f693f841.blend

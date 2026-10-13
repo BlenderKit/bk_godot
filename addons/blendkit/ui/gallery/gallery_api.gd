@@ -371,9 +371,23 @@ static func clear_staging(abs_download_path: String, keep: Dictionary) -> int:
 				continue
 			for file in files:
 				DirAccess.remove_absolute(path.path_join(file))
+			for dir in DirAccess.get_directories_at(path):
+				remove_dir(path.path_join(dir))
 			if DirAccess.remove_absolute(path) == OK:
 				cleared += 1
 	return cleared
+
+
+
+## Delete the folder at [param path] with everything in it.
+static func remove_dir(path: String) -> void:
+	if not DirAccess.dir_exists_absolute(path):
+		return
+	for dir in DirAccess.get_directories_at(path):
+		remove_dir(path.path_join(dir))
+	for file in DirAccess.get_files_at(path):
+		DirAccess.remove_absolute(path.path_join(file))
+	DirAccess.remove_absolute(path)
 
 
 static func base_id(asset: Dictionary) -> String:

@@ -156,7 +156,7 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 				dl.progress = 100
 				dl.message = Conversions.MESSAGE
 				download_changed.emit(base_id)
-				await _convert(staged, "convert:" + base_id, plan)
+				staged = await _convert(staged, "convert:" + base_id, plan)
 			dl.file_path = ProjectAssets.finish_download(staged, _plugin.id_names, base_id)
 			if dl.file_path.is_empty():
 				_end(base_id, "error", "Could not move the download into %s" % _plugin.download_dir)
@@ -269,13 +269,17 @@ static func _scan_download(file_path: String) -> void:
 
 # MARK: conversions
 
-## Make a finished download in staging importable before it moves into the
-## project, as [param plan] from Conversions.plan() says. Failing, the file
-## stays as it is. The reports of its task go to [param key].
-func _convert(staged: String, key: String, plan: Dictionary) -> void:
+## Make a finished download in staging of use in Godot before it moves into
+## the project, as [param plan] from Conversions.plan() says. Returns the
+## file to move: the converted one, or failing, [param staged] as it is. The
+## reports of its task go to [param key].
+func _convert(staged: String, key: String, plan: Dictionary) -> String:
 	var output: String = plan.params.output_path
+	var replaces: bool = plan.file == staged
 	# The Client would take one left by an interrupted run as the result.
 	DirAccess.remove_absolute(output)
+	for dir in plan.dirs:
+		GalleryApi.remove_dir(dir)
 	var state := {"task": {}}
 	_conversions[key] = state
 	var on_task := func(task: Dictionary) -> void:
@@ -297,15 +301,21 @@ func _convert(staged: String, key: String, plan: Dictionary) -> void:
 		elif state.task.status != "finished":
 			error = str(state.task.get("message", state.task.status))
 			_plugin.log_debug("Blender output:\n%s" % state.task.get("message_detailed", ""))
-		elif not Conversions.replace_file(output, staged):
+		elif replaces and not Conversions.replace_file(output, staged):
 			error = "could not replace it with the converted file"
 	_conversions.erase(key)
-	DirAccess.remove_absolute(output)
 	var file := staged.get_file()
 	if error.is_empty():
 		_plugin.log_verbose("Converted %s for Godot" % file)
-	else:
-		_plugin.log_warning("Could not convert %s for Godot, which may not import it: %s" % [file, error])
+		if not replaces:
+			# what's left of no use in Godot
+			DirAccess.remove_absolute(staged)
+		return plan.file
+	DirAccess.remove_absolute(output)
+	for dir in plan.dirs:
+		GalleryApi.remove_dir(dir)
+	_plugin.log_warning("Could not convert %s for Godot, which may not import it: %s" % [file, error])
+	return staged
 
 
 ## Run the conversion with Blender, see Conversions.blender_path().
@@ -395,7 +405,7 @@ func _finish_web_download(task: Dictionary) -> void:
 			web.progress = 100
 			web.message = Conversions.MESSAGE
 			download_changed.emit(task_id)
-		await _convert(staged, "convert:" + task_id, plan)
+		staged = await _convert(staged, "convert:" + task_id, plan)
 	_drop_web_download(task_id)
 	var id := ProjectAssets.folder_asset_id(staged.replace("\\", "/").get_base_dir().get_file())
 	var base_id := GalleryApi.base_id(index.get_asset(id)) if index and id else ""
