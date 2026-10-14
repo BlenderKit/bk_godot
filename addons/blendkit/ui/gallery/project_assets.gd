@@ -25,9 +25,9 @@ const KEPT_FIELDS := ["id", "assetBaseId", "name", "displayName", "assetType", "
 ## How much of the asset and file ids the downloaded folders and files are
 ## named with, see finish_download(): all of it like the Client, the first
 ## SHORT_ID_LENGTH characters, or none.
-const ID_NAMES_FULL := "full"
-const ID_NAMES_SHORT := "short"
-const ID_NAMES_STRIP := "strip"
+const UUID_NAMES_FULL := "full"
+const UUID_NAMES_SHORT := "short"
+const UUID_NAMES_STRIP := "strip"
 const SHORT_ID_LENGTH := 8
 ## Name of the assets whose name has no letters or digits.
 const NAMELESS_SLUG := "asset"
@@ -322,12 +322,11 @@ static func _downloaded_files(folder: String, version: String, manifest: Diction
 ## move, what moved goes back and the replaced files are restored. A
 ## download that wasn't [param converted] as it should have been doesn't
 ## replace a file of its type Godot uses as it is, which stays instead. The
-## folder and file are named as [param id_names] says, see
+## folder and file are named as [param uuid_names] says, see
 ## destination_folder() and renamed_file(), and the folder's manifest lists
 ## the file. Returns the new or kept path; "" if there's no file to move or
 ## the move failed.
-static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base_id: String = "", converted: bool = true) -> String:
-	path = path.replace("\\", "/")
+static func finish_download(path: String, uuid_names: String = UUID_NAMES_FULL, base_id: String = "", converted: bool = true) -> String:
 	var staged_folder := path.get_base_dir()
 	var client_folder := staged_folder.get_file()
 	var folder := GalleryApi.unstaged_path(staged_folder)
@@ -339,8 +338,8 @@ static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base
 	if id:
 		var m := _download_file_regex.search(file_name)
 		var slug := m.get_string(1) if m else client_folder.get_slice("_", 0)
-		folder = destination_folder(folder.get_base_dir(), client_folder, slug, id, base_id, id_names)
-	var target := folder.path_join(renamed_file(file_name, id_names) if id else file_name)
+		folder = destination_folder(folder.get_base_dir(), client_folder, slug, id, base_id, uuid_names)
+	var target := folder.path_join(renamed_file(file_name, uuid_names) if id else file_name)
 	var older: String = downloaded_files(folder).get(file_type, "") if file_type else ""
 	if not converted and older and Conversions.plan(older).is_empty():
 		if FileAccess.file_exists(path):
@@ -433,27 +432,27 @@ static func _localize_import_paths(path: String, dir: String) -> void:
 
 
 ## The folder in [param type_dir] for a download of asset [param id]: the one
-## with this version already, else as [param id_names] says. Full keeps the
+## with this version already, else as [param uuid_names] says. Full keeps the
 ## Client's [param client_folder] name, short is <slug>_<short id>, and
 ## strip is <slug>, which an older version of the same asset is replaced in.
 ## Taken by another asset, the id is added, short then whole.
-static func destination_folder(type_dir: String, client_folder: String, slug: String, id: String, base_id: String, id_names: String) -> String:
+static func destination_folder(type_dir: String, client_folder: String, slug: String, id: String, base_id: String, uuid_names: String) -> String:
 	var found := find_folder(type_dir, client_folder, slug, id, base_id)
 	if found:
 		return found
 	var name := slug if slug else NAMELESS_SLUG
 	var whole := "%s_%s" % [name, id]
 	var names: Array
-	match id_names:
-		ID_NAMES_SHORT:
+	match uuid_names:
+		UUID_NAMES_SHORT:
 			names = ["%s_%s" % [name, short_id(id)]]
-		ID_NAMES_STRIP:
+		UUID_NAMES_STRIP:
 			names = [name, "%s_%s" % [name, short_id(base_id if base_id else id)]]
 		_:
 			return type_dir.path_join(client_folder)
 	for candidate in names:
 		var path := type_dir.path_join(candidate)
-		if _can_take(path, base_id if id_names == ID_NAMES_STRIP else ""):
+		if _can_take(path, base_id if uuid_names == UUID_NAMES_STRIP else ""):
 			return path
 	return type_dir.path_join(whole)
 
@@ -494,17 +493,17 @@ static func _can_take(path: String, base_id: String) -> bool:
 
 
 ## The name of a file the Client downloaded, with the file id as
-## [param id_names] says: chair_gltf_godot_<id>.glb stays in full,
+## [param uuid_names] says: chair_gltf_godot_<id>.glb stays in full,
 ## becomes chair_gltf_godot_<short id>.glb in short and chair_gltf_godot.glb
 ## in strip. Other names stay.
-static func renamed_file(file_name: String, id_names: String) -> String:
+static func renamed_file(file_name: String, uuid_names: String) -> String:
 	var m := _download_file_regex.search(file_name)
-	if not m or id_names == ID_NAMES_FULL:
+	if not m or uuid_names == UUID_NAMES_FULL:
 		return file_name
 	var parts := [m.get_string(1) if m.get_string(1) else NAMELESS_SLUG]
 	if m.get_string(2):
 		parts.append(m.get_string(2))
-	if id_names == ID_NAMES_SHORT:
+	if uuid_names == UUID_NAMES_SHORT:
 		parts.append(short_id(m.get_string(3)))
 	return "_".join(parts) + "." + m.get_string(4)
 

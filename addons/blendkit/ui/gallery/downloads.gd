@@ -160,7 +160,7 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 				var result: Array = await _convert(staged, "convert:" + base_id, plan)
 				staged = result[0]
 				converted = result[1]
-			dl.file_path = ProjectAssets.finish_download(staged, _plugin.id_names, base_id, converted)
+			dl.file_path = ProjectAssets.finish_download(staged, _plugin.uuid_names, base_id, converted)
 			if dl.file_path.is_empty():
 				_end(base_id, "error", "Could not move the download into %s" % _plugin.download_dir)
 				return
@@ -434,9 +434,9 @@ func _finish_web_download(task: Dictionary) -> void:
 		staged = result[0]
 		converted = result[1]
 	_drop_web_download(task_id)
-	var id := ProjectAssets.folder_asset_id(staged.replace("\\", "/").get_base_dir().get_file())
+	var id := ProjectAssets.folder_asset_id(staged.get_base_dir().get_file())
 	var base_id := GalleryApi.base_id(index.get_asset(id)) if index and id else ""
-	var path := ProjectAssets.finish_download(staged, _plugin.id_names, base_id, converted)
+	var path := ProjectAssets.finish_download(staged, _plugin.uuid_names, base_id, converted)
 	if path.is_empty():
 		_plugin.log_warning("Could not move %s into %s" % [staged, _plugin.download_dir])
 		return

@@ -46,7 +46,7 @@ static func plan(path: String) -> Dictionary:
 			return {"script": RESAVE_EXR_SCRIPT, "params": {"input_path": path,
 				"output_path": output_path(path), "alpha": header.alpha}, "file": path, "dirs": []}
 		"blend":
-			if path.replace("\\", "/").get_base_dir().get_base_dir().get_file() != MATERIALS_DIR:
+			if path.get_base_dir().get_base_dir().get_file() != MATERIALS_DIR:
 				return {}
 			var material := path.get_basename() + ".tres"
 			var textures := path.get_base_dir().path_join(textures_dir_name(path))

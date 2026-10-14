@@ -97,6 +97,7 @@ func _initialize():
 
     check(Api.task_file_path({"result": {"file_paths": ["/a.glb", "/b.glb"]}}) == "/a.glb", "file_paths")
     check(Api.task_file_path({"result": {"file_path": "/c.glb"}}) == "/c.glb", "file_path")
+    check(Api.task_file_path({"result": {"file_paths": ["C:\\bk\\d.glb"]}}) == "C:/bk/d.glb", "Windows path")
     check(Api.task_file_path({"result": null}) == "", "no result")
 
     var converted = Api.whole_floats_to_ints({"size": 51777067.0, "dim": 1.5, "files": [{"resolution": 0.0}]})
@@ -480,7 +481,7 @@ func check_downloads(gallery):
     var item = gallery.project_view.download_items["web-1"]
     print("TILE_TOOLTIP=%s" % item.tooltip_text.replace("\n", "|"))
     # Unfinished tasks are reported every poll; a missing one is gone.
-    gallery.drop_vanished_downloads({"web-1": true})
+    gallery.downloads.drop_vanished({"web-1": true})
     print("KEPT=%d STAGED=%s" % [gallery.downloads.active_count(), FileAccess.file_exists(file)])
     # Finished, it moves into the project.
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "finished", "result": {"file_path": file}})
@@ -491,7 +492,7 @@ func check_downloads(gallery):
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-2", "status": "created"})
     await get_tree().process_frame
     print("WEB_NAME=%s" % gallery.project_view.entries[0].asset.name)
-    gallery.drop_vanished_downloads({})
+    gallery.downloads.drop_vanished({})
     print("DROPPED=%d" % gallery.downloads.active_count())
 """
 
@@ -918,7 +919,7 @@ func check():
     gallery.handle_task({"task_type": "search", "task_id": "race-2", "status": "finished"})
     gallery.handle_task({"task_type": "search", "task_id": "race-3", "status": "finished"})
     print("SUPERSEDED=%s SECOND=%s" % [superseded, responses.slice(1)])
-    gallery.drop_vanished_downloads({})
+    gallery.downloads.drop_vanished({})
     print("DROPPED=%d" % gallery.downloads.active_count())
 """
 

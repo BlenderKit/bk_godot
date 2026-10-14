@@ -214,7 +214,7 @@ func _on_tasks_reported(reported_tasks: Array) -> void:
 	for task in reported_tasks:
 		handle_task(task)
 		reported[task.get("task_id", "")] = true
-	drop_vanished_downloads(reported)
+	downloads.drop_vanished(reported)
 	_update_poll_rate()
 
 
@@ -229,11 +229,6 @@ func handle_task(task: Dictionary) -> void:
 			if task.get("status") == "finished" and task.get("result") is Array:
 				categories = task["result"]
 				search.fill_categories()
-
-
-## Forgets Send to Godot downloads missing from a report, keyed by task_id.
-func drop_vanished_downloads(reported: Dictionary) -> void:
-	downloads.drop_vanished(reported)
 
 
 ## A task the gallery didn't start: an asset_download is Send to Godot on

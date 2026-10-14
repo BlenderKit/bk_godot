@@ -99,7 +99,7 @@ func _initialize():
         "textures_dir": materials.path_join("textures_2K")}, "file": material,
         "dirs": [materials.path_join("textures_2K")]}, str(plan))
     check(Conversions.plan(dir.path_join("models/chair_0000/chair_2K.blend")).is_empty(), "model .blend")
-    check(Conversions.plan("C:\\bk\\materials\\rock_0000\\rock_2K.blend").get("file") == "C:\\bk\\materials\\rock_0000\\rock_2K.tres", "Windows path")
+    check(Conversions.plan("C:/bk/materials/rock_0000/rock_2K.blend").get("file") == "C:/bk/materials/rock_0000/rock_2K.tres", "drive letter")
     check(Conversions.textures_dir_name("rock_0_5K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend") == "textures_0_5K", "0.5K")
     check(Conversions.textures_dir_name("rock_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend") == "textures", "original")
     check(Conversions.textures_dir_name("rock.blend") == "textures", "other name")
@@ -240,7 +240,7 @@ func check():
     gallery.handle_task({"task_type": "asset_download", "task_id": "web-1", "status": "finished",
         "result": {"file_path": web_path}})
     print("WEB=%s|%s POSTS=%d" % [downloads.web_downloads["web-1"].status, downloads.web_downloads["web-1"].message, posts.size()])
-    gallery.drop_vanished_downloads({})
+    gallery.downloads.drop_vanished({})
     print("WEB_KEPT=%d" % downloads.web_downloads.size())
     gallery.handle_task({"task_type": "run_blender_script", "task_id": "conv-1", "status": "finished"})
     await wait_until(func(): return downloads.web_downloads.is_empty(), 5)

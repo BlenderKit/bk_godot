@@ -623,15 +623,16 @@ static func load_image(path: String) -> Image:
 	return image if err == OK else null
 
 
-## Path of the downloaded file from a finished asset_download task.
-## /assets/download reports file_paths, Send to Godot reports file_path.
+## Path of the downloaded file from a finished asset_download task, with
+## slashes for the Windows backslashes. /assets/download reports file_paths,
+## Send to Godot reports file_path.
 static func task_file_path(task: Dictionary) -> String:
 	var result = task.get("result")
 	if not result is Dictionary:
 		return ""
+	var path := ""
 	if result.get("file_path"):
-		return str(result.file_path)
-	var paths = result.get("file_paths")
-	if paths is Array and not paths.is_empty():
-		return str(paths[0])
-	return ""
+		path = str(result.file_path)
+	elif result.get("file_paths") is Array and not result.file_paths.is_empty():
+		path = str(result.file_paths[0])
+	return path.replace("\\", "/")

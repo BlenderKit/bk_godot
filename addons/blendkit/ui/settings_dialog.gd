@@ -18,7 +18,7 @@ var _blend_import: Button
 # Opened from the Blender Import row, back to Settings after Apply or Cancel.
 var _blender_import_dialog: BlenderImportDialog
 var _resolution: OptionButton
-var _id_names: OptionButton
+var _uuid_names: OptionButton
 var _port: OptionButton
 var _log_level: OptionButton
 
@@ -68,9 +68,9 @@ func setup(new_plugin: EditorPlugin) -> void:
 	_resolution = _options(plugin.RESOLUTIONS.map(func(r): return r[1]))
 	_resolution.item_selected.connect(func(i): plugin.set_resolution(plugin.RESOLUTIONS[i][0]))
 	_row("Resolution", _resolution, "Texture resolution for .blend files, also used when glTF is unavailable. Auto downloads 2K.")
-	_id_names = _options(plugin.ID_NAMES.map(func(n): return n[1]))
-	_id_names.item_selected.connect(func(i): plugin.set_id_names(plugin.ID_NAMES[i][0]))
-	_row("UUIDs in Names", _id_names, "How downloaded folders and files are named, for new downloads.\nFull: with the whole asset and file UUIDs, like chair_1a2b3c4d-…/chair_gltf_godot_5e6f7a8b-….glb.\nShort: with their first 8 characters, like chair_1a2b3c4d/chair_gltf_godot_5e6f7a8b.glb.\nStrip: without them, like chair/chair_gltf_godot.glb. Assets with the same name get a short UUID. A newer version of an asset replaces the older one in its folder.")
+	_uuid_names = _options(plugin.UUID_NAMES.map(func(n): return n[1]))
+	_uuid_names.item_selected.connect(func(i): plugin.set_uuid_names(plugin.UUID_NAMES[i][0]))
+	_row("UUIDs in Names", _uuid_names, "How downloaded folders and files are named, for new downloads.\nFull: with the whole asset and file UUIDs, like chair_1a2b3c4d-…/chair_gltf_godot_5e6f7a8b-….glb.\nShort: with their first 8 characters, like chair_1a2b3c4d/chair_gltf_godot_5e6f7a8b.glb.\nStrip: without them, like chair/chair_gltf_godot.glb. Assets with the same name get a short UUID. A newer version of an asset replaces the older one in its folder.")
 
 	_section("Editor", "Saved in your editor settings and applies to all your projects.\nAlso in Editor Settings → Blendkit.")
 	_port = _options(ClientConnection.CLIENT_PORTS)
@@ -97,7 +97,7 @@ func _load() -> void:
 	_load_blend_import()
 	_model_format.select(GalleryApi.option_index(plugin.MODEL_FORMATS, plugin.model_format))
 	_resolution.select(GalleryApi.option_index(plugin.RESOLUTIONS, plugin.resolution))
-	_id_names.select(GalleryApi.option_index(plugin.ID_NAMES, plugin.id_names))
+	_uuid_names.select(GalleryApi.option_index(plugin.UUID_NAMES, plugin.uuid_names))
 	_port.select(maxi(0, ClientConnection.CLIENT_PORTS.find(plugin.preferred_port)))
 	_log_level.select(plugin.log_level)
 

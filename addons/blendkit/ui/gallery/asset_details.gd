@@ -5,8 +5,7 @@ extends AcceptDialog
 ## cancels the download, or opens the plans when a Full Plan asset needs
 ## them, with a login button next to it when logged out. The chooser marks
 ## the files already in the project, and for those the action shows the file
-## instead. It isn't modal: clicking the
-## editor outside closes it.
+## instead. It isn't modal: clicking the editor outside closes it.
 
 signal download_requested(asset: Dictionary, file_type: String)
 signal cancel_requested(task_id: String)
