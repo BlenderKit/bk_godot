@@ -13,6 +13,13 @@ const RESCAN_MS := 1000
 ## once the editor settings changed.
 static var _listed: Dictionary = {}
 static var _watching_settings := false
+## Files changed since the last scan started, so another one is due.
+static var _rescan_wanted := false
+## res:// path -> msec deadline of the files waiting to be indexed.
+static var _awaited: Dictionary = {}
+static var _scanning := false
+## Emitted after each round of _scan(), see index_file().
+static var _rounds := Rounds.new()
 
 
 ## Select the file in the FileSystem dock, or show it in the OS file manager
@@ -28,41 +35,70 @@ static func reveal(file_path: String) -> void:
 	OS.shell_show_in_file_manager(ProjectSettings.globalize_path(file_path))
 
 
-## Let the editor index a new file in the project. A scan asked for while
-## another runs is dropped, so it scans again until the file is indexed.
-## Returns whether it is, false after [constant INDEX_WAIT_MS].
+## Let the editor index a new file in the project. Returns whether it is,
+## false after [constant INDEX_WAIT_MS].
 static func index_file(file_path: String) -> bool:
 	var resource_path := ProjectSettings.localize_path(file_path)
 	var efs := EditorInterface.get_resource_filesystem()
-	var tree := Engine.get_main_loop() as SceneTree
-	var deadline := Time.get_ticks_msec() + INDEX_WAIT_MS
-	var next_scan := 0
-	while not is_indexed(efs, resource_path):
-		var now := Time.get_ticks_msec()
-		if now > deadline:
-			return false
-		if now >= next_scan and not efs.is_scanning():
-			efs.scan_sources()
-			next_scan = now + RESCAN_MS
-		await tree.process_frame
-	return true
+	if is_indexed(efs, resource_path):
+		return true
+	_await_index(resource_path)
+	_scan()
+	while _awaited.has(resource_path):
+		await _rounds.done
+	return is_indexed(efs, resource_path)
 
 
 ## Let the editor import a downloaded file in the project, also one it
 ## imported before and the files that moved along. It checks the files it
-## knows for changes only on a scan, and drops one asked for during another,
-## so it waits for that one to end first. Then a new file is indexed, see
-## index_file().
+## knows for changes only on a scan, so files that change meanwhile share
+## the next one. Then a new file is indexed, see index_file().
 static func rescan(file_path: String) -> void:
 	var resource_path := ProjectSettings.localize_path(file_path)
+	_rescan_wanted = true
+	if is_listed(resource_path):
+		_await_index(resource_path)
+	_scan()
+
+
+static func _await_index(resource_path: String) -> void:
+	if not _awaited.has(resource_path):
+		_awaited[resource_path] = Time.get_ticks_msec() + INDEX_WAIT_MS
+
+
+## Scan while a scan is wanted or a file waits to be indexed. A scan asked
+## for while another runs is dropped, so each starts once the editor's
+## ended, and again every [constant RESCAN_MS] until the files are indexed.
+## It waits for scans to end rather than checking each frame.
+static func _scan() -> void:
+	if _scanning:
+		return
+	_scanning = true
 	var efs := EditorInterface.get_resource_filesystem()
-	var tree := Engine.get_main_loop() as SceneTree
-	var deadline := Time.get_ticks_msec() + INDEX_WAIT_MS
-	while efs.is_scanning() and Time.get_ticks_msec() < deadline:
-		await tree.process_frame
-	efs.scan_sources()
-	if is_listed(resource_path) and not is_indexed(efs, resource_path):
-		await index_file(file_path)
+	var next_scan := 0
+	while true:
+		var now := Time.get_ticks_msec()
+		for path in _awaited.keys():
+			if is_indexed(efs, path) or now > _awaited[path]:
+				_awaited.erase(path)
+		_rounds.done.emit()
+		if not _rescan_wanted and _awaited.is_empty():
+			break
+		if not efs.is_scanning() and now >= next_scan:
+			_rescan_wanted = false
+			next_scan = now + RESCAN_MS
+			efs.scan_sources()
+		await _scan_end(efs, RESCAN_MS / 1000.0)
+	_scanning = false
+
+
+## Wait for the editor's scan to end, or [param seconds] at most.
+static func _scan_end(efs: EditorFileSystem, seconds: float) -> void:
+	var waiter := Waiter.new()
+	efs.sources_changed.connect(waiter.scanned)
+	(Engine.get_main_loop() as SceneTree).create_timer(seconds).timeout.connect(waiter.done)
+	await waiter.finished
+	efs.sources_changed.disconnect(waiter.scanned)
 
 
 static func is_indexed(efs: EditorFileSystem, resource_path: String) -> bool:
@@ -98,3 +134,21 @@ static func is_pending(file_path: String) -> bool:
 	var resource_path := ProjectSettings.localize_path(file_path)
 	return resource_path.begins_with("res://") and is_listed(resource_path) \
 		and not is_indexed(EditorInterface.get_resource_filesystem(), resource_path)
+
+
+class Rounds:
+	signal done
+
+
+## Ends with the editor's scan or the timer, whichever comes first.
+class Waiter:
+	signal finished
+	var _done := false
+
+	func scanned(_changed: bool) -> void:
+		done()
+
+	func done() -> void:
+		if not _done:
+			_done = true
+			finished.emit()
