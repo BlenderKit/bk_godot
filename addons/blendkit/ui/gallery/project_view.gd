@@ -5,7 +5,6 @@ extends VBoxContainer
 ## ProjectAssets. Folders the index doesn't know are looked up on Blendkit
 ## for their name and thumbnail.
 
-const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
@@ -36,17 +35,24 @@ var _lookup_id := ""
 var _lookup_type := ""
 ## Asset ids not found on Blendkit; not looked up again this session.
 var _lookup_failed: Dictionary = {}
+## Asset id -> asset type of lookups that failed otherwise, e.g. offline;
+## queued again by the next refresh() or reconnect.
+var _lookup_retry: Dictionary = {}
 var _refresh_queued := false
 ## Whether the download directory may have changed since the last scan.
 var _dirty := true
 var _save_queued := false
 ## Tile -> thumbnail path still to decode, see _decode_thumbnails().
 var _thumbnail_queue: Dictionary = {}
+## The Client request, replaced in the tests: post_lookup(id, asset_type)
+## returns [task_id, error].
+var post_lookup: Callable
 
 
 ## Called by the gallery once the plugin is known.
 func setup(new_gallery: Node) -> void:
 	gallery = new_gallery
+	post_lookup = _post_lookup
 	var edscale := EditorInterface.get_editor_scale()
 	add_theme_constant_override("separation", int(20 * edscale))
 	grid.add_theme_constant_override("h_separation", int(GalleryItemScript.GAP * edscale))
@@ -139,7 +145,7 @@ func refresh() -> void:
 	for entry in entries:
 		if not entry.has("download") and not entry.known:
 			_queue_lookup(entry.id, entry.asset.assetType)
-	next_lookup()
+	_retry_lookups()
 
 
 ## Show the entry's asset and thumbnail on its tile where they differ from
@@ -277,7 +283,7 @@ func _open_details(entry: Dictionary) -> void:
 	if entry.thumbnail and not thumbs.has("small"):
 		thumbs.small = entry.thumbnail
 	gallery.details.show_asset(entry.asset, thumbs, entry.folder)
-	_look_up_details(entry.id, str(entry.asset.get("assetType", "")))
+	look_up_details(entry.id, str(entry.asset.get("assetType", "")))
 
 
 # MARK: downloads
@@ -337,21 +343,20 @@ func next_lookup() -> void:
 		return
 	_lookup_id = id
 	_lookup_type = asset_type
-	var plugin: EditorPlugin = gallery.plugin
-	var url := GalleryApi.build_lookup_url(plugin.SERVER, id, plugin.get_addon_version())
-	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
-	var post := func() -> Array:
-		return await GalleryApi.search(self, plugin, url, asset_type, tempdir, 1)
-	var response: Array = await gallery.tasks.start(LOOKUP_TASK, post, _finish_lookup)
+	var response: Array = await gallery.tasks.start(LOOKUP_TASK, post_lookup.bind(id, asset_type), _finish_lookup)
 	if response.is_empty():
 		return # reset by a disconnect meanwhile
 	if response[0].is_empty():
-		plugin.log_debug("Asset lookup failed: %s" % response[1])
-		_finish_lookup({})
+		# The others would likely fail alike, so they wait too.
+		gallery.plugin.log_debug("Asset lookup failed: %s" % response[1])
+		_lookup_id = ""
+		_lookup_retry[id] = asset_type
+		_lookup_retry.merge(_lookup_queue)
+		_lookup_queue.clear()
 
 
 func _finish_lookup(task: Dictionary) -> void:
-	if not task.is_empty() and not task.get("status") in ClientTasks.FINAL:
+	if not task.get("status") in ClientTasks.FINAL:
 		return
 	var id := _lookup_id
 	_lookup_id = ""
@@ -360,38 +365,65 @@ func _finish_lookup(task: Dictionary) -> void:
 		project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
 		_queue_save()
 		_show_indexed(id)
-	else:
+	elif task.status == "finished":
 		gallery.plugin.log_verbose("Asset %s not found on Blendkit" % id)
 		_lookup_failed[id] = true
+	else:
+		_lookup_retry[id] = _lookup_type
+	next_lookup()
+
+
+## Queue the lookups that failed for other reasons than not finding the
+## asset, and start them.
+func _retry_lookups() -> void:
+	for id in _lookup_retry:
+		_queue_lookup(id, _lookup_retry[id])
+	_lookup_retry.clear()
 	next_lookup()
 
 
 ## Look up the asset shown in the details, whose index entry has neither
 ## the files to download nor whether the account can. Offline or not found,
 ## the details show only the downloaded files.
-func _look_up_details(id: String, asset_type: String) -> void:
+func look_up_details(id: String, asset_type: String) -> void:
 	if _lookup_failed.has(id) or not gallery.plugin.connection.is_client_connected():
 		return
-	var plugin: EditorPlugin = gallery.plugin
-	var url := GalleryApi.build_lookup_url(plugin.SERVER, id, plugin.get_addon_version())
-	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
-	var post := func() -> Array:
-		return await GalleryApi.search(self, plugin, url, asset_type, tempdir, 1)
+	var post := post_lookup.bind(id, asset_type)
 	var response: Array = await gallery.tasks.start(DETAILS_LOOKUP_TASK, post, _finish_details_lookup.bind(id))
 	if not response.is_empty() and response[0].is_empty():
-		plugin.log_debug("Asset lookup failed: %s" % response[1])
+		gallery.plugin.log_debug("Asset lookup failed: %s" % response[1])
 
 
+## Only assets in the project go into the index, not those from the search.
 func _finish_details_lookup(task: Dictionary, id: String) -> void:
+	if not task.get("status") in ClientTasks.FINAL:
+		return
 	var asset := GalleryApi.lookup_result(task, id)
 	if asset.is_empty():
+		if task.status == "finished":
+			_lookup_failed[id] = true
 		return
-	project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
-	_queue_save()
-	_show_indexed(id)
+	if _in_project(id):
+		project.store(asset, gallery.small_thumbnail(GalleryApi.base_id(asset)))
+		_queue_save()
+		_show_indexed(id)
 	var details = gallery.details
 	if details.visible and str(details.asset.get("id", "")) == id:
 		details.update_asset(asset)
+
+
+## Whether the index or a folder in the project has the asset.
+func _in_project(id: String) -> bool:
+	if project.has(id):
+		return true
+	for entry in entries:
+		if not entry.has("download") and str(entry.asset.get("id", "")) == id:
+			return true
+	return false
+
+
+func _post_lookup(id: String, asset_type: String) -> Array:
+	return await GalleryApi.lookup(self, gallery.plugin, id, asset_type)
 
 
 ## A lookup in flight goes back into the queue.
@@ -399,3 +431,8 @@ func on_disconnected() -> void:
 	if not _lookup_id.is_empty():
 		_lookup_queue[_lookup_id] = _lookup_type
 	_lookup_id = ""
+
+
+## Lookups that failed meanwhile are tried again.
+func on_connected() -> void:
+	_retry_lookups()

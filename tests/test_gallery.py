@@ -1017,6 +1017,76 @@ def test_gallery_stale_file_retry(godot_executable, tmp_path):
     assert "SCRIPT ERROR" not in stderr, output
 
 
+LOOKUP_PROBE = r"""
+const ID_A := "676596bd-d7fd-47db-a9b5-a4b0e35738e7"
+const ID_B := "b9d80621-bb1f-4335-894a-18e41438be00"
+
+func report(task_id: String, status: String, results: Array = []) -> void:
+    find_gallery().handle_task({"task_type": "search", "task_id": task_id, "status": status,
+        "result": {"results": results}})
+
+func check():
+    var gallery = find_gallery()
+    var view = gallery.project_view
+    var connection = gallery.plugin.connection
+    var old_state = connection.state
+    connection.state = connection.State.CONNECTED
+    var posts := []
+    var post_fails := [true]
+    view.post_lookup = func(id: String, _asset_type: String) -> Array:
+        posts.append(id)
+        return ["", "unreachable"] if post_fails[0] else ["task-%d" % posts.size(), ""]
+    # A failed POST waits for a reconnect or refresh, rather than looping.
+    view._queue_lookup(ID_A, "model")
+    view.next_lookup()
+    print("POST_FAILED=%s RETRY=%s" % [posts, view._lookup_retry.keys()])
+    post_fails[0] = false
+    view.on_connected()
+    # So does a task that ends in an error.
+    report("task-2", "error")
+    print("ERROR_RETRY=%s FAILED=%s" % [view._lookup_retry.keys(), view._lookup_failed.keys()])
+    view.on_connected()
+    # Not found, the asset isn't looked up again.
+    report("task-3", "finished")
+    print("NOT_FOUND=%s" % view._lookup_failed.has(ID_A))
+    view._queue_lookup(ID_A, "model")
+    view.on_connected()
+    view.look_up_details(ID_A, "model")
+    print("POSTS=%s" % [posts])
+    # Another account may download the asset shown in the details.
+    var asset := {"id": ID_B, "assetBaseId": "base", "name": "B", "assetType": "model",
+        "canDownload": false, "files": [{"fileType": "gltf_godot"}]}
+    gallery.details.show_asset(asset, {})
+    gallery.plugin.auth.account_changed.emit()
+    print("ACCOUNT_POSTS=%s" % [posts.slice(3)])
+    var found := asset.duplicate()
+    found.canDownload = true
+    report("task-4", "finished", [found])
+    # A search asset doesn't go into the project index.
+    print("UPDATED=%s INDEXED=%s" % [gallery.details.asset.canDownload, view.project.has(ID_B)])
+    gallery.details.hide()
+    connection.state = old_state
+"""
+
+
+def test_gallery_lookup_retry(godot_executable, tmp_path):
+    """Lookups that fail for other reasons than not finding the asset are
+    tried again, and an account change looks up the asset in the details."""
+    project = make_probe_project(tmp_path / "project", LOOKUP_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    a = "676596bd-d7fd-47db-a9b5-a4b0e35738e7"
+    b = "b9d80621-bb1f-4335-894a-18e41438be00"
+    assert f'POST_FAILED=["{a}"] RETRY=["{a}"]' in lines, output
+    assert f'ERROR_RETRY=["{a}"] FAILED=[]' in lines, output
+    assert "NOT_FOUND=true" in lines, output
+    assert f'POSTS=["{a}", "{a}", "{a}"]' in lines, output
+    assert f'ACCOUNT_POSTS=["{b}"]' in lines, output
+    assert "UPDATED=true INDEXED=false" in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
 POLYGONS_PROBE = r"""
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 

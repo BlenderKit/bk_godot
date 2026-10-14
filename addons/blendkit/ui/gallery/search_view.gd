@@ -294,7 +294,6 @@ func _show_results() -> void:
 		for asset in results:
 			if asset is Dictionary and GalleryApi.base_id(asset) == open_id:
 				details.update_asset(asset)
-				details.refresh_download()
 	gallery.reset_search_scroll()
 
 

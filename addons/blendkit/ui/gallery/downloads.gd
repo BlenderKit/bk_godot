@@ -16,7 +16,6 @@ signal web_asset_found(task_id: String)
 ## A gallery download looked up its asset again, see _refresh().
 signal asset_refreshed(asset: Dictionary)
 
-const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
@@ -253,10 +252,7 @@ func _post_download(asset: Dictionary, file_type: String) -> Array:
 
 ## Search for the asset by its id, like the project view's lookups.
 func _post_lookup(asset: Dictionary) -> Array:
-	var asset_type := str(asset.get("assetType", ""))
-	var url := GalleryApi.build_lookup_url(_plugin.SERVER, str(asset.get("id", "")), _plugin.get_addon_version())
-	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
-	return await GalleryApi.search(_parent, _plugin, url, asset_type, tempdir, 1)
+	return await GalleryApi.lookup(_parent, _plugin, str(asset.get("id", "")), str(asset.get("assetType", "")))
 
 
 ## Log where a finished download went, see ProjectAssets.finish_download().

@@ -98,6 +98,10 @@ func _ready() -> void:
 	plugin.auth.changed.connect(func():
 		if details.visible:
 			details.refresh_download())
+	# canDownload depends on the account.
+	plugin.auth.account_changed.connect(func():
+		if details.visible:
+			project_view.look_up_details(str(details.asset.get("id", "")), str(details.asset.get("assetType", ""))))
 	project_toggle.toggled.connect(_on_project_toggled)
 	browse_button.pressed.connect(func(): project_toggle.button_pressed = false)
 	_download_badge = Label.new()
@@ -186,7 +190,7 @@ func _on_connection_changed() -> void:
 	_was_connected = connected
 	if connected:
 		search.on_connected()
-		project_view.next_lookup()
+		project_view.on_connected()
 		return
 	# The Client cancels the app's tasks when it unsubscribes.
 	search.on_disconnected()

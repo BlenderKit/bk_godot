@@ -3,6 +3,7 @@ extends RefCounted
 ## Gallery helpers: search query building, file selection and download paths
 ## (pure, unit tested), plus JSON POSTs to the Blendkit Client.
 
+const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const FileOps = preload("res://addons/blendkit/file_ops.gd")
 
 const MAX_RESULT_WINDOW := 10000
@@ -497,6 +498,13 @@ static func search(parent: Node, plugin: EditorPlugin, url_query: String, asset_
 		"scene_uuid": project_scene_uuid(),
 	})
 	return task_id_from(await post_json(parent, plugin.connection.client_url("assets/search"), body))
+
+
+## Search for one asset by its version id, see lookup_result().
+static func lookup(parent: Node, plugin: EditorPlugin, asset_id: String, asset_type: String) -> Array:
+	var url := build_lookup_url(plugin.SERVER, asset_id, plugin.get_addon_version())
+	var tempdir := search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
+	return await search(parent, plugin, url, asset_type, tempdir, 1)
 
 
 static func download(parent: Node, plugin: EditorPlugin, asset: Dictionary, file_type: String, abs_download_path: String) -> Array:
