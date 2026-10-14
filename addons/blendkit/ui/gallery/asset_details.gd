@@ -522,7 +522,7 @@ func _refresh_download() -> void:
 	elif status == "cancelled" and same_file:
 		note_label.text = "Download cancelled."
 	elif _gltf_unavailable():
-		note_label.text = "No glTF for this asset, using %s." % GalleryApi.file_type_label(selected_file_type())
+		note_label.text = "No glTF for this asset, using the %s file." % GalleryApi.file_type_label(selected_file_type())
 
 
 ## A downloaded file the FileSystem dock will list but doesn't yet, until

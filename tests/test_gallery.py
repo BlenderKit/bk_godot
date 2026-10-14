@@ -82,7 +82,7 @@ func _initialize():
     var material := files(["blend", "gltf", "resolution_1K"])
     material.assetType = "material"
     check(Api.pick_file_type(material, "gltf_godot", "resolution_1K") == "resolution_1K", "gltf only for models")
-    check(Array(Api.downloadable_file_types(all)) == ["gltf_godot", "gltf", "blend", "resolution_4K", "resolution_2K", "resolution_1K", "resolution_0_5K"], str(Api.downloadable_file_types(all)))
+    check(Array(Api.downloadable_file_types(all)) == ["blend", "resolution_4K", "resolution_2K", "resolution_1K", "resolution_0_5K", "gltf_godot", "gltf"], str(Api.downloadable_file_types(all)))
 
     var uuid := Api.new_uuid4()
     var regex := RegEx.create_from_string("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -510,8 +510,8 @@ func check():
     print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     print("NOTE=%s" % details.note_label.text)
     print("TOOLTIP=%s" % details.action_button.tooltip_text)
-    details.file_option.select(1)
-    details.file_option.item_selected.emit(1)
+    details.file_option.select(0)
+    details.file_option.item_selected.emit(0)
     print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     # Looked up, the other files can be downloaded too.
     var full := asset.duplicate()
@@ -520,8 +520,8 @@ func check():
     details.update_asset(full)
     print("ITEMS=%s" % [items(details)])
     print("SELECTED=%s" % details.selected_file_type())
-    details.file_option.select(0)
-    details.file_option.item_selected.emit(0)
+    details.file_option.select(3)
+    details.file_option.item_selected.emit(3)
     print("SELECTED=%s BUTTON=%s" % [details.selected_file_type(), details.action_button.text])
     # From the search, the files are in the folder it's downloaded to; none yet.
     details.show_asset(full, {})
@@ -542,7 +542,7 @@ def test_gallery_details_files(godot_executable, tmp_path):
     output = stdout + stderr
     lines = [line for line in stdout.splitlines() if "=" in line]
     # Only the Client's files: no extracted texture, no user file.
-    assert 'ITEMS=[["gltf_godot", true], ["resolution_2K", true]]' in lines, output
+    assert 'ITEMS=[["resolution_2K", true], ["gltf_godot", true]]' in lines, output
     assert "SELECTED=gltf_godot BUTTON=Show File" in lines, output
     assert "NOTE=tangerines_gltf_godot_b9d80621-bb1f-4335-894a-18e41438be00.glb" in lines, output
     assert (
@@ -550,8 +550,8 @@ def test_gallery_details_files(godot_executable, tmp_path):
     ) in lines, output
     assert "SELECTED=resolution_2K BUTTON=Show File" in lines, output
     assert (
-        'ITEMS=[["gltf_godot", true], ["gltf", false], ["blend", false], '
-        '["resolution_2K", true], ["resolution_1K", false]]'
+        'ITEMS=[["blend", false], ["resolution_2K", true], ["resolution_1K", false], '
+        '["gltf_godot", true], ["gltf", false]]'
     ) in lines, output
     # the lookup keeps the selection
     assert "SELECTED=resolution_2K" in lines, output

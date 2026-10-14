@@ -63,15 +63,15 @@ const RESOLUTION_PIXELS := {
 
 ## Downloadable file types in display order: [fileType, label].
 const FILE_TYPES := [
-	["gltf_godot", "glTF for Godot (.glb)"],
-	["gltf", "glTF (.glb)"],
-	["blend", "Blender original (.blend)"],
-	["resolution_8K", "Blender 8K textures (.blend)"],
-	["resolution_4K", "Blender 4K textures (.blend)"],
-	["resolution_2K", "Blender 2K textures (.blend)"],
-	["resolution_1K", "Blender 1K textures (.blend)"],
-	["resolution_0_5K", "Blender 0.5K textures (.blend)"],
-	["zip_file", "Archive (.zip)"],
+	["blend", "Original"],
+	["zip_file", "Archive"],
+	["resolution_8K", "8K"],
+	["resolution_4K", "4K"],
+	["resolution_2K", "2K"],
+	["resolution_1K", "1K"],
+	["resolution_0_5K", "0.5K"],
+	["gltf_godot", "glTF for Godot"],
+	["gltf", "glTF"],
 ]
 
 ## Decoded thumbnails kept, in bytes: about 2 pages of search results with
