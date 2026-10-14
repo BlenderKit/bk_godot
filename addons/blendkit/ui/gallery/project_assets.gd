@@ -8,6 +8,7 @@ extends RefCounted
 ## up folders by the asset id in their name, and it can be deleted at any time.
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+const FileOps = preload("res://addons/blendkit/file_ops.gd")
 
 const INDEX_FILE := "blendkit_assets.cfg"
 const INDEX_VERSION := 1
@@ -331,17 +332,8 @@ static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base
 		return target if FileAccess.file_exists(target) else ""
 	DirAccess.make_dir_recursive_absolute(folder)
 	_keep_resource_uid(path, target)
-	var backup := ""
-	if FileAccess.file_exists(target):
-		backup = target + ".bk_old"
-		if DirAccess.rename_absolute(target, backup) != OK:
-			return ""
-	if DirAccess.rename_absolute(path, target) != OK:
-		if backup:
-			DirAccess.rename_absolute(backup, target)
+	if not FileOps.replace_file(path, target):
 		return ""
-	if backup:
-		DirAccess.remove_absolute(backup)
 	if older:
 		DirAccess.remove_absolute(older)
 		DirAccess.remove_absolute(older + ".import")

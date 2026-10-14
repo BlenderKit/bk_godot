@@ -22,6 +22,7 @@ const ClientTasks = preload("res://addons/blendkit/ui/gallery/client_tasks.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
 const FileReveal = preload("res://addons/blendkit/ui/file_reveal.gd")
 const Conversions = preload("res://addons/blendkit/conversions.gd")
+const FileOps = preload("res://addons/blendkit/file_ops.gd")
 
 ## How long before a Send to Godot task first shows its asset folder may have
 ## changed, and how long after to keep looking for it, in seconds.
@@ -279,7 +280,7 @@ func _convert(staged: String, key: String, plan: Dictionary) -> String:
 	# The Client would take one left by an interrupted run as the result.
 	DirAccess.remove_absolute(output)
 	for dir in plan.dirs:
-		GalleryApi.remove_dir(dir)
+		FileOps.remove_dir(dir)
 	var state := {"task": {}}
 	_conversions[key] = state
 	var on_task := func(task: Dictionary) -> void:
@@ -301,7 +302,7 @@ func _convert(staged: String, key: String, plan: Dictionary) -> String:
 		elif state.task.status != "finished":
 			error = str(state.task.get("message", state.task.status))
 			_plugin.log_debug("Blender output:\n%s" % state.task.get("message_detailed", ""))
-		elif replaces and not Conversions.replace_file(output, staged):
+		elif replaces and not FileOps.replace_file(output, staged):
 			error = "could not replace it with the converted file"
 	_conversions.erase(key)
 	var file := staged.get_file()
@@ -313,7 +314,7 @@ func _convert(staged: String, key: String, plan: Dictionary) -> String:
 		return plan.file
 	DirAccess.remove_absolute(output)
 	for dir in plan.dirs:
-		GalleryApi.remove_dir(dir)
+		FileOps.remove_dir(dir)
 	_plugin.log_warning("Could not convert %s for Godot, which may not import it: %s" % [file, error])
 	return staged
 

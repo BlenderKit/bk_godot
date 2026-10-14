@@ -139,15 +139,3 @@ static func blender_path() -> String:
 		_detecting = false
 	return _detected
 
-
-## Replace [param target] with [param source], keeping [param target] if
-## that fails. Returns whether it was replaced.
-static func replace_file(source: String, target: String) -> bool:
-	var backup := target + ".bk_old"
-	if DirAccess.rename_absolute(target, backup) != OK:
-		return false
-	if DirAccess.rename_absolute(source, target) != OK:
-		DirAccess.rename_absolute(backup, target)
-		return false
-	DirAccess.remove_absolute(backup)
-	return true

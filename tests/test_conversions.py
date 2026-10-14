@@ -44,6 +44,7 @@ CONVERSIONS_CHECKS = (
     r"""extends SceneTree
 
 const Conversions = preload("res://addons/blendkit/conversions.gd")
+const FileOps = preload("res://addons/blendkit/file_ops.gd")
 
 var failures := 0
 
@@ -108,11 +109,11 @@ func _initialize():
     var source := dir.path_join("target.godot.exr")
     FileAccess.open(target, FileAccess.WRITE).store_string("original")
     FileAccess.open(source, FileAccess.WRITE).store_string("converted")
-    check(Conversions.replace_file(source, target), "replaced")
+    check(FileOps.replace_file(source, target), "replaced")
     check(FileAccess.get_file_as_string(target) == "converted", "converted content")
     check(not FileAccess.file_exists(source) and not FileAccess.file_exists(target + ".bk_old"), "no leftovers")
     # Without a converted file, the original stays.
-    check(not Conversions.replace_file(source, target), "nothing to replace with")
+    check(not FileOps.replace_file(source, target), "nothing to replace with")
     check(FileAccess.get_file_as_string(target) == "converted", "kept")
     check(not FileAccess.file_exists(target + ".bk_old"), "backup restored")
 
