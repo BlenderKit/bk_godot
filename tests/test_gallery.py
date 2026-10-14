@@ -743,6 +743,9 @@ func check():
     await show_and_watch(details, {"id": "y", "assetBaseId": "other", "name": "Short",
         "assetType": "model", "description": "Short.", "tags": ["a", "b"]})
     print("FITS=%s" % details.description.fit_content)
+    # Tags that aren't a list show none.
+    details.show_asset({"id": "z", "assetBaseId": "third", "name": "No tags", "assetType": "model", "tags": null}, {})
+    print("NO_TAGS=%s" % details.tags_row.visible)
     details.hide()
 """
 
@@ -756,6 +759,7 @@ def test_gallery_details_layout(godot_executable, tmp_path):
     assert lines.count("STEADY=true") == 2, output
     assert "CAPPED=true" in lines, output
     assert "FITS=true" in lines, output
+    assert "NO_TAGS=false" in lines, output
     assert "SCRIPT ERROR" not in stderr, output
 
 

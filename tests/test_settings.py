@@ -62,3 +62,26 @@ def test_settings_persist(godot_executable, tmp_path):
     assert "Searching for running Client" not in stdout, output
     assert "PICKED=true res://picked" in stdout, output
     assert "SCRIPT ERROR" not in stderr, output
+
+
+MIGRATION_PROBE = r"""
+func check():
+    var bk = find_gallery().plugin
+    print("MIGRATED=%s|%s" % [bk.model_format, bk.resolution])
+"""
+
+
+def test_settings_migrate_empty(godot_executable, tmp_path):
+    """An empty old setting keeps the default, except Auto resolution."""
+    project = make_probe_project(
+        tmp_path / "project",
+        MIGRATION_PROBE,
+        settings='[blendkit]\n\nmodel_format=""\nresolution=""\n',
+    )
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    assert "MIGRATED=blend|" in stdout.splitlines(), output
+    config = (project / "project.godot").read_text()
+    # Both are defaults now, kept out of the file like the old keys.
+    assert "model_format" not in config and "resolution" not in config, config
+    assert "SCRIPT ERROR" not in stderr, output

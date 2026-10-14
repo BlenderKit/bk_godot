@@ -110,10 +110,10 @@ func _ready() -> void:
 	tags_text.add_theme_stylebox_override("focus", tags_box)
 	# the key's color is overridden, the dialog has the plain label one
 	tags_text.add_theme_color_override("default_color", get_theme_color("font_color", "Label"))
-	tags_text.meta_clicked.connect(func(meta): tag_selected.emit(asset.get("tags", [])[int(meta)]))
+	tags_text.meta_clicked.connect(func(meta): tag_selected.emit(_tags()[int(meta)]))
 	# a tooltip per tag, [hint] would underline them
 	tags_text.meta_hover_started.connect(func(meta):
-		tags_text.tooltip_text = "Search for \"%s\"" % asset.get("tags", [])[int(meta)]
+		tags_text.tooltip_text = "Search for \"%s\"" % _tags()[int(meta)]
 		_fill_tags(int(meta)))
 	tags_text.meta_hover_ended.connect(func(_meta):
 		tags_text.tooltip_text = ""
@@ -353,7 +353,7 @@ func _fill_params() -> void:
 ## The tags as links separated by commas, the one at [param hovered]
 ## highlighted.
 func _fill_tags(hovered := -1) -> void:
-	var tags: Array = asset.get("tags", [])
+	var tags := _tags()
 	tags_row.visible = not tags.is_empty()
 	var hover := get_theme_color("accent_color", "Editor").to_html()
 	var links := PackedStringArray()
@@ -362,6 +362,11 @@ func _fill_tags(hovered := -1) -> void:
 		var link := "[url=%d]%s[/url]" % [i, tag]
 		links.append("[color=#%s]%s[/color]" % [hover, link] if i == hovered else link)
 	tags_text.text = ", ".join(links)
+
+
+func _tags() -> Array:
+	var tags = asset.get("tags")
+	return tags if tags is Array else []
 
 
 ## Make [param label] clickable, highlighted on hover, calling [param on_click].

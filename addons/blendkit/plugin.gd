@@ -287,7 +287,11 @@ func init_settings() -> void:
 	for old in OLD_SETTINGS:
 		if ProjectSettings.has_setting(old):
 			var value = ProjectSettings.get_setting(old)
-			ProjectSettings.set_setting(OLD_SETTINGS[old], RESOLUTION_AUTO if str(value).is_empty() else value)
+			var key: String = OLD_SETTINGS[old]
+			if key == SETTING_RESOLUTION and str(value).is_empty():
+				value = RESOLUTION_AUTO
+			if not str(value).is_empty():
+				ProjectSettings.set_setting(key, value)
 			ProjectSettings.set_setting(old, null)
 			ProjectSettings.save()
 
