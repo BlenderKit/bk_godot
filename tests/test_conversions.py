@@ -284,6 +284,15 @@ func asset(n: int) -> Dictionary:
         "name": "Rock Road %d" % n, "assetType": "material", "canDownload": true,
         "files": [{"fileType": "resolution_2K", "downloadUrl": "x"}]}
 
+## The files in the folder at [param path], hidden ones too: Windows lists
+## dot files that other systems hide.
+func files_at(path: String) -> String:
+    var dir := DirAccess.open(path)
+    if dir == null:
+        return ""
+    dir.include_hidden = true
+    return ",".join(dir.get_files())
+
 func write(path: String, text: String) -> void:
     DirAccess.make_dir_recursive_absolute(path.get_base_dir())
     FileAccess.open(path, FileAccess.WRITE).store_string(text)
@@ -303,8 +312,8 @@ func download(gallery, n: int, report: String) -> void:
     await wait_until(func(): return gallery.downloads.get_download(a.assetBaseId).status == "finished", 5)
     var file: String = gallery.downloads.get_download(a.assetBaseId).file_path
     var folder := file.get_base_dir()
-    print("CASE%d=%s FILES=%s DIRS=%s TEXTURES=%s LEFT=%s" % [n, file.get_file(), ",".join(DirAccess.get_files_at(folder)),
-        ",".join(DirAccess.get_directories_at(folder)), ",".join(DirAccess.get_files_at(folder.path_join("textures_2K"))),
+    print("CASE%d=%s FILES=%s DIRS=%s TEXTURES=%s LEFT=%s" % [n, file.get_file(), files_at(folder),
+        ",".join(DirAccess.get_directories_at(folder)), files_at(folder.path_join("textures_2K")),
         DirAccess.dir_exists_absolute(path.get_base_dir())])
     var import := ConfigFile.new()
     if import.load(folder.path_join("textures_2K/albedo.jpg.import")) == OK:
@@ -340,10 +349,10 @@ def test_material_conversion(godot_executable, tmp_path):
     output = stdout + stderr
     lines = stdout.splitlines()
     assert "PLAN=material_to_godot.py" in lines, output
-    assert "CASE1=rock-road_2K.tres FILES=rock-road_2K.tres DIRS=textures_2K TEXTURES=albedo.jpg,albedo.jpg.import LEFT=false" in lines, output
+    assert "CASE1=rock-road_2K.tres FILES=.blendkit,rock-road_2K.tres DIRS=textures_2K TEXTURES=albedo.jpg,albedo.jpg.import LEFT=false" in lines, output
     # The normal map path of the roughness limiter is made a project path.
     assert "CASE1 SRC_NORMAL=res://bk_assets/materials/rock-road/textures_2K/normal.jpg" in lines, output
-    assert "CASE2=rock-road_2K.blend FILES=rock-road_2K.blend DIRS= TEXTURES= LEFT=false" in lines, output
+    assert "CASE2=rock-road_2K.blend FILES=.blendkit,rock-road_2K.blend DIRS= TEXTURES= LEFT=false" in lines, output
     assert "Could not convert rock-road_2K_6c02715d-2e81-4a9a-ae57-a961f7d3cc37.blend for Godot" in stderr, output
     assert "SCRIPT ERROR" not in stderr, output
 
