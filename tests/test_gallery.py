@@ -1087,6 +1087,43 @@ def test_gallery_lookup_retry(godot_executable, tmp_path):
     assert "SCRIPT ERROR" not in stderr, output
 
 
+THUMBNAILS_PROBE = r"""
+const ItemScene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
+
+func check():
+    var view = find_gallery().project_view
+    var png := OS.get_user_data_dir().path_join("bk_thumbnail_test.png")
+    Image.create(4, 4, false, Image.FORMAT_RGB8).save_png(png)
+    var box := Control.new()
+    add_child(box)
+    var items := []
+    for i in 24:
+        var item = ItemScene.instantiate()
+        box.add_child(item)
+        items.append(item)
+        view._update_item(item, {"asset": {"name": "A%d" % i, "assetType": "model"}, "thumbnail": png}, {})
+    view._start_decoding()
+    view._start_decoding() # one decoder at a time
+    var decoded := func() -> int:
+        return items.filter(func(item): return item._thumbnails.has("small")).size()
+    print("FIRST_FRAME=%d" % decoded.call())
+    await wait_until(func(): return not view._decoding, 5)
+    print("ALL=%d" % decoded.call())
+    box.free()
+"""
+
+
+def test_project_thumbnails_per_frame(godot_executable, tmp_path):
+    """The project view decodes a few thumbnails per frame."""
+    project = make_probe_project(tmp_path / "project", THUMBNAILS_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    assert "FIRST_FRAME=8" in lines, output
+    assert "ALL=24" in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
 POLYGONS_PROBE = r"""
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 

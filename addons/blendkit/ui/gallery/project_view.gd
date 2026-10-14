@@ -44,6 +44,7 @@ var _dirty := true
 var _save_queued := false
 ## Tile -> thumbnail path still to decode, see _decode_thumbnails().
 var _thumbnail_queue: Dictionary = {}
+var _decoding := false
 ## The Client request, replaced in the tests: post_lookup(id, asset_type)
 ## returns [task_id, error].
 var post_lookup: Callable
@@ -141,6 +142,7 @@ func refresh() -> void:
 	entries = current.values()
 	if added:
 		gallery.update_columns()
+	_start_decoding()
 	filter()
 	for entry in entries:
 		if not entry.has("download") and not entry.known:
@@ -149,7 +151,8 @@ func refresh() -> void:
 
 
 ## Show the entry's asset and thumbnail on its tile where they differ from
-## the [param previous] entry, or {} for a new tile.
+## the [param previous] entry, or {} for a new tile. The thumbnail decodes
+## after _start_decoding().
 func _update_item(item: Control, entry: Dictionary, previous: Dictionary) -> void:
 	if previous.is_empty() or previous.asset != entry.asset:
 		item.setup(entry.asset)
@@ -158,23 +161,30 @@ func _update_item(item: Control, entry: Dictionary, previous: Dictionary) -> voi
 			_thumbnail_queue.erase(item)
 			item.set_thumbnail_failed()
 		else:
-			var decoding := not _thumbnail_queue.is_empty()
 			_thumbnail_queue[item] = entry.thumbnail
-			if not decoding:
-				_decode_thumbnails()
+
+
+func _start_decoding() -> void:
+	if not _decoding and not _thumbnail_queue.is_empty():
+		_decode_thumbnails()
 
 
 ## Decode the queued thumbnails a few per frame, in tile order.
 func _decode_thumbnails() -> void:
+	_decoding = true
 	while not _thumbnail_queue.is_empty():
 		for item in _thumbnail_queue.keys().slice(0, THUMBNAILS_PER_FRAME):
-			var texture := GalleryApi.cached_texture(_thumbnail_queue[item])
+			var path: String = _thumbnail_queue[item]
 			_thumbnail_queue.erase(item)
+			if not is_instance_valid(item):
+				continue
+			var texture := GalleryApi.cached_texture(path)
 			if texture:
 				item.set_thumbnail(texture)
 			else:
 				item.set_thumbnail_failed()
 		await get_tree().process_frame
+	_decoding = false
 
 
 ## Show the indexed asset on the tiles of its folder and of a Send to Godot
@@ -192,6 +202,7 @@ func _show_indexed(id: String) -> void:
 		entry.known = true
 		entry.thumbnail = thumbnail
 		_update_item(entry.item, entry, previous)
+	_start_decoding()
 	filter()
 
 
