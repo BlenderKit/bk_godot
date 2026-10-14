@@ -13,14 +13,16 @@ static func replace_file(source: String, target: String) -> bool:
 	return true
 
 
-## Delete the folder at [param path] with everything in it. Returns whether
-## it's gone.
+## Delete the folder at [param path] with everything in it, hidden files
+## like the asset manifest too. Returns whether it's gone.
 static func remove_dir(path: String) -> bool:
-	if not DirAccess.dir_exists_absolute(path):
-		return true
-	for dir in DirAccess.get_directories_at(path):
+	var folder := DirAccess.open(path)
+	if folder == null:
+		return not DirAccess.dir_exists_absolute(path)
+	folder.include_hidden = true
+	for dir in folder.get_directories():
 		remove_dir(path.path_join(dir))
-	for file in DirAccess.get_files_at(path):
+	for file in folder.get_files():
 		DirAccess.remove_absolute(path.path_join(file))
 	return DirAccess.remove_absolute(path) == OK
 

@@ -116,6 +116,14 @@ func _initialize():
     check(not FileOps.replace_file(source, target), "nothing to replace with")
     check(FileAccess.get_file_as_string(target) == "converted", "kept")
     check(not FileAccess.file_exists(target + ".bk_old"), "backup restored")
+    # A folder goes with its hidden files.
+    var asset_dir := dir.path_join("removed/textures")
+    DirAccess.make_dir_recursive_absolute(asset_dir)
+    FileAccess.open(asset_dir.path_join(".blendkit"), FileAccess.WRITE).store_string("[asset]")
+    FileAccess.open(asset_dir.get_base_dir().path_join(".blendkit"), FileAccess.WRITE).store_string("[asset]")
+    check(FileOps.remove_dir(dir.path_join("removed")), "removed")
+    check(not DirAccess.dir_exists_absolute(dir.path_join("removed")), "no folder left")
+    check(FileOps.remove_dir(dir.path_join("removed")), "nothing to remove")
 
     # A Blender that wasn't found is looked for again, unless a search runs.
     Conversions._detected = ""
