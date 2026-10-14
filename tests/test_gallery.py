@@ -132,6 +132,7 @@ PROJECT_ASSETS_CHECKS = r"""extends SceneTree
 
 const Api = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const ProjectAssets = preload("res://addons/blendkit/ui/gallery/project_assets.gd")
+const FileOps = preload("res://addons/blendkit/file_ops.gd")
 
 const ID_A := "17982784-2390-4999-83d7-c72ea929f352"
 const ID_B := "2f7f0000-0000-4000-8000-000000000001"
@@ -335,6 +336,34 @@ func _initialize():
     check(ProjectAssets.finish_download(staged_rock.path_join("rock-road_2K_%s.tres" % file_id), "strip") == moved, "replaced in place")
     check(FileAccess.get_file_as_string(moved).get_slice("\n", 0) == header, "uid kept")
     check(FileAccess.get_file_as_string(moved).contains("roughness = 0.5"), "newer material")
+    # Without a conversion, a .blend doesn't replace the material made before,
+    # but does an older .blend.
+    var material := FileAccess.get_file_as_string(moved)
+    var staged_blend := staged_rock.path_join("rock-road_2K_%s.blend" % file_id)
+    write(staged_blend, "unconverted")
+    check(ProjectAssets.finish_download(staged_blend, "strip", "", false) == moved, "material kept")
+    check(FileAccess.get_file_as_string(moved) == material, "material unchanged")
+    check(not FileAccess.file_exists(rock.path_join("rock-road_2K.blend")), "no .blend")
+    check(FileAccess.get_file_as_string(rock.path_join("textures_2K/albedo.jpg")) == "new albedo", "textures kept")
+    check(not DirAccess.dir_exists_absolute(staged_rock), "unconverted download removed")
+    write(staged_rock.path_join("rock-road_4K_%s.blend" % file_id), "newer 4K blend")
+    check(ProjectAssets.finish_download(staged_rock.path_join("rock-road_4K_%s.blend" % file_id), "strip", "", false) == rock.path_join("rock-road_4K.blend"), "older .blend replaced")
+    check(FileAccess.get_file_as_string(rock.path_join("rock-road_4K.blend")) == "newer 4K blend", "newer .blend")
+    # If a texture can't move, nothing does: here a folder is in its way.
+    DirAccess.make_dir_recursive_absolute(rock.path_join("textures_2K/normal.jpg"))
+    write(staged_rock.path_join("rock-road_2K_%s.tres" % file_id), tres.replace("[resource]", "[resource]\nmetallic = 1.0"))
+    write(staged_rock.path_join("textures_2K/albedo.jpg"), "newest albedo")
+    write(staged_rock.path_join("textures_2K/normal.jpg"), "normal")
+    write(staged_rock.path_join("textures_2K/new.jpg"), "new")
+    check(ProjectAssets.finish_download(staged_rock.path_join("rock-road_2K_%s.tres" % file_id), "strip") == "", "move failed")
+    check(FileAccess.get_file_as_string(moved) == material, "material restored")
+    check(FileAccess.get_file_as_string(rock.path_join("textures_2K/albedo.jpg")) == "new albedo", "texture restored")
+    check(not FileAccess.file_exists(rock.path_join("textures_2K/new.jpg")), "new texture moved back")
+    check(not FileAccess.file_exists(moved + ".bk_old") and not FileAccess.file_exists(rock.path_join("textures_2K/albedo.jpg.bk_old")), "no backups left")
+    check(FileAccess.get_file_as_string(staged_rock.path_join("textures_2K/albedo.jpg")) == "newest albedo", "download left in staging")
+    check(FileAccess.file_exists(staged_rock.path_join("rock-road_2K_%s.tres" % file_id)), "material left in staging")
+    DirAccess.remove_absolute(rock.path_join("textures_2K/normal.jpg"))
+    FileOps.remove_dir(staged_rock)
 
     # Leftovers are cleared unless kept or still written to.
     var stale := OS.get_environment("BK_STALE_DIR")

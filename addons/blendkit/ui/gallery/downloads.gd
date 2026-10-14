@@ -150,6 +150,7 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 		"finished":
 			var staged := GalleryApi.task_file_path(task)
 			var plan := Conversions.plan(staged)
+			var converted := true
 			if not plan.is_empty():
 				# Not reported anymore, see drop_vanished().
 				dl.reported = false
@@ -157,12 +158,14 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 				dl.progress = 100
 				dl.message = Conversions.MESSAGE
 				download_changed.emit(base_id)
-				staged = await _convert(staged, "convert:" + base_id, plan)
-			dl.file_path = ProjectAssets.finish_download(staged, _plugin.id_names, base_id)
+				var result: Array = await _convert(staged, "convert:" + base_id, plan)
+				staged = result[0]
+				converted = result[1]
+			dl.file_path = ProjectAssets.finish_download(staged, _plugin.id_names, base_id, converted)
 			if dl.file_path.is_empty():
 				_end(base_id, "error", "Could not move the download into %s" % _plugin.download_dir)
 				return
-			_plugin.log_info("Downloaded %s" % ProjectSettings.localize_path(dl.file_path))
+			_log_finished(dl.file_path, converted)
 			dl.status = "finished"
 			dl.progress = 100
 			dl.message = ""
@@ -256,6 +259,16 @@ func _post_lookup(asset: Dictionary) -> Array:
 	return await GalleryApi.search(_parent, _plugin, url, asset_type, tempdir, 1)
 
 
+## Log where a finished download went, see ProjectAssets.finish_download().
+func _log_finished(path: String, converted: bool) -> void:
+	var local := ProjectSettings.localize_path(path)
+	# What moved unconverted would still need converting, unlike a kept file.
+	if not converted and Conversions.plan(path).is_empty():
+		_plugin.log_warning("Kept the existing %s, the new download couldn't be converted for Godot" % local)
+	else:
+		_plugin.log_info("Downloaded %s" % local)
+
+
 ## Let the editor import a finished download in the project. Looking for
 ## changed files is much quicker than a full rescan.
 static func _scan_download(file_path: String) -> void:
@@ -271,10 +284,10 @@ static func _scan_download(file_path: String) -> void:
 # MARK: conversions
 
 ## Make a finished download in staging of use in Godot before it moves into
-## the project, as [param plan] from Conversions.plan() says. Returns the
-## file to move: the converted one, or failing, [param staged] as it is. The
-## reports of its task go to [param key].
-func _convert(staged: String, key: String, plan: Dictionary) -> String:
+## the project, as [param plan] from Conversions.plan() says. Returns
+## [file to move, converted]: the converted file, or failing, [param staged]
+## as it is. The reports of its task go to [param key].
+func _convert(staged: String, key: String, plan: Dictionary) -> Array:
 	var output: String = plan.params.output_path
 	var replaces: bool = plan.file == staged
 	# The Client would take one left by an interrupted run as the result.
@@ -311,12 +324,12 @@ func _convert(staged: String, key: String, plan: Dictionary) -> String:
 		if not replaces:
 			# what's left of no use in Godot
 			DirAccess.remove_absolute(staged)
-		return plan.file
+		return [plan.file, true]
 	DirAccess.remove_absolute(output)
 	for dir in plan.dirs:
 		FileOps.remove_dir(dir)
 	_plugin.log_warning("Could not convert %s for Godot, which may not import it: %s" % [file, error])
-	return staged
+	return [staged, false]
 
 
 ## Run the conversion with Blender, see Conversions.blender_path().
@@ -399,6 +412,7 @@ func _finish_web_download(task: Dictionary) -> void:
 	var task_id: String = task.get("task_id", "")
 	var staged := GalleryApi.task_file_path(task)
 	var plan := Conversions.plan(staged)
+	var converted := true
 	if not plan.is_empty():
 		var web: Dictionary = web_downloads.get(task_id, {})
 		if web:
@@ -406,15 +420,17 @@ func _finish_web_download(task: Dictionary) -> void:
 			web.progress = 100
 			web.message = Conversions.MESSAGE
 			download_changed.emit(task_id)
-		staged = await _convert(staged, "convert:" + task_id, plan)
+		var result: Array = await _convert(staged, "convert:" + task_id, plan)
+		staged = result[0]
+		converted = result[1]
 	_drop_web_download(task_id)
 	var id := ProjectAssets.folder_asset_id(staged.replace("\\", "/").get_base_dir().get_file())
 	var base_id := GalleryApi.base_id(index.get_asset(id)) if index and id else ""
-	var path := ProjectAssets.finish_download(staged, _plugin.id_names, base_id)
+	var path := ProjectAssets.finish_download(staged, _plugin.id_names, base_id, converted)
 	if path.is_empty():
 		_plugin.log_warning("Could not move %s into %s" % [staged, _plugin.download_dir])
 		return
-	_plugin.log_info("Downloaded %s" % ProjectSettings.localize_path(path))
+	_log_finished(path, converted)
 	_scan_download(path)
 	web_download_finished.emit(path)
 

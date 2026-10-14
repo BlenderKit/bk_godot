@@ -15,7 +15,8 @@
 - HDRs import in Godot: Blender re-saves their lossy DWAA-compressed EXRs,
   which Godot can't read, as lossless ZIP-compressed EXRs before they move
   into the project. It uses the Blender set up for Blender Import, or one
-  found on this computer. Without Blender, the original file is kept.
+  found on this computer. Without Blender, the original file is kept, unless
+  a converted one was downloaded before, which stays.
 - Materials download as Godot materials: Blender turns the material `.blend`,
   which Godot imports as an empty scene, into a `StandardMaterial3D` `.tres`
   with its textures in `textures_<resolution>/` next to it, and the `.blend`
@@ -23,7 +24,8 @@
   triplanar at that size, so it fits any mesh, e.g. a CSG box. Turning
   triplanar off uses the mesh's UVs, and the height map is there to turn on,
   as Godot has none with triplanar mapping. Procedural materials
-  become a flat color. Without Blender, the `.blend` is kept. The textures
+  become a flat color. Without Blender, the `.blend` is kept, unless the
+  material was converted before, which stays with its textures. The textures
   come with their 3D import settings, so Godot imports them once, with the
   roughness map limited by the normal map.
 

@@ -9,6 +9,7 @@ extends RefCounted
 
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const FileOps = preload("res://addons/blendkit/file_ops.gd")
+const Conversions = preload("res://addons/blendkit/conversions.gd")
 
 const INDEX_FILE := "blendkit_assets.cfg"
 const INDEX_VERSION := 1
@@ -300,14 +301,17 @@ static func downloaded_files(folder: String) -> Dictionary:
 ## Move a finished download from the staging folder into the download
 ## directory, replacing the file of its type there, whose .import and .uid
 ## stay so references keep working. An older file in another format, like a
-## material .blend before it was converted, is deleted instead. The older
-## file is restored if the move fails. Folders next to the download, like
-## the textures of a converted material, move along, replacing files in the
-## folders of the same name. The folder and file are named as [param
-## id_names] says, see destination_folder() and renamed_file(), and the
-## folder's manifest lists the file. Returns the new path; "" if there's no
-## file to move or the move failed.
-static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base_id: String = "") -> String:
+## material .blend before it was converted, is deleted instead. Folders next
+## to the download, like the textures of a converted material, move along,
+## replacing files in the folders of the same name. If anything fails to
+## move, what moved goes back and the replaced files are restored. A
+## download that wasn't [param converted] as it should have been doesn't
+## replace a file of its type Godot uses as it is, which stays instead. The
+## folder and file are named as [param id_names] says, see
+## destination_folder() and renamed_file(), and the folder's manifest lists
+## the file. Returns the new or kept path; "" if there's no file to move or
+## the move failed.
+static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base_id: String = "", converted: bool = true) -> String:
 	path = path.replace("\\", "/")
 	var staged_folder := path.get_base_dir()
 	var client_folder := staged_folder.get_file()
@@ -322,23 +326,34 @@ static func finish_download(path: String, id_names: String = ID_NAMES_FULL, base
 		var slug := m.get_string(1) if m else client_folder.get_slice("_", 0)
 		folder = destination_folder(folder.get_base_dir(), client_folder, slug, id, base_id, id_names)
 	var target := folder.path_join(renamed_file(file_name, id_names) if id else file_name)
-	# A new file of a type downloaded before takes the older one's name.
 	var older: String = downloaded_files(folder).get(file_type, "") if file_type else ""
+	if not converted and older and Conversions.plan(older).is_empty():
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+			DirAccess.remove_absolute(staged_folder) # only if empty
+		return older
+	# A new file of a type downloaded before takes the older one's name.
 	if older.get_extension() == target.get_extension():
 		target = older
 		older = ""
 	# Moved already: a task can be handled twice.
 	if not FileAccess.file_exists(path):
 		return target if FileAccess.file_exists(target) else ""
-	DirAccess.make_dir_recursive_absolute(folder)
 	_keep_resource_uid(path, target)
-	if not FileOps.replace_file(path, target):
+	var moves := FileOps.Moves.new()
+	var moved := moves.make_dir(folder) and moves.move(path, target)
+	var dirs := DirAccess.get_directories_at(staged_folder)
+	for dir in dirs:
+		moved = moved and _move_dir(staged_folder.path_join(dir), folder.path_join(dir), moves)
+	if not moved:
+		moves.rollback()
 		return ""
+	moves.commit()
 	if older:
 		DirAccess.remove_absolute(older)
 		DirAccess.remove_absolute(older + ".import")
-	for dir in DirAccess.get_directories_at(staged_folder):
-		_move_dir(staged_folder.path_join(dir), folder.path_join(dir))
+	for dir in dirs:
+		FileOps.remove_dir(staged_folder.path_join(dir)) # import settings not moved
 	DirAccess.remove_absolute(staged_folder) # only if empty
 	if id:
 		_write_manifest(folder, id, base_id, target.get_file(), file_type)
@@ -366,24 +381,26 @@ static func _keep_resource_uid(path: String, target: String) -> void:
 		file.store_string(header.trim_suffix("]") + " uid=\"%s\"]" % uid + text.substr(header.length()))
 
 
-## Move the files in folder [param from] into folder [param to], replacing
-## the files there, and keeping the others. Import settings there stay, with
-## their uids and changes, else they move with their paths made project
-## paths, see _localize_import_paths().
-static func _move_dir(from: String, to: String) -> void:
-	DirAccess.make_dir_recursive_absolute(to)
+## Move the files in folder [param from] into folder [param to] with
+## [param moves], replacing the files there, and keeping the others. Import
+## settings there stay, with their uids and changes, else they move with
+## their paths made project paths, see _localize_import_paths(). Returns
+## whether all moved.
+static func _move_dir(from: String, to: String, moves: FileOps.Moves) -> bool:
+	if not moves.make_dir(to):
+		return false
 	for dir in DirAccess.get_directories_at(from):
-		_move_dir(from.path_join(dir), to.path_join(dir))
+		if not _move_dir(from.path_join(dir), to.path_join(dir), moves):
+			return false
 	for file in DirAccess.get_files_at(from):
 		var target := to.path_join(file)
 		if file.get_extension() == "import":
 			if FileAccess.file_exists(target):
-				DirAccess.remove_absolute(from.path_join(file))
 				continue
 			_localize_import_paths(from.path_join(file), to)
-		DirAccess.remove_absolute(target)
-		DirAccess.rename_absolute(from.path_join(file), target)
-	DirAccess.remove_absolute(from) # only if empty
+		if not moves.move(from.path_join(file), target):
+			return false
+	return true
 
 
 ## Make the normal map path in the texture import settings at [param path]
