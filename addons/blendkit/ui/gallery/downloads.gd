@@ -179,6 +179,7 @@ func _apply_task(task: Dictionary, base_id: String) -> void:
 				message = STALE_FILE_MESSAGE
 			dl.status = status
 			dl.message = message
+			_log_ended(status, message)
 	download_changed.emit(base_id)
 
 
@@ -239,7 +240,16 @@ func _end(base_id: String, status: String, message: String = "") -> void:
 	dl.status = status
 	dl.message = message
 	_tasks.forget("download:" + base_id)
+	_log_ended(status, message)
 	download_changed.emit(base_id)
+
+
+## Log a download that ended without a file, once: a retried one goes on.
+func _log_ended(status: String, message: String) -> void:
+	if status == "error":
+		_plugin.log_warning("Download failed: %s" % message)
+	elif status == "cancelled":
+		_plugin.log_info("Download cancelled")
 
 
 func _post_download(asset: Dictionary, file_type: String) -> Array:
@@ -381,6 +391,9 @@ func handle_web_task(task: Dictionary) -> void:
 		_finish_web_download(task)
 		return
 	if not status in GalleryApi.ACTIVE_DOWNLOAD:
+		# A gallery download logged its end already, e.g. cancelled.
+		if not _is_gallery_task(task_id):
+			_log_ended(status, str(task.get("message", "")))
 		_drop_web_download(task_id)
 		return
 	if not web_downloads.has(task_id):
@@ -425,6 +438,13 @@ func _finish_web_download(task: Dictionary) -> void:
 	_log_finished(path, converted)
 	_scan_download(path)
 	web_download_finished.emit(path)
+
+
+func _is_gallery_task(task_id: String) -> bool:
+	for base_id in gallery_downloads:
+		if gallery_downloads[base_id].task_id == task_id:
+			return true
+	return false
 
 
 func _drop_web_download(task_id: String) -> void:

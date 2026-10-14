@@ -120,7 +120,6 @@ func _enter_tree() -> void:
 
 	connection = ClientConnection.new(self)
 	add_child(connection)
-	connection.tasks_reported.connect(_on_tasks_reported)
 
 	auth = Auth.new()
 	auth.plugin = self
@@ -179,12 +178,6 @@ func init_gallery() -> void:
 	gallery.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	gallery.hide()
 	EditorInterface.get_editor_main_screen().add_child(gallery)
-
-
-func _on_tasks_reported(tasks: Array) -> void:
-	for task in tasks:
-		if task.get("task_type") == "asset_download":
-			log_download_task(task)
 
 
 # MARK: settings
@@ -345,16 +338,6 @@ static func add_editor_setting(key: String, default: Variant, hint := PROPERTY_H
 static func save_project_setting(key: String, value: Variant) -> void:
 	ProjectSettings.set_setting(key, value)
 	ProjectSettings.save()
-
-
-# Failed downloads from Send to Godot on blendkit.com show only here. The
-# gallery logs finished ones, once it moved them into the project.
-func log_download_task(task: Dictionary) -> void:
-	match task.get("status"):
-		"error":
-			log_warning("Download failed: %s" % task.get("message", ""))
-		"cancelled":
-			log_info("Download cancelled")
 
 
 ## Read once, as it's sent with every Client request.

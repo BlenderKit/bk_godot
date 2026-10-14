@@ -1014,6 +1014,9 @@ def test_gallery_stale_file_retry(godot_executable, tmp_path):
         f'OTHER=error|{stale} POSTS=[["download", "old", "gltf_godot"], '
         '["lookup", "676596bd-d7fd-47db-a9b5-a4b0e35738e7"]]'
     ) in lines, output
+    # Logged once each time it gave up, not when the retry went on.
+    assert output.count("Download failed:") == 2, output
+    assert output.count(f"Download failed: {stale}") == 2, output
     assert "SCRIPT ERROR" not in stderr, output
 
 
