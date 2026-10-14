@@ -13,16 +13,13 @@
 # About
 
 Search the [Blendkit.com](https://blendkit.com) library right inside the
-Godot editor: open the **Blendkit** tab, find an asset, click **Download**, and it
-lands in your project, organized and ready to use.
+Godot editor: open the **Blendkit** workspace, find an asset, click
+**Download**, and it lands in your project, organized and ready to use.
 
 ![Blendkit in Godot](img/blendkit_in_godot.png)
 
-No web browser needed: search, details and downloads all happen in the editor.
-A browser only opens if you choose to log in.
-
-You can process the downloaded assets however you like, or build your own
-workflow / pipeline on top of them.
+Rely on Godot's native import, or build your own custom workflow on top of the
+downloaded files.
 
 See [User Guide](https://www.blendkit.com/blendkit-in-godot/) for an overview,
 screenshots, and getting started guide.
@@ -39,29 +36,24 @@ This project is Free and Open Source Software under GPLv2.
 ### alpha
 
 Fundamentals are done: building, testing, integration, distribution and
-installation work reliably. The new **Blendkit** editor tab brings decent
-usability and ergonomics. The remaining bottleneck is importing `.blend` and
-glTF files into Godot, an ongoing upstream effort.
+installation work reliably, and the **Blendkit** workspace offers decent
+usability and ergonomics. The remaining bottleneck is getting assets into
+Godot cleanly.
 
-More testing and polish is needed before reaching beta quality.
-
-As of now, please consider this software **experimental** 🧪
-
-It's a great time to test and [contribute](#contributing) so that the
-plugin is useful for you and everyone else.
-
-**IMPORTANT:** Godot Blender imports are relatively young and many `.blend` files can
-import incorrectly or not import at all with ample amount of warnings and errors
-printed to Godot Output. **Blender Import** in Blendkit **Settings** shows whether
-Godot can import `.blend` files and helps you find Blender.
-
-This plugin will get increasingly useful as native Blender -> Godot import
-improves.
+**IMPORTANT:** Godot's Blender import is relatively young, and many `.blend`
+files import incorrectly or not at all, with plenty of warnings and errors in
+the Godot Output. **Blender Import** in Blendkit **Settings** shows whether
+Godot can import `.blend` files and helps you find Blender. This plugin gets
+more useful as native Blender → Godot import improves.
 
 Set **Model Format** to **glTF (.glb)** to download glTF instead of the original
-Blender (`.blend`) file. Blendkit glTF auto-exports using Blender are by no
-means perfect, but they might work better for some assets and they don't
-require local Blender binary.
+`.blend` file. Blendkit's glTF files are exported automatically and far from
+perfect, but they work better for some assets and don't need Blender installed.
+
+More testing and polish are needed before reaching beta quality, so please
+consider this software **experimental** 🧪 for now. It's a great time to test
+and [contribute](#contributing) so that the plugin is useful for you and
+everyone else.
 
 
 ## Requirements
@@ -69,10 +61,14 @@ require local Blender binary.
 Blendkit Godot Plugin requires:
 
 - Godot Engine: **4** (**4.4+** tested in CI)
-- OS: **Linux**, **Windows**, **MacOS** (MacOS should work now but is untested,
+- OS: **Linux**, **Windows**, **macOS** (untested,
   [reports](https://github.com/BlenderKit/bk_godot/issues) welcome)
 - Architectures: **x86_64**, **arm64**
-- Web browser: only to log in, which is optional
+
+### Recommended
+
+- [Blender](https://www.blender.org/download/), the newer the better.
+  Without it, the plugin is severely limited.
 
 
 ## Installation
@@ -90,6 +86,9 @@ In **Godot 4.7** and newer, use the built-in **Asset Store** tab:
 2. Go to **Project → Project Settings... → Plugins** tab.
 3. Check **Enabled** for **Blendkit**.
 
+It takes some time for a new version to reach the store due to validation.
+You can always install the latest version manually from a ZIP archive.
+
 You can also browse the plugin on the
 [Godot Asset Store](https://store.godotengine.org/asset/blendkit/blendkit/) website.
 
@@ -105,7 +104,7 @@ Download the `blendkit-godot_vX.Y.Z.zip` archive from
 2. Open your project in **Godot Editor**, go to **Project → Project Settings... → Plugins** tab
 3. Check **Enabled** for **Blendkit**
 
-If installation succeeded, you should see a new **Blendkit** tab in the
+If installation succeeded, you should see a new **Blendkit** workspace in the
 editor's top bar (next to **Asset Store**) as well as `Blendkit:` messages in
 editor Output.
 
@@ -122,8 +121,8 @@ This avoids stale files left over from the previous version.
 ## Usage
 
 After Blendkit Godot plugin is installed and enabled in your Godot project,
-open the new **Blendkit** tab in the top bar (next to **Asset Store**) of the
-Godot Editor.
+open the new **Blendkit** workspace in the top bar (next to **Asset Store**)
+of the Godot Editor.
 
 ### Search and download
 
@@ -178,8 +177,8 @@ bk_assets
 
 ### Project assets
 
-The download toggle next to the search bar switches the **Blendkit** tab to
-the assets downloaded to this project, with a local search and
+The download toggle next to the search bar switches the **Blendkit** workspace
+to the assets downloaded to this project, with a local search and
 **Show in FileSystem**. Switch back with the toggle or **Browse Blendkit**
 below the assets.
 

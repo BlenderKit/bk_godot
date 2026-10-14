@@ -1,76 +1,36 @@
 # Changelog
 
-## 0.7.1 - UNRELEASED
+## 0.7.1 - 2026-10-14
+
+Most HDRs and materials now work in Godot out of the box, and the gallery
+feels more like blendkit.com, with improved UX, robustness and performance.
 
 ### Added
 
-- Gallery filters **Hide procedural** for materials and models, on for
-  materials by default, as procedural materials become a flat color in Godot,
-  and **Animated** and **Rigged** for models.
-- Clicking the author in asset details shows their assets. An **Author**
-  filter appears in the gallery filters, remove it to show all authors again.
-- **UUIDs in Names** setting for how downloads are named. **Strip**, the
-  default, leaves the UUIDs out: `models/chair/chair_gltf_godot.glb`. An asset
-  with the name of another one gets a short UUID, and a newer version of an
-  asset replaces the older one in its folder, so scenes using it keep working.
-  **Short** keeps 8 characters of the UUIDs, **Full** all of them, as before.
-  A hidden `.blendkit` file in each asset folder says which asset it is.
-- HDRs import in Godot: Blender re-saves their lossy DWAA-compressed EXRs,
-  which Godot can't read, as lossless ZIP-compressed EXRs before they move
-  into the project. It uses the Blender set up for Blender Import, or one
-  found on this computer. Without Blender, the original file is kept, unless
-  a converted one was downloaded before, which stays.
-- Materials download as Godot materials: Blender turns the material `.blend`,
-  which Godot imports as an empty scene, into a `StandardMaterial3D` `.tres`
-  with its textures in `textures_<resolution>/` next to it, and the `.blend`
-  is deleted. With the texture's real size known, the material maps it
-  triplanar at that size, so it fits any mesh, e.g. a CSG box. Turning
-  triplanar off uses the mesh's UVs, and the height map is there to turn on,
-  as Godot has none with triplanar mapping. Procedural materials
-  become a flat color. Without Blender, the `.blend` is kept, unless the
-  material was converted before, which stays with its textures. The textures
-  come with their 3D import settings, so Godot imports them once, with the
-  roughness map limited by the normal map.
+- Materials download as ready-to-use Godot materials that fit any mesh, and
+  HDRs as EXRs Godot can read. Both need Blender, which is found
+  automatically.
+- Clean download names without UUIDs, e.g. `models/chair/chair_gltf_godot.glb`.
+  Newer versions replace older ones, so scenes keep working.
+- **Hide procedural**, **Animated** and **Rigged** filters.
+- Click an author in asset details to see all their assets.
+- Asset details show the formats already downloaded, and **Show File**
+  reveals them.
 
 ### Changed
 
-- Search results load more as they scroll, like in the Blender add-on and on
-  blendkit.com, instead of pages with page buttons. If the next page fails to
-  load, the results stay and **Retry** shows below them.
-- Asset details follow the blendkit.com layout: a bigger title with the asset
-  type above it, the description under the preview, and one column of
-  properties with score, quality and complexity and their icons, file size,
-  license and date. Animated, Rigged and Procedural show only when they apply.
-  Long descriptions scroll. The tags are a comma-separated list.
-- Asset details open at their final size, without a jump in the first frame.
-- The gallery **Sort** options match blendkit.com: Relevance, Trending, Most
-  bookmarked, Highest asset score, Highest complexity, Highest quality and
-  Newest.
-
-- Asset details list the formats already downloaded to the project, marked
-  with a check. **Show File** shows the selected downloaded file, in the
-  FileSystem dock if Godot imports it, otherwise in the file manager. The
-  other formats can still be downloaded. In the FileSystem dock, the Blendkit
-  logo briefly points at the file.
-- Asset details opened from project assets look the asset up on blendkit.com
-  to offer the formats not downloaded yet. Offline, they show the downloaded
-  ones.
-- The file selector in asset details sits before the button it applies to.
-- Plans show in the Blendkit colors, the same in every editor theme: Free and
-  Full Plan badges in the corner of the previews in the gallery and in asset
-  details, like on blendkit.com, an orange **Get Full Plan…** button, and a
-  star in the plan's color next to your plan in the Blendkit menu, including
-  Business Plan.
+- Search results load more as you scroll, replacing the page buttons.
+- Asset details and **Sort** options match blendkit.com.
+- Plans show in the Blendkit colors, with Free and Full Plan badges on the
+  previews.
+- The gallery is faster: thumbnails decode as needed, and downloads share
+  editor rescans.
 
 ### Fixed
 
-- Project assets support several downloaded formats per asset, e.g. glTF and
-  .blend, instead of showing only the newest file.
-- Project assets no longer pick textures Godot extracts from a .glb, such as
-  .png or .webp, as the asset file.
-- Downloading an asset whose files changed on Blendkit since the search no
-  longer fails with a 404. The gallery looks the asset up again and retries
-  once with its new files.
+- Projects can hold several formats of one asset, e.g. glTF and .blend.
+- Downloads no longer fail with a 404 when the asset has been updated on
+  Blendkit since the search.
 
 ## 0.7.0 - 2026-10-12
 
