@@ -6,19 +6,31 @@ extends RefCounted
 const ICON_PATH = "res://addons/blendkit/logo/blendkit-icon.svg"
 const LOGO_PATH = "res://addons/blendkit/logo/blendkit-logo-hexa_pure.svg"
 const LOGO_SVG_SIZE = 320.0
+## Renders kept, more are rendered again, see render_svg().
+const CACHE_SIZE := 32
+
+static var _rendered: Dictionary = {}
 
 
 ## Renders the SVG at [param scale] times its size, e.g. the editor scale for
 ## a 16 px icon, so it stays crisp. Monochrome icons turn dark on light themes.
+## The textures are shared, so they must not be changed.
 static func render_svg(path: String, scale: float, monochrome := false) -> Texture2D:
+	var dark := monochrome and not is_dark_icon_theme()
+	var key := "%s %s %s" % [path, scale, dark]
+	if _rendered.has(key):
+		return _rendered[key]
 	var svg := FileAccess.get_file_as_string(path)
-	if monochrome and not is_dark_icon_theme():
+	if dark:
 		# Same conversion as Godot does for its own icons on light themes.
 		svg = svg.replace("#e0e0e0", "#5a5a5a")
 	var image := Image.new()
 	if svg.is_empty() or image.load_svg_from_string(svg, scale) != OK:
 		return null
-	return ImageTexture.create_from_image(image)
+	if _rendered.size() >= CACHE_SIZE:
+		_rendered.clear()
+	_rendered[key] = ImageTexture.create_from_image(image)
+	return _rendered[key]
 
 
 ## The colored Blendkit logo, [param px] pixels wide.

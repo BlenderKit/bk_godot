@@ -20,6 +20,7 @@ const CORNER_RADIUS := 8
 const TITLE_PADDING := Vector2(10, 6)
 const FRAME_WIDTH := 2
 const DOWNLOAD_BAR_HEIGHT := 4
+const STATES := ["normal", "hover", "pressed", "hover_pressed"]
 
 const TYPE_ICONS := {
 	"model": "MeshInstance3D",
@@ -52,6 +53,9 @@ var _width := 0.0
 var _hovered := false
 ## Adding the theme overrides notifies a theme change; ignore those.
 var _updating_theme := false
+## The StyleBoxes all cards share, built once per editor theme, see
+## _shared_styles().
+static var _styles: Dictionary = {}
 
 
 func _ready() -> void:
@@ -66,7 +70,7 @@ func _ready() -> void:
 	focus_entered.connect(_update_frame)
 	focus_exited.connect(_update_frame)
 	thumb.resized.connect(Plans.place_badge.bind(plan_label))
-	_update()
+	_apply_theme()
 
 
 func _notification(what: int) -> void:
@@ -75,9 +79,7 @@ func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_THEME_CHANGED:
 			if not _updating_theme:
-				_updating_theme = true
-				_update_theme()
-				_updating_theme = false
+				_apply_theme()
 		NOTIFICATION_RESIZED:
 			_layout()
 
@@ -100,43 +102,57 @@ func _update() -> void:
 	title_label.text = title
 	var author := GalleryApi.author_name(asset)
 	_tooltip = "%s\nby %s" % [title, author] if author else title
+	var plan := Plans.asset_plan(asset)
+	Plans.style_badge(plan_label, plan, Plans.ASSET_LABELS.get(plan, ""))
+	Plans.place_badge(plan_label)
+	_update_size()
+	_update_download()
+	_update_thumbnail()
+
+
+## The theme's look, then the asset's.
+func _apply_theme() -> void:
 	_updating_theme = true
-	_update_theme()
+	var styles := _shared_styles()
+	for state in STATES:
+		add_theme_stylebox_override(state, styles[state])
+	add_theme_stylebox_override("focus", styles.focus)
+	thumb_clip.add_theme_stylebox_override("panel", styles.mask)
+	title_label.add_theme_stylebox_override("normal", styles.title)
+	download_bar.color = get_theme_color("accent_color", "Editor")
+	_update_frame()
+	_update()
 	_updating_theme = false
 
 
-func _update_theme() -> void:
+func _shared_styles() -> Dictionary:
 	var edscale := EditorInterface.get_editor_scale()
+	var bases := STATES.map(func(state): return get_theme_stylebox(state, "PanelBackgroundButton"))
+	var key := "%s %s" % [edscale, bases.map(func(base): return base.get_instance_id())]
+	if _styles.get("key") == key:
+		return _styles
+	_styles = {"key": key, "focus": StyleBoxEmpty.new()}
 	var radius := int(CORNER_RADIUS * edscale)
 	# The editor's PanelBackgroundButton look with rounded corners and no
 	# margins, so the thumbnail reaches the card's edges.
-	for state in ["normal", "hover", "pressed", "hover_pressed"]:
-		var base: StyleBox = get_theme_stylebox(state, "PanelBackgroundButton")
-		var box: StyleBoxFlat = base.duplicate() if base is StyleBoxFlat else StyleBoxFlat.new()
+	for i in STATES.size():
+		var box: StyleBoxFlat = bases[i].duplicate() if bases[i] is StyleBoxFlat else StyleBoxFlat.new()
 		box.set_corner_radius_all(radius)
 		box.set_content_margin_all(0)
-		add_theme_stylebox_override(state, box)
-	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		_styles[STATES[i]] = box
 	# Only the mask's shape shows: the thumbnail with rounded top corners.
 	var mask := StyleBoxFlat.new()
 	mask.bg_color = Color.WHITE
 	mask.corner_radius_top_left = radius
 	mask.corner_radius_top_right = radius
-	thumb_clip.add_theme_stylebox_override("panel", mask)
+	_styles.mask = mask
 	var title_box := StyleBoxEmpty.new()
 	title_box.content_margin_left = TITLE_PADDING.x * edscale
 	title_box.content_margin_right = TITLE_PADDING.x * edscale
 	title_box.content_margin_top = TITLE_PADDING.y * edscale
 	title_box.content_margin_bottom = TITLE_PADDING.y * edscale
-	title_label.add_theme_stylebox_override("normal", title_box)
-	var plan := Plans.asset_plan(asset)
-	Plans.style_badge(plan_label, plan, Plans.ASSET_LABELS.get(plan, ""))
-	Plans.place_badge(plan_label)
-	download_bar.color = get_theme_color("accent_color", "Editor")
-	_update_size()
-	_update_frame()
-	_update_download()
-	_update_thumbnail()
+	_styles.title = title_box
+	return _styles
 
 
 ## The card is as tall as its square thumbnail and the name below.

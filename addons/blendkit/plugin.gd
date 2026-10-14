@@ -105,8 +105,6 @@ var addon_version: String
 var connection: ClientConnection
 var auth: Auth
 var gallery: Control
-var plugin_icon: Texture2D
-var plugin_icon_key: String
 
 
 func _enter_tree() -> void:
@@ -163,13 +161,7 @@ func _get_plugin_name() -> String:
 # Godot asks again on theme changes, so the icon follows the editor scale and
 # light/dark icon colors.
 func _get_plugin_icon() -> Texture2D:
-	var scale := EditorInterface.get_editor_scale()
-	var key := "%s %s" % [scale, Icons.is_dark_icon_theme()]
-	if plugin_icon and plugin_icon_key == key:
-		return plugin_icon
-	plugin_icon = Icons.render_svg(Icons.ICON_PATH, scale, true)
-	plugin_icon_key = key
-	return plugin_icon
+	return Icons.render_svg(Icons.ICON_PATH, EditorInterface.get_editor_scale(), true)
 
 
 func init_gallery() -> void:

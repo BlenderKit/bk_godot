@@ -32,7 +32,7 @@ var _settings: AcceptDialog
 var _logo_key := ""
 var _avatar: Texture2D
 var _avatar_key := ""
-var _mono_icons: Dictionary = {}
+var _plan_icons: Dictionary = {}
 
 
 ## Called by the gallery once the plugin is known.
@@ -288,10 +288,7 @@ func _on_id_pressed(id: int) -> void:
 ## Monochrome 16 px SVG icon matching the editor icons, rendered like the
 ## plugin's tab icon. size is in unscaled pixels.
 func _mono_icon(path: String, size := 16) -> Texture2D:
-	var key := "%s %s %s %s" % [path, size, EditorInterface.get_editor_scale(), Icons.is_dark_icon_theme()]
-	if not _mono_icons.has(key):
-		_mono_icons[key] = Icons.render_svg(path, size * EditorInterface.get_editor_scale() / 16.0, true)
-	return _mono_icons[key]
+	return Icons.render_svg(path, size * EditorInterface.get_editor_scale() / 16.0, true)
 
 
 ## The star of the plan item in the plan's color, when it stands out on the
@@ -303,9 +300,9 @@ func _plan_icon(plan: String) -> Texture2D:
 	if panel is StyleBoxFlat:
 		background = panel.bg_color
 	var key := "plan %s %s %s" % [plan, star.get_size(), background.to_html()]
-	if not _mono_icons.has(key):
-		_mono_icons[key] = Plans.tint_icon(star, plan, background)
-	return _mono_icons[key] if _mono_icons[key] else star
+	if not _plan_icons.has(key):
+		_plan_icons[key] = Plans.tint_icon(star, plan, background)
+	return _plan_icons[key] if _plan_icons[key] else star
 
 
 ## The avatar as a round icon at its menu size.

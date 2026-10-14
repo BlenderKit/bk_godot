@@ -587,8 +587,12 @@ static func cached_texture(path: String) -> Texture2D:
 	if texture:
 		_texture_cache[path] = {"texture": texture, "time": time}
 		_texture_cache_bytes += _texture_bytes(texture)
-		while _texture_cache_bytes > TEXTURE_CACHE_BYTES and _texture_cache.size() > 1:
-			_uncache_texture(_texture_cache.keys()[0])
+		if _texture_cache_bytes > TEXTURE_CACHE_BYTES:
+			# Least recently used first, never the new one.
+			for old in _texture_cache.keys():
+				if _texture_cache_bytes <= TEXTURE_CACHE_BYTES or old == path:
+					break
+				_uncache_texture(old)
 	return texture
 
 
