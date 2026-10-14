@@ -135,6 +135,10 @@ func setup(new_gallery: Node) -> void:
 	# The range changes as the results grow and the view resizes.
 	scroll_bar.value_changed.connect(func(_value): on_scrolled())
 	scroll_bar.changed.connect(on_scrolled)
+	# The grid gets its new height a few layout passes after the results
+	# change, later than the scroll range; new results shorter than the old
+	# ones may no longer fill the view.
+	grid.resized.connect(on_scrolled)
 	categories_timer.timeout.connect(_fetch_categories)
 	gallery.downloads.download_changed.connect(_on_download_changed)
 	gallery.downloads.download_finished.connect(_on_download_finished)

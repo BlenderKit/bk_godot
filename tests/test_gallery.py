@@ -1152,11 +1152,16 @@ func check():
     await to_end(gallery)
     print("RETRIED=%s ITEMS=%d RESULTS=%d MORE_SHOWN=%s END_POSTS=%d" % [posts.slice(2), search.items.size(),
         search.results.size(), search.more_box.visible, posts.size()])
-    # A new search starts over, at the top.
+    # A new search starts over, at the top, and loads the next page while its
+    # results, shorter than the old ones, don't fill a tall view.
+    gallery.scroll.custom_minimum_size.y = 1000
+    await frames(3)
     search.request_search(true)
     report("task-4", "finished", assets(0, 3), "https://x/page-2")
     await frames(3)
-    print("NEW=%s ITEMS=%d TOP=%s" % [posts[3].contains("&page=1&"), search.items.size(), gallery.scroll.scroll_vertical == 0])
+    print("NEW=%s ITEMS=%d TOP=%s NEXT=%s" % [posts[3].contains("&page=1&"), search.items.size(),
+        gallery.scroll.scroll_vertical == 0, posts.slice(4)])
+    gallery.scroll.custom_minimum_size.y = 0
     connection.state = old_state
 """
 
@@ -1176,7 +1181,7 @@ def test_gallery_infinite_scroll(godot_executable, tmp_path):
         'RETRIED=["https://x/page-2"] ITEMS=210 RESULTS=210 MORE_SHOWN=false END_POSTS=3'
         in lines
     ), output
-    assert "NEW=true ITEMS=3 TOP=true" in lines, output
+    assert 'NEW=true ITEMS=3 TOP=true NEXT=["https://x/page-2"]' in lines, output
     assert "SCRIPT ERROR" not in stderr, output
 
 
