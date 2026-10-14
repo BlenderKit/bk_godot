@@ -11,7 +11,7 @@ signal selected(asset: Dictionary)
 const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
 const Plans = preload("res://addons/blendkit/ui/plans.gd")
 ## Narrowest card; the gallery widens the cards to fill each row.
-const MIN_WIDTH := 256
+const MIN_WIDTH := 200
 ## Space between cards, as on the web gallery.
 const GAP := 16
 ## Pixel size of the "small" thumbnail. Wider cards show the "full" one.
