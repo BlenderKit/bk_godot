@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.2 - 2026-10-14
+
+Hotfix for assets not loading under specific circumstances.
+
+### Fixed
+
+- In a tall gallery, e.g. fullscreen, new results fill the view again after
+  you scroll down and switch the asset type or search again.
+
 ## 0.7.1 - 2026-10-14
 
 Most HDRs and materials now work in Godot out of the box, and the gallery
