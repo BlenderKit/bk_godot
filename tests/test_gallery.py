@@ -269,11 +269,16 @@ func _initialize():
     var chair_file := ProjectAssets.finish_download(staged_chair, "strip", "base-chair")
     check(chair_file == models.path_join("wooden-chair/wooden-chair_gltf_godot.glb"), chair_file)
     var manifest := ProjectAssets.read_manifest(chair_file.get_base_dir())
-    check(manifest == {"id": ID_C, "assetBaseId": "base-chair", "files": {"wooden-chair_gltf_godot.glb": "gltf_godot"}}, str(manifest))
+    check(manifest == {"id": ID_C, "assetBaseId": "base-chair", "files": {"wooden-chair_gltf_godot.glb": "gltf_godot"},
+        "versions": {"wooden-chair_gltf_godot.glb": ID_C}}, str(manifest))
     check(ProjectAssets.folder_id(chair_file.get_base_dir()) == ID_C, "id from the manifest")
     check(ProjectAssets.downloaded_files(chair_file.get_base_dir()) == {"gltf_godot": chair_file}, "files from the manifest")
     check(ProjectAssets.asset_folder(downloads, chair) == chair_file.get_base_dir(), ProjectAssets.asset_folder(downloads, chair))
     check(ProjectAssets.finish_download(staged_chair, "strip", "base-chair") == chair_file, "strip moved twice")
+    var chair_blend := staging.path_join("models/wooden-chair_" + ID_C).path_join("wooden-chair_2K_%s.blend" % file_id)
+    write(chair_blend, "blend v1")
+    chair_blend = ProjectAssets.finish_download(chair_blend, "strip", "base-chair")
+    check(chair_blend == models.path_join("wooden-chair/wooden-chair_2K.blend"), chair_blend)
     # A newer version replaces the older one in its folder; .import stays.
     write(chair_file + ".import", "import")
     var staged_v2 := staging.path_join("models/wooden-chair_" + ID_D).path_join("wooden-chair_gltf_godot_22222222-2222-4222-8222-222222222222.glb")
@@ -282,6 +287,13 @@ func _initialize():
     check(FileAccess.get_file_as_string(chair_file) == "v2" and FileAccess.file_exists(chair_file + ".import"), "newer version replaced")
     check(ProjectAssets.folder_id(chair_file.get_base_dir()) == ID_D, "manifest has the newer version")
     check(ProjectAssets.asset_folder(downloads, chair) == "", "older version gone")
+    # Files of the older version stay, as that version.
+    var chair_files := {"gltf_godot": chair_file, "resolution_2K": chair_blend}
+    check(ProjectAssets.downloaded_files(chair_file.get_base_dir()) == chair_files, "all versions")
+    check(ProjectAssets.downloaded_files(chair_file.get_base_dir(), ID_D) == {"gltf_godot": chair_file}, "newer version's files")
+    check(ProjectAssets.downloaded_files(chair_file.get_base_dir(), ID_C) == {"resolution_2K": chair_blend}, "older version's files")
+    check(ProjectAssets.read_manifest(chair_file.get_base_dir()).versions == {"wooden-chair_gltf_godot.glb": ID_D,
+        "wooden-chair_2K.blend": ID_C}, str(ProjectAssets.read_manifest(chair_file.get_base_dir())))
     # Another asset by the same name gets a short UUID, of its base id if known.
     var staged_other := staging.path_join("models/wooden-chair_" + ID_E).path_join("wooden-chair_2K_%s.blend" % file_id)
     write(staged_other, "other")
@@ -328,6 +340,8 @@ func _initialize():
     check(FileAccess.file_exists(rock.path_join("textures_2K/kept.jpg")), "other texture kept")
     check(not DirAccess.dir_exists_absolute(staged_rock), "staged folder with textures removed")
     check(ProjectAssets.downloaded_files(rock) == {"resolution_2K": moved, "resolution_4K": rock.path_join("rock-road_4K.blend")}, str(ProjectAssets.downloaded_files(rock)))
+    # Files of a manifest without versions are of its id; gone ones forgotten.
+    check(ProjectAssets.read_manifest(rock).versions == {"rock-road_2K.tres": ID_H, "rock-road_4K.blend": ID_H}, str(ProjectAssets.read_manifest(rock)))
     var header := FileAccess.get_file_as_string(moved).get_slice("\n", 0)
     check(header.begins_with('[gd_resource type="StandardMaterial3D" format=3 uid="uid://') and header.ends_with('"]'), header)
     check(FileAccess.get_file_as_string(moved).ends_with("\n\n[resource]\n"), "rest kept")
@@ -669,6 +683,20 @@ func check():
     print("IMPORTED=%s" % await wait_until(func(): return details.action_button.text == "Show File", 20))
     select(details, "resolution_2K")
     print("BLEND=%s" % details.action_button.text)
+    # A file of an older version of the asset isn't this version's.
+    var glb := "tangerines_gltf_godot_%s.glb" % FILE_ID
+    var blend := "tangerines_2K_%s.blend" % FILE_ID
+    var manifest := ConfigFile.new()
+    manifest.set_value("asset", "id", ID)
+    manifest.set_value("asset", "files", {glb: "gltf_godot", blend: "resolution_2K"})
+    manifest.set_value("asset", "versions", {glb: ID, blend: "older-version"})
+    manifest.save(folder.path_join(".blendkit"))
+    asset.files.append({"fileType": "resolution_2K"})
+    details.show_asset(asset, {}, ProjectSettings.globalize_path(folder))
+    select(details, "resolution_2K")
+    print("OLDER_BLEND=%s" % details.action_button.text)
+    select(details, "gltf_godot")
+    print("NEWER_GLTF=%s" % details.action_button.text)
     details.hide()
 """
 
@@ -745,6 +773,8 @@ def test_gallery_details_actions(godot_executable, tmp_path):
     assert "FRESH=Importing…" in lines, output
     assert "IMPORTED=true" in lines, output
     assert "BLEND=Show File" in lines, output
+    assert "OLDER_BLEND=Download" in lines, output
+    assert "NEWER_GLTF=Show File" in lines, output
     assert "SCRIPT ERROR" not in stderr, output
 
 

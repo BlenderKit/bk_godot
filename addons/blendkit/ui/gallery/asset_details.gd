@@ -135,7 +135,7 @@ func _ready() -> void:
 func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: String = "") -> void:
 	asset = new_asset
 	folder = new_folder if new_folder else ProjectAssets.asset_folder(gallery.plugin.absolute_download_path, asset)
-	local_files = ProjectAssets.downloaded_files(folder)
+	local_files = ProjectAssets.downloaded_files(folder, str(asset.get("id", "")))
 	title = str(asset.get("displayName", asset.get("name", "Asset")))
 	title_label.text = title
 	var plan := Plans.asset_plan(asset)
@@ -444,7 +444,7 @@ func _refresh_download() -> void:
 	# A finished download adds its file, and its folder if it's the first.
 	if folder.is_empty():
 		folder = ProjectAssets.asset_folder(gallery.plugin.absolute_download_path, asset)
-	var files := ProjectAssets.downloaded_files(folder)
+	var files := ProjectAssets.downloaded_files(folder, str(asset.get("id", "")))
 	if files != local_files:
 		local_files = files
 		_fill_files(false)

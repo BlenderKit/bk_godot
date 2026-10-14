@@ -277,16 +277,21 @@ static func download_file_type(file_path: String) -> String:
 
 
 ## The files the Client downloaded into the folder, by its manifest or their
-## names: fileType -> path, the newest of each type.
-static func downloaded_files(folder: String) -> Dictionary:
+## names: fileType -> path, the newest of each type. With [param version],
+## only those of that version of the asset, see read_manifest(); files the
+## manifest doesn't list are of the folder's version.
+static func downloaded_files(folder: String, version: String = "") -> Dictionary:
 	var files := {}
 	var times := {}
 	if folder.is_empty() or not DirAccess.dir_exists_absolute(folder):
 		return files
-	var listed: Dictionary = read_manifest(folder).get("files", {})
+	var manifest := read_manifest(folder)
+	var listed: Dictionary = manifest.get("files", {})
+	var versions: Dictionary = manifest.get("versions", {})
+	var folder_version := str(manifest.get("id", "")) if manifest else folder_asset_id(folder.get_file())
 	for file in DirAccess.get_files_at(folder):
 		var file_type := str(listed.get(file, download_file_type(file)))
-		if file_type.is_empty():
+		if file_type.is_empty() or (version and versions.get(file, folder_version) != version):
 			continue
 		var path := folder.path_join(file)
 		var time := FileAccess.get_modified_time(path)
@@ -498,17 +503,27 @@ static func short_id(id: String) -> String:
 	return id.left(SHORT_ID_LENGTH)
 
 
-## The folder's manifest: {id, assetBaseId, files: {file name: fileType}},
-## or {} if it has none.
+## The folder's manifest: {id, assetBaseId, files: {file name: fileType},
+## versions: {file name: asset id}}, or {} if it has none. The id is the
+## latest version downloaded into the folder, files listed by a manifest
+## without versions are of that one.
 static func read_manifest(folder: String) -> Dictionary:
 	var path := folder.path_join(MANIFEST_FILE)
 	var config := ConfigFile.new()
 	if not FileAccess.file_exists(path) or config.load(path) != OK:
 		return {}
+	var id := str(config.get_value(MANIFEST_SECTION, "id", ""))
 	var files = config.get_value(MANIFEST_SECTION, "files", {})
-	return {"id": str(config.get_value(MANIFEST_SECTION, "id", "")),
-		"assetBaseId": str(config.get_value(MANIFEST_SECTION, "assetBaseId", "")),
-		"files": files if files is Dictionary else {}}
+	if not files is Dictionary:
+		files = {}
+	var versions = config.get_value(MANIFEST_SECTION, "versions", {})
+	if not versions is Dictionary:
+		versions = {}
+	for name in files:
+		if not versions.has(name):
+			versions[name] = id
+	return {"id": id, "assetBaseId": str(config.get_value(MANIFEST_SECTION, "assetBaseId", "")),
+		"files": files, "versions": versions}
 
 
 ## Note the downloaded file in the folder's manifest, now with version
@@ -516,11 +531,16 @@ static func read_manifest(folder: String) -> Dictionary:
 static func _write_manifest(folder: String, id: String, base_id: String, file_name: String, file_type: String) -> void:
 	var manifest := read_manifest(folder)
 	var files: Dictionary = manifest.get("files", {})
+	var versions: Dictionary = manifest.get("versions", {})
 	for name in files.keys():
 		if not FileAccess.file_exists(folder.path_join(name)):
 			files.erase(name)
+	for name in versions.keys():
+		if not files.has(name):
+			versions.erase(name)
 	if file_type:
 		files[file_name] = file_type
+		versions[file_name] = id
 	if base_id.is_empty() and manifest.get("id", "") == id:
 		base_id = manifest.assetBaseId
 	var config := ConfigFile.new()
@@ -528,6 +548,7 @@ static func _write_manifest(folder: String, id: String, base_id: String, file_na
 	if base_id:
 		config.set_value(MANIFEST_SECTION, "assetBaseId", base_id)
 	config.set_value(MANIFEST_SECTION, "files", files)
+	config.set_value(MANIFEST_SECTION, "versions", versions)
 	if config.save(folder.path_join(MANIFEST_FILE)) != OK:
 		push_warning("Blendkit: Could not save %s" % folder.path_join(MANIFEST_FILE))
 

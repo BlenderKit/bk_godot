@@ -395,7 +395,8 @@ func get_download(base_id: String) -> Dictionary:
 
 
 func is_downloaded(asset: Dictionary) -> bool:
-	return not ProjectAssets.downloaded_files(ProjectAssets.asset_folder(plugin.absolute_download_path, asset)).is_empty()
+	var folder := ProjectAssets.asset_folder(plugin.absolute_download_path, asset)
+	return not ProjectAssets.downloaded_files(folder, str(asset.get("id", ""))).is_empty()
 
 
 ## Show the download state in the details when open, and in the badge.
