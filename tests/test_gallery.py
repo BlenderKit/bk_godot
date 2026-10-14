@@ -774,7 +774,9 @@ def test_gallery_details_actions(godot_executable, tmp_path):
         DETAILS_ACTIONS_PROBE,
         settings="[filesystem]\n\nimport/blender/enabled=false\n",
     )
-    stdout, stderr = run_editor_probe(godot_executable, project)
+    # Waits up to 20s for each of three imports, longer than the default
+    # allows on a slow runner still importing the editor's own files.
+    stdout, stderr = run_editor_probe(godot_executable, project, timeout=120)
     output = stdout + stderr
     lines = [line for line in stdout.splitlines() if "=" in line]
     assert (
