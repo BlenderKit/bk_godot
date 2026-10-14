@@ -281,7 +281,7 @@ func _show_results() -> void:
 		var thumbs: Dictionary = gallery.thumb_cache.get(base_id, {})
 		for type in ["small", "full"]:
 			if thumbs.has(type):
-				item.set_thumbnail(GalleryApi.cached_texture(thumbs[type]), type)
+				item.set_thumbnail(thumbs[type], type)
 			else:
 				_thumbs_missing += 1
 	_thumbs_deadline = Time.get_ticks_msec() + THUMBS_WAIT_MS
@@ -306,7 +306,7 @@ func on_thumbnail(base_id: String, type: String, path: String) -> void:
 	if _thumbs_missing > 0:
 		_thumbs_missing -= 1
 	if path:
-		items[base_id].set_thumbnail(GalleryApi.cached_texture(path), type)
+		items[base_id].set_thumbnail(path, type)
 	elif type == "small":
 		items[base_id].set_thumbnail_failed()
 

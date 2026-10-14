@@ -21,6 +21,9 @@ const TITLE_PADDING := Vector2(10, 6)
 const FRAME_WIDTH := 2
 const DOWNLOAD_BAR_HEIGHT := 4
 const STATES := ["normal", "hover", "pressed", "hover_pressed"]
+## Thumbnails the cards decode per frame, so a page of results or a large
+## project shows its tiles without a hitch.
+const THUMBNAILS_PER_FRAME := 8
 
 const TYPE_ICONS := {
 	"model": "MeshInstance3D",
@@ -40,8 +43,11 @@ const TYPE_ICONS := {
 @onready var frame: Panel = $Frame
 
 var asset: Dictionary = {}
-## Thumbnail type ("small" or "full") -> texture.
+## Thumbnail type ("small" or "full") -> image path. Only the one the card
+## shows is decoded, see _update_thumbnail().
 var _thumbnails: Dictionary = {}
+## Path of the thumbnail shown.
+var _shown := ""
 ## Shows the asset type icon instead of the thumbnail. Loading is usually
 ## near-instant, so the tile stays empty until the thumbnail fails.
 var _thumbnail_failed := false
@@ -56,6 +62,9 @@ var _updating_theme := false
 ## The StyleBoxes all cards share, built once per editor theme, see
 ## _shared_styles().
 static var _styles: Dictionary = {}
+## Cards waiting to decode their thumbnail, in order, see _decode_queued().
+static var _decode_queue: Dictionary = {}
+static var _decoding := false
 
 
 func _ready() -> void:
@@ -190,30 +199,71 @@ func _update_frame() -> void:
 	frame.add_theme_stylebox_override("panel", box)
 
 
-## A [param type] thumbnail ("small" or "full") arrived; null if it failed.
-func set_thumbnail(texture: Texture2D, type: String = "small") -> void:
-	if texture == null:
-		set_thumbnail_failed()
-		return
-	_thumbnails[type] = texture
+## The image of a [param type] thumbnail ("small" or "full") arrived.
+func set_thumbnail(path: String, type: String = "small") -> void:
+	_thumbnails[type] = path
 	if is_node_ready():
 		_update_thumbnail()
 
 
-## Show the "full" thumbnail when the card is wider than the "small" one,
-## except for HDRs, whose "full" thumbnail is a panorama.
-func _update_thumbnail() -> void:
+## The thumbnail to show: the "full" one when the card is wider than the
+## "small" one, except for HDRs, whose "full" thumbnail is a panorama.
+func _wanted_thumbnail() -> String:
 	var want_full: bool = size.x > SMALL_THUMB_SIZE and asset.get("assetType", "") != "hdr"
-	var texture: Texture2D = _thumbnails.get("full") if want_full else null
-	if texture == null:
-		texture = _thumbnails.get("small", _thumbnails.get("full"))
-	if texture:
-		thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		thumb.texture = texture
+	if want_full and _thumbnails.has("full"):
+		return _thumbnails.full
+	return _thumbnails.get("small", _thumbnails.get("full", ""))
+
+
+## The shown thumbnail stays until the wanted one is decoded, see
+## _decode_queued().
+func _update_thumbnail() -> void:
+	var path := _wanted_thumbnail()
+	if path == _shown and not path.is_empty():
+		_decode_queue.erase(self)
+	elif not path.is_empty():
+		_decode_queue[self] = true
+		if not _decoding:
+			_decode_queued()
 	else:
+		_decode_queue.erase(self)
+		_shown = ""
 		thumb.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
 		thumb.texture = get_theme_icon(TYPE_ICONS.get(asset.get("assetType", ""), "File"), "EditorIcons") \
 			if _thumbnail_failed else null
+
+
+## Decode the queued cards' thumbnails a few per frame from the next one,
+## in the order they were queued.
+static func _decode_queued() -> void:
+	_decoding = true
+	var tree := Engine.get_main_loop() as SceneTree
+	while not _decode_queue.is_empty():
+		await tree.process_frame
+		for item in _decode_queue.keys().slice(0, THUMBNAILS_PER_FRAME):
+			_decode_queue.erase(item)
+			if is_instance_valid(item) and item.is_inside_tree():
+				item._decode_thumbnail()
+	_decoding = false
+
+
+func _decode_thumbnail() -> void:
+	var path := _wanted_thumbnail()
+	if path.is_empty() or path == _shown:
+		return
+	var texture := GalleryApi.cached_texture(path)
+	if texture == null:
+		for type in _thumbnails.keys():
+			if _thumbnails[type] == path:
+				_thumbnails.erase(type)
+		if _thumbnails.is_empty():
+			set_thumbnail_failed()
+		else:
+			_update_thumbnail()
+		return
+	_shown = path
+	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	thumb.texture = texture
 
 
 func set_thumbnail_failed() -> void:

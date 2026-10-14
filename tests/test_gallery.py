@@ -1097,6 +1097,7 @@ def test_gallery_lookup_retry(godot_executable, tmp_path):
 
 THUMBNAILS_PROBE = r"""
 const ItemScene = preload("res://addons/blendkit/ui/gallery/gallery_item.tscn")
+const ItemScript = preload("res://addons/blendkit/ui/gallery/gallery_item.gd")
 
 func check():
     var view = find_gallery().project_view
@@ -1110,25 +1111,41 @@ func check():
         box.add_child(item)
         items.append(item)
         view._update_item(item, {"asset": {"name": "A%d" % i, "assetType": "model"}, "thumbnail": png}, {})
-    view._start_decoding()
-    view._start_decoding() # one decoder at a time
     var decoded := func() -> int:
-        return items.filter(func(item): return item._thumbnails.has("small")).size()
+        return items.filter(func(item): return item.thumb.texture != null).size()
+    print("QUEUED=%d" % decoded.call())
+    await get_tree().process_frame
     print("FIRST_FRAME=%d" % decoded.call())
-    await wait_until(func(): return not view._decoding, 5)
+    await wait_until(func(): return not ItemScript._decoding, 5)
     print("ALL=%d" % decoded.call())
+    # A wide card shows the full thumbnail once it arrives, not the small.
+    var full := OS.get_user_data_dir().path_join("bk_thumbnail_full.png")
+    Image.create(8, 8, false, Image.FORMAT_RGB8).save_png(full)
+    items[0].custom_minimum_size.x = ItemScript.SMALL_THUMB_SIZE * 2
+    items[0].size.x = ItemScript.SMALL_THUMB_SIZE * 2
+    items[0].set_thumbnail(full, "full")
+    await wait_until(func(): return not ItemScript._decoding, 5)
+    print("FULL=%d" % items[0].thumb.texture.get_width())
+    # A thumbnail that can't be decoded falls back to the other one.
+    items[1].size.x = ItemScript.SMALL_THUMB_SIZE * 2
+    items[1].set_thumbnail(png + ".missing", "full")
+    await wait_until(func(): return not ItemScript._decoding, 5)
+    print("FALLBACK=%d" % items[1].thumb.texture.get_width())
     box.free()
 """
 
 
 def test_project_thumbnails_per_frame(godot_executable, tmp_path):
-    """The project view decodes a few thumbnails per frame."""
+    """Cards decode a few thumbnails per frame, only the one they show."""
     project = make_probe_project(tmp_path / "project", THUMBNAILS_PROBE)
     stdout, stderr = run_editor_probe(godot_executable, project)
     output = stdout + stderr
     lines = stdout.splitlines()
+    assert "QUEUED=0" in lines, output
     assert "FIRST_FRAME=8" in lines, output
     assert "ALL=24" in lines, output
+    assert "FULL=8" in lines, output
+    assert "FALLBACK=4" in lines, output
     assert "SCRIPT ERROR" not in stderr, output
 
 
