@@ -342,6 +342,7 @@ func _post_conversion(plan: Dictionary) -> Array:
 	var response := await GalleryApi.run_blender_script(_parent, _plugin, blender, plan.script,
 		plan.params, plan.params.output_path, Conversions.MESSAGE)
 	if response[0].is_empty() and blender.is_empty():
+		Conversions.forget_detected()
 		return ["", "Blender not found. Set it up in Blendkit > Settings > Blender Import."]
 	return response
 

@@ -139,3 +139,10 @@ static func blender_path() -> String:
 		_detecting = false
 	return _detected
 
+
+## Look for a Blender again next time, e.g. after one was installed. A
+## detection running meanwhile still answers those waiting for it.
+static func forget_detected() -> void:
+	if not _detecting:
+		_detected = null
+

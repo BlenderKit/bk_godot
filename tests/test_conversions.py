@@ -117,6 +117,16 @@ func _initialize():
     check(FileAccess.get_file_as_string(target) == "converted", "kept")
     check(not FileAccess.file_exists(target + ".bk_old"), "backup restored")
 
+    # A Blender that wasn't found is looked for again, unless a search runs.
+    Conversions._detected = ""
+    Conversions.forget_detected()
+    check(Conversions._detected == null, "forgotten")
+    Conversions._detected = ""
+    Conversions._detecting = true
+    Conversions.forget_detected()
+    check(Conversions._detected == "", "kept while detecting")
+    Conversions._detecting = false
+
     if failures == 0:
         print("CONVERSIONS_CHECKS_PASSED")
     quit(1 if failures else 0)

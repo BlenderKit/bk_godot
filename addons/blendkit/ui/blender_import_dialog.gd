@@ -5,6 +5,7 @@ extends ConfirmationDialog
 ## when the editor starts, so changes apply after a restart.
 
 const BlenderImport = preload("res://addons/blendkit/blender_import.gd")
+const Conversions = preload("res://addons/blendkit/conversions.gd")
 
 const WIDTH := 560
 
@@ -193,6 +194,7 @@ func _apply() -> void:
 	if native:
 		plugin.set_blender_path(_blender_path.text.strip_edges())
 	plugin.set_blend_import_enabled(native)
+	Conversions.forget_detected()
 
 
 func _refresh() -> void:
