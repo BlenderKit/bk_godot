@@ -35,6 +35,13 @@ const POLYGON_TYPES := ["model", "printable"]
 const NO_LIMIT := -1
 ## Stops of the Polygons filter's range slider, the last is no limit.
 const POLYGON_STOPS := [0, 10, 100, 1000, 10000, 100000, 1000000, NO_LIMIT]
+## Yes/no asset parameters to filter by and the asset types they apply to.
+## Procedural assets have no textures, so their materials become a flat color.
+const FLAG_TYPES := {
+	"procedural": ["model", "material"],
+	"animated": ["model"],
+	"rig": ["model"],
+}
 
 ## Sort options, in OptionButton order: [id, label].
 const SORTS := [
@@ -119,8 +126,9 @@ static func encode_text(text: String) -> String:
 
 ## Polygon counts from [param min_faces] to [param max_faces], which may be
 ## NO_LIMIT, apply to POLYGON_TYPES. An [param author_id] shows only that
-## author's assets.
-static func build_search_url(server: String, text: String, asset_type: String, category_slug: String, sort: String, free_only: bool, godot_ready: bool, min_faces: int, max_faces: int, page: int, page_size: int, addon_version: String, author_id: String = "") -> String:
+## author's assets. [param flags] maps FLAG_TYPES parameters to the value to
+## show, like {"procedural": false}, and applies to their types.
+static func build_search_url(server: String, text: String, asset_type: String, category_slug: String, sort: String, free_only: bool, godot_ready: bool, min_faces: int, max_faces: int, page: int, page_size: int, addon_version: String, author_id: String = "", flags: Dictionary = {}) -> String:
 	var tokens := PackedStringArray()
 	var encoded := encode_text(text)
 	if not encoded.is_empty():
@@ -142,6 +150,9 @@ static func build_search_url(server: String, text: String, asset_type: String, c
 			tokens.append("faceCount_gte:%d" % min_faces)
 		if max_faces != NO_LIMIT:
 			tokens.append("faceCount_lte:%d" % max_faces)
+	for flag in flags:
+		if asset_type in FLAG_TYPES.get(flag, []):
+			tokens.append("%s:%s" % [flag, "true" if flags[flag] else "false"])
 	tokens.append("order:" + search_order(sort, text))
 	return "%s/api/v1/search/?query=%s&dict_parameters=1&page_size=%d&page=%d&addon_version=%s" % [
 		server, "+".join(tokens), page_size, page, addon_version.uri_encode()]

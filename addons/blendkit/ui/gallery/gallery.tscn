@@ -142,6 +142,24 @@ layout_mode = 2
 tooltip_text = "Show only free assets."
 text = "Free only"
 
+[node name="ProceduralCheck" type="CheckBox" parent="Main/FilterRow/Checks"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Hide procedural assets. They have no textures, so their materials become a flat color in Godot."
+text = "Hide procedural"
+
+[node name="AnimatedCheck" type="CheckBox" parent="Main/FilterRow/Checks"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show only animated models."
+text = "Animated"
+
+[node name="RiggedCheck" type="CheckBox" parent="Main/FilterRow/Checks"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show only rigged models."
+text = "Rigged"
+
 [node name="LibraryMargin" type="MarginContainer" parent="Main"]
 layout_mode = 2
 size_flags_vertical = 3

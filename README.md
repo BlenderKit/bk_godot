@@ -129,6 +129,9 @@ Godot Editor.
 
 - Search by text, sort the results, and filter by type (Models, Materials,
   HDRs, Scenes, Printables), category, polygon count, **Free only** and more.
+  **Hide procedural** leaves out procedural materials and models, whose
+  materials become a flat color in Godot. It is on for materials by default.
+  Models can be limited to **Animated** or **Rigged** ones.
   For models, the **Format** dropdown is the **Model Format** setting:
   **glTF (.glb)** shows only models with glTF and downloads it,
   **Blender (.blend)** shows all.

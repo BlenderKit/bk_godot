@@ -4,6 +4,9 @@
 
 ### Added
 
+- Gallery filters **Hide procedural** for materials and models, on for
+  materials by default, as procedural materials become a flat color in Godot,
+  and **Animated** and **Rigged** for models.
 - Clicking the author in asset details shows their assets. An **Author**
   filter appears in the gallery filters, remove it to show all authors again.
 - **UUIDs in Names** setting for how downloads are named. **Strip**, the

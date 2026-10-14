@@ -24,6 +24,9 @@ const POLYGONS_DELAY := 0.5
 @onready var type_option: OptionButton = %TypeOption
 @onready var category_option: OptionButton = %CategoryOption
 @onready var free_check: CheckBox = %FreeCheck
+@onready var procedural_check: CheckBox = %ProceduralCheck
+@onready var animated_check: CheckBox = %AnimatedCheck
+@onready var rigged_check: CheckBox = %RiggedCheck
 @onready var format_option: OptionButton = %FormatOption
 @onready var polygon_filter: Button = %PolygonFilter
 @onready var author_filter: Button = %AuthorFilter
@@ -83,6 +86,8 @@ func setup(new_gallery: Node) -> void:
 	sort_option.select(GalleryApi.option_index(GalleryApi.SORTS, _get_meta("gallery_sort", "relevance")))
 	type_option.select(maxi(0, GalleryApi.ASSET_TYPES.find(_get_meta("gallery_type", "model"))))
 	free_check.button_pressed = _get_meta("gallery_free", false)
+	animated_check.button_pressed = _get_meta("gallery_animated", false)
+	rigged_check.button_pressed = _get_meta("gallery_rigged", false)
 	var polygons: Array = _get_meta("gallery_polygons", [0, GalleryApi.NO_LIMIT])
 	polygon_filter.setup(polygons[0], polygons[1])
 	_polygons_timer = Timer.new()
@@ -97,6 +102,9 @@ func setup(new_gallery: Node) -> void:
 	type_option.item_selected.connect(_on_type_selected)
 	category_option.item_selected.connect(func(_i): request_search())
 	free_check.toggled.connect(_on_filter_toggled.bind("gallery_free"))
+	procedural_check.toggled.connect(func(pressed): _on_filter_toggled(pressed, _procedural_meta_key()))
+	animated_check.toggled.connect(_on_filter_toggled.bind("gallery_animated"))
+	rigged_check.toggled.connect(_on_filter_toggled.bind("gallery_rigged"))
 	polygon_filter.range_changed.connect(_on_polygons_changed)
 	author_filter.icon = get_theme_icon("Close", "EditorIcons")
 	author_filter.pressed.connect(search_author.bind("", ""))
@@ -198,7 +206,8 @@ func _run_search(force: bool = true) -> void:
 	var url := GalleryApi.build_search_url(plugin.SERVER, text, asset_type,
 		_category_slug(), _sort(), free_check.button_pressed,
 		asset_type == "model" and plugin.model_format != "blend",
-		polygon_filter.min_faces, polygon_filter.max_faces, page, PAGE_SIZE, plugin.get_addon_version(), author_id)
+		polygon_filter.min_faces, polygon_filter.max_faces, page, PAGE_SIZE, plugin.get_addon_version(), author_id,
+		_flags())
 	if url == _search_url and _search_error.is_empty() and not force:
 		return
 	_pending_search = false
@@ -464,10 +473,34 @@ func _fetch_categories() -> void:
 		fill_categories()
 
 
-## Only models have glTF; scenes have no polygon count.
+## Only models have glTF; scenes have no polygon count. Hide procedural is
+## kept per asset type.
 func _update_type_filters() -> void:
-	format_option.get_parent().visible = _asset_type() == "model"
-	polygon_filter.get_parent().visible = _asset_type() in GalleryApi.POLYGON_TYPES
+	var asset_type := _asset_type()
+	format_option.get_parent().visible = asset_type == "model"
+	polygon_filter.get_parent().visible = asset_type in GalleryApi.POLYGON_TYPES
+	procedural_check.visible = asset_type in GalleryApi.FLAG_TYPES.procedural
+	procedural_check.set_pressed_no_signal(_get_meta(_procedural_meta_key(), asset_type == "material"))
+	animated_check.visible = asset_type in GalleryApi.FLAG_TYPES.animated
+	rigged_check.visible = asset_type in GalleryApi.FLAG_TYPES.rig
+
+
+## Procedural materials only become a flat color, so materials hide them by
+## default. Models are still useful without their textures.
+func _procedural_meta_key() -> String:
+	return "gallery_hide_procedural_" + _asset_type()
+
+
+## The yes/no filters for build_search_url, which applies each to its types.
+func _flags() -> Dictionary:
+	var flags := {}
+	if procedural_check.button_pressed:
+		flags["procedural"] = false
+	if animated_check.button_pressed:
+		flags["animated"] = true
+	if rigged_check.button_pressed:
+		flags["rig"] = true
+	return flags
 
 
 func _on_sort_selected(index: int) -> void:

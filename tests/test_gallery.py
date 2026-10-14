@@ -43,6 +43,14 @@ func _initialize():
     # an author shows only their assets
     url = Api.build_search_url("https://blendkit.com", "", "model", "", "newest", false, false, 0, Api.NO_LIMIT, 1, 30, "", "1234")
     check(url.contains("?query=asset_type:model+author_id:1234+sexualizedContent:false+"), url)
+    # yes/no flags apply only to their asset types
+    var flags := {"procedural": false, "animated": true, "rig": true}
+    url = Api.build_search_url("https://blendkit.com", "", "model", "", "newest", false, false, 0, Api.NO_LIMIT, 1, 30, "", "", flags)
+    check(url.contains("+procedural:false+animated:true+rig:true+order:"), url)
+    url = Api.build_search_url("https://blendkit.com", "", "material", "", "newest", false, false, 0, Api.NO_LIMIT, 1, 30, "", "", flags)
+    check(url.contains("?query=asset_type:material+procedural:false+order:"), url)
+    url = Api.build_search_url("https://blendkit.com", "", "hdr", "", "newest", false, false, 0, Api.NO_LIMIT, 1, 30, "", "", flags)
+    check(url.contains("?query=asset_type:hdr+order:"), url)
 
     check(Api.polygon_label(0, Api.NO_LIMIT) == "Any", "any")
     check(Api.polygon_label(1000, Api.NO_LIMIT) == "> 1k", "more than")
@@ -1219,6 +1227,47 @@ func check():
     polygons._any_button.pressed.emit()
     print("CLEARED=%s %s" % [polygons.text, polygons._any_button.disabled])
 """
+
+
+FLAGS_PROBE = r"""
+const GalleryApi = preload("res://addons/blendkit/ui/gallery/gallery_api.gd")
+
+func show_type(search, asset_type: String) -> void:
+    search.type_option.select(GalleryApi.ASSET_TYPES.find(asset_type))
+    search._on_type_selected(search.type_option.selected)
+    print("%s=%s %s %s %s" % [asset_type.to_upper(), search.procedural_check.visible,
+        search.procedural_check.button_pressed, search.animated_check.visible, search._flags()])
+
+func check():
+    var search = find_gallery().search
+    show_type(search, "material")
+    show_type(search, "model")
+    show_type(search, "hdr")
+    # Each type keeps its own Hide procedural.
+    show_type(search, "model")
+    search.procedural_check.button_pressed = true
+    search.rigged_check.button_pressed = true
+    show_type(search, "material")
+    search.procedural_check.button_pressed = false
+    show_type(search, "model")
+    show_type(search, "material")
+"""
+
+
+def test_gallery_flags(godot_executable, tmp_path):
+    """Hide procedural is on for materials and off for models by default and
+    kept per type; Animated and Rigged show for models only."""
+    project = make_probe_project(tmp_path / "project", FLAGS_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    assert 'MATERIAL=true true false { "procedural": false }' in lines, output
+    assert "MODEL=true false true {  }" in lines, output
+    assert "HDR=false false false {  }" in lines, output
+    assert 'MATERIAL=true true false { "procedural": false, "rig": true }' in lines, output
+    assert 'MODEL=true true true { "procedural": false, "rig": true }' in lines, output
+    assert 'MATERIAL=true false false { "rig": true }' in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
 
 
 def test_gallery_polygons(godot_executable, tmp_path):
