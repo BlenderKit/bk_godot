@@ -48,6 +48,8 @@ var asset: Dictionary = {}
 var _thumbnails: Dictionary = {}
 ## Path of the thumbnail shown.
 var _shown := ""
+## Cards far from the view show no thumbnail, see set_near_view().
+var _near_view := true
 ## Shows the asset type icon instead of the thumbnail. Loading is usually
 ## near-instant, so the tile stays empty until the thumbnail fails.
 var _thumbnail_failed := false
@@ -206,6 +208,23 @@ func set_thumbnail(path: String, type: String = "small") -> void:
 		_update_thumbnail()
 
 
+## Cards far from the view let go of their thumbnail, so long search results
+## don't keep them all decoded. Back near it, they decode it again, usually
+## from GalleryApi.cached_texture().
+func set_near_view(near: bool) -> void:
+	if near == _near_view:
+		return
+	_near_view = near
+	if not is_node_ready():
+		return
+	if near:
+		_update_thumbnail()
+	else:
+		_decode_queue.erase(self)
+		_shown = ""
+		thumb.texture = null
+
+
 ## The thumbnail to show: the "full" one when the card is wider than the
 ## "small" one, except for HDRs, whose "full" thumbnail is a panorama.
 func _wanted_thumbnail() -> String:
@@ -218,6 +237,8 @@ func _wanted_thumbnail() -> String:
 ## The shown thumbnail stays until the wanted one is decoded, see
 ## _decode_queued().
 func _update_thumbnail() -> void:
+	if not _near_view:
+		return
 	var path := _wanted_thumbnail()
 	if path == _shown and not path.is_empty():
 		_decode_queue.erase(self)

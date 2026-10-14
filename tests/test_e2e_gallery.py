@@ -28,7 +28,11 @@ func check():
     # The first search runs when the tab is first shown.
     gallery.show()
     print("DEFAULT_SEARCH=%s" % await search_done(gallery))
-    print("DEFAULT_RESULTS=%d PAGES=%d" % [search.items.size(), search._page_count])
+    print("DEFAULT_RESULTS=%d MORE=%s" % [search.items.size(), not search._next_url.is_empty()])
+    # Scrolled to the end, the next page adds to the results.
+    var first: int = search.items.size()
+    gallery.scroll.scroll_vertical = int(gallery.scroll.get_v_scroll_bar().max_value)
+    print("LOADED_MORE=%s" % await wait_until(func(): return search.items.size() > first, SEARCH_S))
 
     search.free_check.button_pressed = true
     gallery.search_edit.text = "chair"
@@ -41,7 +45,7 @@ func check():
     print("ALL_GLTF=%s" % results.all(func(a): return "gltf_godot" in gallery.GalleryApi.file_types(a)))
     # Thumbnails come as separate tasks.
     await wait_until(func(): return search._thumbs_missing == 0, search.THUMBS_WAIT_MS / 1000.0)
-    var thumbs: int = search.items.values().filter(func(item): return item._has_thumbnail).size()
+    var thumbs: int = search.items.values().filter(func(item): return not item._thumbnails.is_empty()).size()
     print("THUMBNAILS=%d/%d" % [thumbs, search.items.size()])
 
     var downloadable := results.filter(func(a): return a.get("canDownload") == true)
@@ -108,10 +112,11 @@ def test_gallery_search_and_download(godot_executable, tmp_path):
 
     assert value("CONNECTED") == "true", output
     assert value("DEFAULT_SEARCH") == "true", output
-    results, pages = re.fullmatch(
-        r"(\d+) PAGES=(\d+)", value("DEFAULT_RESULTS")
+    results, more = re.fullmatch(
+        r"(\d+) MORE=(\w+)", value("DEFAULT_RESULTS")
     ).groups()
-    assert int(results) > 0 and int(pages) > 1, output
+    assert int(results) > 0 and more == "true", output
+    assert value("LOADED_MORE") == "true", output
 
     assert value("SEARCH") == "true", output
     assert value("SEARCH_MESSAGE") == "", output

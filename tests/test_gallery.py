@@ -74,11 +74,6 @@ func _initialize():
     check(Api.search_order("trending", "x") == "-bookmarks_90", "trending ignores text")
     check(Api.search_order("score", "") == "-score", "score")
 
-    check(Api.page_count(0, 30) == 0, "no pages")
-    check(Api.page_count(31, 30) == 2, "two pages")
-    check(Api.page_count(3673, 30) == 123, "pages")
-    check(Api.page_count(250000, 30) == 334, "clamped to the 10000 result window")
-
     var all := files(["blend", "gltf", "gltf_godot", "resolution_0_5K", "resolution_1K", "resolution_2K", "resolution_4K", "thumbnail"])
     check(Api.pick_file_type(all, "gltf_godot", "") == "gltf_godot", "godot glb")
     check(Api.pick_file_type(files(["blend", "gltf", "thumbnail"]), "gltf_godot", "") == "gltf", "gltf fallback")
@@ -1100,6 +1095,86 @@ def test_gallery_lookup_retry(godot_executable, tmp_path):
     assert f'POSTS=["{a}", "{a}", "{a}"]' in lines, output
     assert f'ACCOUNT_POSTS=["{b}"]' in lines, output
     assert "UPDATED=true INDEXED=false" in lines, output
+    assert "SCRIPT ERROR" not in stderr, output
+
+
+SCROLL_PROBE = r"""
+func assets(from: int, to: int) -> Array:
+    var result := []
+    for i in range(from, to):
+        result.append({"id": "id-%d" % i, "assetBaseId": "base-%d" % i, "name": "Asset %d" % i, "assetType": "model"})
+    return result
+
+func report(task_id: String, status: String, results: Array = [], next = null) -> void:
+    find_gallery().handle_task({"task_type": "search", "task_id": task_id, "status": status,
+        "message": "offline", "result": {"count": 1000, "results": results, "next": next}})
+
+func frames(n: int) -> void:
+    for i in n:
+        await get_tree().process_frame
+
+func near(search) -> String:
+    var cards: Array = search.grid.get_children()
+    return "%s %s" % [cards.front()._near_view, cards.back()._near_view]
+
+func to_end(gallery) -> void:
+    gallery.scroll.scroll_vertical = int(gallery.scroll.get_v_scroll_bar().max_value)
+    await frames(3)
+
+func check():
+    var gallery = find_gallery()
+    var search = gallery.search
+    var connection = gallery.plugin.connection
+    var old_state = connection.state
+    connection.state = connection.State.CONNECTED
+    var posts := []
+    search.post_search = func(url: String, _asset_type: String) -> Array:
+        posts.append(url)
+        return ["task-%d" % posts.size(), ""]
+    gallery.show()
+    await frames(1)
+    report("task-1", "finished", assets(0, 200), "https://x/page-2")
+    await frames(3)
+    # Far from the end, nothing loads, and the cards far below drop their
+    # thumbnails.
+    print("FIRST=%d POSTS=%d NEAR=%s" % [search.items.size(), posts.size(), near(search)])
+    await to_end(gallery)
+    print("MORE=%s LOADING=%s %s BUSY=%s NEAR=%s" % [posts.slice(1), search.more_box.visible,
+        search.more_button.visible, gallery.spinner.visible, near(search)])
+    # A failed page keeps the results, with Retry.
+    report("task-2", "error")
+    print("FAILED=%d %s %s" % [search.items.size(), search.more_button.visible, search.more_label.text])
+    search.more_button.pressed.emit()
+    # Repeats of shown assets are left out.
+    report("task-3", "finished", assets(195, 210) + assets(205, 206))
+    await to_end(gallery)
+    print("RETRIED=%s ITEMS=%d RESULTS=%d MORE_SHOWN=%s END_POSTS=%d" % [posts.slice(2), search.items.size(),
+        search.results.size(), search.more_box.visible, posts.size()])
+    # A new search starts over, at the top.
+    search.request_search(true)
+    report("task-4", "finished", assets(0, 3), "https://x/page-2")
+    await frames(3)
+    print("NEW=%s ITEMS=%d TOP=%s" % [posts[3].contains("&page=1&"), search.items.size(), gallery.scroll.scroll_vertical == 0])
+    connection.state = old_state
+"""
+
+
+def test_gallery_infinite_scroll(godot_executable, tmp_path):
+    """Scrolled near the end, the search loads the next page and adds its new
+    assets, with Retry when it fails; cards far from the view drop their
+    thumbnails."""
+    project = make_probe_project(tmp_path / "project", SCROLL_PROBE)
+    stdout, stderr = run_editor_probe(godot_executable, project)
+    output = stdout + stderr
+    lines = stdout.splitlines()
+    assert "FIRST=200 POSTS=1 NEAR=true false" in lines, output
+    assert 'MORE=["https://x/page-2"] LOADING=true false BUSY=false NEAR=false true' in lines, output
+    assert "FAILED=200 true Loading more failed: offline" in lines, output
+    assert (
+        'RETRIED=["https://x/page-2"] ITEMS=210 RESULTS=210 MORE_SHOWN=false END_POSTS=3'
+        in lines
+    ), output
+    assert "NEW=true ITEMS=3 TOP=true" in lines, output
     assert "SCRIPT ERROR" not in stderr, output
 
 

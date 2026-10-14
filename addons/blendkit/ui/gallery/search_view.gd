@@ -1,7 +1,8 @@
 @tool
 extends VBoxContainer
-## The Blendkit search of the gallery: filters, paged results and their
-## thumbnails. Works like the Asset Store.
+## The Blendkit search of the gallery: filters, results and their
+## thumbnails. Works like the Asset Store, but the results load more as they
+## scroll, like the Blender add-on and blendkit.com.
 
 const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const ClientConnection = preload("res://addons/blendkit/client_connection.gd")
@@ -16,6 +17,9 @@ const PAGE_SIZE := 30
 ## still without one then show their asset type icon.
 const THUMBS_WAIT_MS := 20000
 const SEARCH_TASK := "search"
+## Load the next page once the results end less than this many screens below
+## the view. Cards further away than this let go of their thumbnails.
+const MORE_SCREENS := 1.0
 ## Wait this long after the Polygons range last changed before searching.
 const POLYGONS_DELAY := 0.5
 
@@ -33,20 +37,24 @@ const POLYGONS_DELAY := 0.5
 @onready var message_box: VBoxContainer = %MessageBox
 @onready var message_label: Label = %MessageLabel
 @onready var message_button: Button = %MessageButton
-@onready var top_pages: HBoxContainer = %TopPages
 @onready var grid: GridContainer = %Grid
-@onready var bottom_pages: HBoxContainer = %BottomPages
+@onready var more_box: VBoxContainer = %MoreBox
+@onready var more_label: Label = %MoreLabel
+@onready var more_button: Button = %MoreButton
 @onready var categories_timer: Timer = %CategoriesTimer
 
 var gallery: Node
 var plugin: EditorPlugin
-var page := 1
 ## Shows only this author's assets when set, until its filter is removed.
 var author_id := ""
 var count := 0
+## The results loaded so far, each asset once.
 var results: Array = []
-## assetBaseId -> GalleryItem on the current page.
+## assetBaseId -> GalleryItem of the results.
 var items: Dictionary = {}
+## The Client search request, replaced in the tests: post_search(url_query,
+## asset_type) returns [task_id, error].
+var post_search: Callable = _post_search
 
 var _started := false
 var _pending_search := false
@@ -57,9 +65,13 @@ var _thumbs_missing := 0
 var _thumbs_deadline := 0
 var _fetching_categories := false
 var _message_action := Callable()
-var _page_count := 0
-## [page, page count] the page buttons were made for.
-var _pages_made: Array = []
+## The server's URL of the next page, "" after the last one.
+var _next_url := ""
+## Results the server returned so far, repeats included.
+var _fetched := 0
+var _loading_more := false
+## Why the next page failed to load; it loads again on Retry.
+var _more_error := ""
 var _polygons_timer: Timer
 
 
@@ -118,18 +130,17 @@ func setup(new_gallery: Node) -> void:
 	plugin.model_format_changed.connect(_on_model_format_changed)
 	plugin.auth.account_changed.connect(_on_account_changed)
 	message_button.pressed.connect(_on_message_button_pressed)
+	more_button.pressed.connect(_retry_more)
+	var scroll_bar: VScrollBar = gallery.scroll.get_v_scroll_bar()
+	# The range changes as the results grow and the view resizes.
+	scroll_bar.value_changed.connect(func(_value): on_scrolled())
+	scroll_bar.changed.connect(on_scrolled)
 	categories_timer.timeout.connect(_fetch_categories)
 	gallery.downloads.download_changed.connect(_on_download_changed)
 	gallery.downloads.download_finished.connect(_on_download_finished)
 	gallery.downloads.web_download_finished.connect(_on_web_download_finished)
 	gallery.downloads.asset_refreshed.connect(_on_asset_refreshed)
 	plugin.download_dir_changed.connect(_on_download_dir_changed)
-
-
-## Page buttons have the theme's icons.
-func update_theme() -> void:
-	_pages_made = []
-	update_pages()
 
 
 ## The first search runs when the tab is first shown.
@@ -153,13 +164,19 @@ func on_connected() -> void:
 		categories_timer.start()
 	if _pending_search:
 		_run_search()
+	else:
+		on_scrolled()
 
 
 ## The Client cancels the app's tasks when it unsubscribes, so a running
 ## search runs again on connect.
 func on_disconnected() -> void:
 	categories_timer.stop()
-	if gallery.tasks.has(SEARCH_TASK):
+	if _loading_more:
+		# The results stay; scrolling loads the next page again.
+		_loading_more = false
+		_update_more()
+	elif gallery.tasks.has(SEARCH_TASK):
 		_pending_search = true
 		gallery.set_busy(false)
 		_clear_results()
@@ -180,8 +197,7 @@ func update_connection_message() -> void:
 
 # MARK: search
 
-func request_search(new_page: int = 1, force: bool = false) -> void:
-	page = new_page
+func request_search(force: bool = false) -> void:
 	if not plugin.connection.is_client_connected():
 		_pending_search = true
 		gallery.tasks.forget(SEARCH_TASK)
@@ -206,7 +222,7 @@ func _run_search(force: bool = true) -> void:
 	var url := GalleryApi.build_search_url(plugin.SERVER, text, asset_type,
 		_category_slug(), _sort(), free_check.button_pressed,
 		asset_type == "model" and plugin.model_format != "blend",
-		polygon_filter.min_faces, polygon_filter.max_faces, page, PAGE_SIZE, plugin.get_addon_version(), author_id,
+		polygon_filter.min_faces, polygon_filter.max_faces, 1, PAGE_SIZE, plugin.get_addon_version(), author_id,
 		_flags())
 	if url == _search_url and _search_error.is_empty() and not force:
 		return
@@ -214,57 +230,108 @@ func _run_search(force: bool = true) -> void:
 	_search_url = url
 	_search_text = text.strip_edges()
 	_search_error = ""
-	# Like the Asset Store, keep the current page dimmed until results arrive.
+	# Like the Asset Store, keep the current results dimmed until new ones
+	# arrive.
 	message_box.hide()
+	_loading_more = false
+	_more_error = ""
+	_update_more()
 	gallery.set_busy(true)
+	_start_search(url, false)
 
-	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
-	var post := func() -> Array:
-		return await GalleryApi.search(self, plugin, url, asset_type, tempdir, PAGE_SIZE)
-	var response: Array = await gallery.tasks.start(SEARCH_TASK, post, _on_search_task)
+
+## The next page, once the results end near the view. It waits for a search
+## running meanwhile, and after a failure for Retry.
+func load_more() -> void:
+	if _next_url.is_empty() or not _more_error.is_empty() or gallery.tasks.has(SEARCH_TASK) \
+			or not plugin.connection.is_client_connected():
+		return
+	_loading_more = true
+	_update_more()
+	_start_search(_next_url, true)
+
+
+## Searches [param url]; [param more] adds the results to those shown.
+func _start_search(url: String, more: bool) -> void:
+	var response: Array = await gallery.tasks.start(SEARCH_TASK, post_search.bind(url, _asset_type()),
+		_on_search_task.bind(more))
 	if response.is_empty():
 		return # superseded or disconnected meanwhile
 	if response[0].is_empty():
-		_search_failed(response[1])
+		_search_failed(response[1], more)
 
 
-func _on_search_task(task: Dictionary) -> void:
+func _post_search(url: String, asset_type: String) -> Array:
+	var tempdir := GalleryApi.search_temp_dir(ClientBinary.get_client_data_dir(), asset_type)
+	return await GalleryApi.search(self, plugin, url, asset_type, tempdir, PAGE_SIZE)
+
+
+func _on_search_task(task: Dictionary, more: bool) -> void:
 	var status: String = task.get("status", "")
 	if not status in ClientTasks.FINAL:
 		return
-	gallery.set_busy(false)
 	if status != "finished":
-		_search_failed(str(task.get("message", "")))
+		_search_failed(str(task.get("message", "")), more)
 		return
 	var result = task.get("result")
 	if not result is Dictionary:
-		_search_failed("unexpected search result")
+		_search_failed("unexpected search result", more)
 		return
 	count = int(result.get("count", 0))
-	results = result.get("results", []) if result.get("results") is Array else []
-	_show_results()
+	var page: Array = result.get("results", []) if result.get("results") is Array else []
+	if more:
+		_loading_more = false
+		_update_more()
+	else:
+		gallery.set_busy(false)
+		_clear_results()
+	_fetched += page.size()
+	var next = result.get("next")
+	_next_url = next if next is String and _fetched < GalleryApi.MAX_RESULT_WINDOW else ""
+	_show_results(page)
+	if not more:
+		gallery.reset_search_scroll()
+	# Repeats or a tall view may leave the results short of the view.
+	on_scrolled.call_deferred()
 
 
-func _search_failed(message: String) -> void:
+## A failed next page keeps the results, with Retry below them.
+func _search_failed(message: String, more: bool = false) -> void:
+	var error := message if message else "unknown error"
+	plugin.log_warning("Search failed: %s" % error)
+	if more:
+		_loading_more = false
+		_more_error = error
+		_update_more()
+		return
 	gallery.set_busy(false)
-	_search_error = message if message else "unknown error"
-	plugin.log_warning("Search failed: %s" % _search_error)
+	_search_error = error
 	_clear_results()
-	_show_message("Search failed: %s" % _search_error, "Retry", func(): request_search(page, true))
+	_show_message("Search failed: %s" % _search_error, "Retry", request_search.bind(true))
 
 
 func _clear_results() -> void:
 	items.clear()
+	results = []
 	for child in grid.get_children():
 		grid.remove_child(child)
 		child.queue_free()
-	_page_count = 0
-	update_pages()
+	_next_url = ""
+	_fetched = 0
 	_thumbs_missing = 0
 
 
-func _show_results() -> void:
-	_clear_results()
+## Adds the cards of a page of results, without the assets shown already.
+## Pages are cached on the server at different times, so an asset whose rank
+## changed meanwhile can come again.
+func _show_results(page: Array) -> void:
+	var added: Array = []
+	var seen := {}
+	for asset in page:
+		if asset is Dictionary and not items.has(GalleryApi.base_id(asset)) and not seen.has(GalleryApi.base_id(asset)):
+			seen[GalleryApi.base_id(asset)] = true
+			added.append(asset)
+	results.append_array(added)
 	if results.is_empty():
 		if _search_text:
 			_show_message("No results for \"%s\"." % _search_text)
@@ -273,12 +340,7 @@ func _show_results() -> void:
 	else:
 		message_box.hide()
 
-	_page_count = GalleryApi.page_count(count, PAGE_SIZE)
-	update_pages()
-
-	for asset in results:
-		if not asset is Dictionary:
-			continue
+	for asset in added:
 		var base_id := GalleryApi.base_id(asset)
 		var item = gallery_item_scene.instantiate()
 		grid.add_child(item)
@@ -300,10 +362,9 @@ func _show_results() -> void:
 	var details = gallery.details
 	if details.visible:
 		var open_id := GalleryApi.base_id(details.asset)
-		for asset in results:
-			if asset is Dictionary and GalleryApi.base_id(asset) == open_id:
+		for asset in added:
+			if GalleryApi.base_id(asset) == open_id:
 				details.update_asset(asset)
-	gallery.reset_search_scroll()
 
 
 ## A finished or failed thumbnail of an asset; [param path] is "" if it failed.
@@ -329,87 +390,35 @@ func _on_thumbs_timeout(deadline: int) -> void:
 		item.set_thumbnail_failed()
 
 
-# MARK: pages
+# MARK: scrolling
 
-## Show as many page numbers as fit, at most the Asset Store's 11. The
-## buttons are made once per page, resizing only hides some.
-func update_pages() -> void:
-	var max_window := int(10 / EditorInterface.get_editor_scale())
-	if _pages_made != [page, _page_count]:
-		_pages_made = [page, _page_count]
-		_make_pages(top_pages, _page_count, max_window)
-		_make_pages(bottom_pages, _page_count, max_window)
-	if _page_count < 2:
+## Loads the next page once the results end near the view, and lets the
+## cards far from it drop their thumbnails, so long results don't keep them
+## all decoded.
+func on_scrolled() -> void:
+	if not is_visible_in_tree() or items.is_empty():
 		return
-	var available: float = gallery.content_width()
-	var window := max_window
-	while true:
-		_show_page_numbers(top_pages, window)
-		if window <= 0 or top_pages.get_combined_minimum_size().x <= available:
-			break
-		window -= 2
-	_show_page_numbers(bottom_pages, maxi(window, 0))
+	var scroll: ScrollContainer = gallery.scroll
+	var margin := scroll.size.y * MORE_SCREENS
+	# The view in the grid's coordinates; scrolling moves both alike.
+	var top: float = scroll.scroll_vertical - (grid.global_position.y - gallery.border.global_position.y)
+	var bottom: float = top + scroll.size.y
+	for item in grid.get_children():
+		item.set_near_view(item.position.y + item.size.y >= top - margin and item.position.y <= bottom + margin)
+	if grid.size.y < bottom + margin:
+		load_more()
 
 
-func has_pages() -> bool:
-	return _page_count > 1
+## Below the results: the next page loading, or why it failed.
+func _update_more() -> void:
+	more_box.visible = _loading_more or not _more_error.is_empty()
+	more_label.text = "Loading more…" if _more_error.is_empty() else "Loading more failed: %s" % _more_error
+	more_button.visible = not _more_error.is_empty()
 
 
-## First and last page numbers shown for a window around the current page.
-func _page_range(window: int) -> Vector2i:
-	var to := mini(_page_count, maxi(1, page - window / 2) + window)
-	return Vector2i(maxi(1, to - window), to)
-
-
-func _show_page_numbers(container: HBoxContainer, window: int) -> void:
-	var shown := _page_range(window)
-	for child in container.get_children():
-		if child.has_meta("page"):
-			var number: int = child.get_meta("page")
-			child.visible = number >= shown.x and number <= shown.y
-
-
-func _make_pages(container: HBoxContainer, page_count: int, window: int) -> void:
-	for child in container.get_children():
-		container.remove_child(child)
-		child.queue_free()
-	if page_count < 2:
-		container.hide()
-		return
-	container.show()
-	var edscale := EditorInterface.get_editor_scale()
-	container.add_theme_constant_override("separation", int(5 * edscale))
-	var shown := _page_range(window)
-
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
-	container.add_child(spacer)
-	container.add_child(_page_button("", "BackStart" if has_theme_icon("BackStart", "EditorIcons") else "PageFirst", "First", 1, page != 1))
-	container.add_child(_page_button("", "Back", "Previous", page - 1, page > 1))
-	container.add_child(VSeparator.new())
-	for i in range(shown.x, shown.y + 1):
-		var number := _page_button(" %d " % i, "", "", i, i != page)
-		number.set_meta("page", i)
-		container.add_child(number)
-	container.add_child(VSeparator.new())
-	container.add_child(_page_button("", "Forward", "Next", page + 1, page < page_count))
-	container.add_child(_page_button("", "ForwardEnd" if has_theme_icon("ForwardEnd", "EditorIcons") else "PageLast", "Last", page_count, page != page_count))
-	spacer = Control.new()
-	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
-	container.add_child(spacer)
-
-
-func _page_button(text: String, icon_name: String, tooltip: String, target_page: int, enabled: bool) -> Button:
-	var button := Button.new()
-	button.text = text
-	if icon_name:
-		button.icon = get_theme_icon(icon_name, "EditorIcons")
-	button.tooltip_text = tooltip
-	button.theme_type_variation = "PanelBackgroundButton"
-	button.disabled = not enabled
-	if enabled:
-		button.pressed.connect(request_search.bind(target_page, true))
-	return button
+func _retry_more() -> void:
+	_more_error = ""
+	load_more()
 
 
 # MARK: message
@@ -538,7 +547,7 @@ func _on_model_format_changed() -> void:
 ## Results depend on the account (canDownload), so search again.
 func _on_account_changed() -> void:
 	if _started:
-		request_search(page, true)
+		request_search(true)
 
 
 static func _get_meta(key: String, default: Variant) -> Variant:

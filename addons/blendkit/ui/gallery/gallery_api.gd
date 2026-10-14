@@ -6,6 +6,7 @@ extends RefCounted
 const ClientBinary = preload("res://addons/blendkit/client_binary.gd")
 const FileOps = preload("res://addons/blendkit/file_ops.gd")
 
+## The server serves only the first this many results of a search.
 const MAX_RESULT_WINDOW := 10000
 ## Downloads land in this hidden folder of the download directory, which
 ## Godot doesn't scan, and move to their place once complete. That keeps the
@@ -230,13 +231,6 @@ static func lookup_result(task: Dictionary, asset_id: String) -> Dictionary:
 			or not results[0] is Dictionary or str(results[0].get("id", "")) != asset_id:
 		return {}
 	return results[0]
-
-
-## Pages reachable by the server, which serves only the first 10000 results.
-static func page_count(count: int, page_size: int) -> int:
-	if count <= 0 or page_size <= 0:
-		return 0
-	return ceili(mini(count, MAX_RESULT_WINDOW) / float(page_size))
 
 
 # MARK: files and paths

@@ -34,6 +34,9 @@
 
 ### Changed
 
+- Search results load more as they scroll, like in the Blender add-on and on
+  blendkit.com, instead of pages with page buttons. If the next page fails to
+  load, the results stay and **Retry** shows below them.
 - Asset details follow the blendkit.com layout: a bigger title with the asset
   type above it, the description under the preview, and one column of
   properties with score, quality and complexity and their icons, file size,

@@ -1,6 +1,6 @@
 @tool
 extends PanelContainer
-## Blendkit main-screen tab: search with filters, paged thumbnails and an
+## Blendkit main-screen tab: search with filters, scrolling thumbnails and an
 ## asset details dialog with a Download button. Works like the Asset Store.
 ## The toggle next to the search switches to the assets downloaded to the
 ## project. The parts are the search (SearchView on %Body), the project
@@ -64,8 +64,8 @@ func _ready() -> void:
 	if plugin == null:
 		return
 	# Spacing follows the Asset Store (EditorAssetLibrary), but without the
-	# top margin, so the filters are as far from the page buttons as those
-	# are from the items.
+	# top margin, so the first cards come right below the filters; the
+	# panel's own margin keeps them off its edge.
 	var edscale := EditorInterface.get_editor_scale()
 	main.add_theme_constant_override("separation", int(10 * edscale))
 	var border_style: StyleBoxEmpty = border.get_theme_stylebox("panel").duplicate()
@@ -177,7 +177,6 @@ func _update_theme() -> void:
 	_download_badge.add_theme_color_override("font_color", get_theme_color("base_color", "Editor"))
 	_download_badge.add_theme_font_override("font", get_theme_font("bold", "EditorFonts"))
 	_download_badge.add_theme_font_size_override("font_size", int(10 * edscale))
-	search.update_theme()
 
 
 # MARK: Client connection
@@ -259,8 +258,6 @@ func update_columns() -> void:
 		grid.columns = columns
 		for item in grid.get_children():
 			item.set_width(width)
-	if search.has_pages():
-		search.update_pages()
 
 
 ## New results start at the top, also when they arrive in project mode.

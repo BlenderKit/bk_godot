@@ -204,19 +204,31 @@ size_flags_horizontal = 4
 theme_type_variation = &"PanelBackgroundButton"
 text = "Retry"
 
-[node name="TopPages" type="HBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
-unique_name_in_owner = true
-layout_mode = 2
-
 [node name="Grid" type="GridContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
 columns = 4
 
-[node name="BottomPages" type="HBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
+[node name="MoreBox" type="VBoxContainer" parent="Main/LibraryMargin/Scroll/Border/Body"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="MoreLabel" type="Label" parent="Main/LibraryMargin/Scroll/Border/Body/MoreBox"]
 unique_name_in_owner = true
 layout_mode = 2
+text = "Loading more…"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="MoreButton" type="Button" parent="Main/LibraryMargin/Scroll/Border/Body/MoreBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"PanelBackgroundButton"
+text = "Retry"
 
 [node name="ProjectBody" type="VBoxContainer" parent="Main/LibraryMargin/Scroll/Border"]
 unique_name_in_owner = true
