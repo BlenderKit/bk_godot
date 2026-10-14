@@ -63,12 +63,14 @@ func _ready() -> void:
 	set_process(false)
 	if plugin == null:
 		return
-	# Spacing follows the Asset Store (EditorAssetLibrary).
+	# Spacing follows the Asset Store (EditorAssetLibrary), but without the
+	# top margin, so the filters are as far from the page buttons as those
+	# are from the items.
 	var edscale := EditorInterface.get_editor_scale()
 	main.add_theme_constant_override("separation", int(10 * edscale))
 	var border_style: StyleBoxEmpty = border.get_theme_stylebox("panel").duplicate()
 	border_style.content_margin_left = 15 * edscale
-	border_style.content_margin_top = 15 * edscale
+	border_style.content_margin_top = 0
 	border_style.content_margin_right = 35 * edscale
 	border_style.content_margin_bottom = 15 * edscale
 	border.add_theme_stylebox_override("panel", border_style)
