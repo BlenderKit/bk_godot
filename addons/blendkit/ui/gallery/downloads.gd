@@ -51,7 +51,7 @@ var _tasks: ClientTasks
 var index: ProjectAssets
 ## Whether leftover staging folders were cleared since connecting.
 var _staging_cleared := false
-## Conversions waiting for their task's final report, key -> {task}, see
+## Conversions waiting for their task's final report, key -> Conversion, see
 ## _convert().
 var _conversions: Dictionary = {}
 ## The Client requests, replaced in the tests: post_download(asset,
@@ -296,11 +296,11 @@ func _convert(staged: String, key: String, plan: Dictionary) -> Array:
 	DirAccess.remove_absolute(output)
 	for dir in plan.dirs:
 		FileOps.remove_dir(dir)
-	var state := {"task": {}}
-	_conversions[key] = state
+	var conversion := Conversion.new()
+	_conversions[key] = conversion
 	var on_task := func(task: Dictionary) -> void:
 		if task.get("status") in ClientTasks.FINAL:
-			state.task = task
+			conversion.end(task)
 	var response: Array = await _tasks.start(key, post_conversion.bind(plan), on_task)
 	var error := ""
 	if response.is_empty() or not _conversions.has(key):
@@ -308,15 +308,16 @@ func _convert(staged: String, key: String, plan: Dictionary) -> Array:
 	elif response[0].is_empty():
 		error = response[1]
 	else:
-		var deadline := Time.get_ticks_msec() + CONVERSION_TIMEOUT_MS
-		while state.task.is_empty() and _conversions.has(key) and Time.get_ticks_msec() < deadline:
-			await _parent.get_tree().process_frame
-		if state.task.is_empty():
+		if not conversion.done:
+			_parent.get_tree().create_timer(CONVERSION_TIMEOUT_MS / 1000.0).timeout.connect(conversion.end)
+			await conversion.ended
+		var task := conversion.task
+		if task.is_empty():
 			_tasks.forget(key)
 			error = "Blendkit Client disconnected" if not _conversions.has(key) else "Blender took too long"
-		elif state.task.status != "finished":
-			error = str(state.task.get("message", state.task.status))
-			_plugin.log_debug("Blender output:\n%s" % state.task.get("message_detailed", ""))
+		elif task.status != "finished":
+			error = str(task.get("message", task.status))
+			_plugin.log_debug("Blender output:\n%s" % task.get("message_detailed", ""))
 		elif replaces and not FileOps.replace_file(output, staged):
 			error = "could not replace it with the converted file"
 	_conversions.erase(key)
@@ -352,6 +353,9 @@ func _post_conversion(plan: Dictionary) -> Array:
 ## The Client cancels the app's tasks when it unsubscribes. Conversions
 ## stop waiting and their downloads move into the project unconverted.
 func on_disconnected() -> void:
+	for conversion in _conversions.values():
+		# Once the disconnect is handled, like a report would come.
+		conversion.end.call_deferred()
 	_conversions.clear()
 	for base_id in gallery_downloads:
 		var status: String = gallery_downloads[base_id].status
@@ -462,3 +466,19 @@ func _find_web_download_folder(web: Dictionary) -> bool:
 		return false
 	web.merge(found, true)
 	return true
+
+
+## A conversion waiting for its task's final report, ended by it, a
+## disconnect or the timeout, whichever comes first.
+class Conversion:
+	signal ended
+	var done := false
+	## The final report, {} without one.
+	var task: Dictionary = {}
+
+	func end(final_task: Dictionary = {}) -> void:
+		if done:
+			return
+		done = true
+		task = final_task
+		ended.emit()

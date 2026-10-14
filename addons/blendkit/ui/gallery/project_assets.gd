@@ -183,11 +183,17 @@ func scan(abs_download_path: String) -> Array:
 			continue
 		for folder in DirAccess.get_directories_at(type_dir):
 			var path := type_dir.path_join(folder)
-			var id := folder_id(path)
-			var files := downloaded_files(path) if id else {}
+			var manifest := read_manifest(path)
+			var id := folder_id(path, manifest)
+			var times := {}
+			var files := _downloaded_files(path, "", manifest, times) if id else {}
 			if files.is_empty():
 				continue
-			var file := newest_file(files.values())
+			var newest := ""
+			for file_type in files:
+				if newest.is_empty() or times[file_type] > times[newest]:
+					newest = file_type
+			var file: String = files[newest]
 			var known := has(id)
 			var asset: Dictionary = get_asset(id) if known else \
 				{"id": id, "name": placeholder_name(file), "assetType": asset_type}
@@ -195,7 +201,7 @@ func scan(abs_download_path: String) -> Array:
 				"id": id,
 				"folder": path,
 				"files": files,
-				"time": FileAccess.get_modified_time(file),
+				"time": times[newest],
 				"asset": asset,
 				"known": known,
 				"thumbnail": thumbnail(id),
@@ -239,9 +245,9 @@ static func folder_asset_id(folder: String) -> String:
 
 
 ## The asset id of the folder at [param path] from its manifest or its
-## name, or "".
-static func folder_id(path: String) -> String:
-	var id := str(read_manifest(path).get("id", ""))
+## name, or "". Pass the folder's [param manifest] if read already.
+static func folder_id(path: String, manifest: Variant = null) -> String:
+	var id := str((read_manifest(path) if manifest == null else manifest).get("id", ""))
 	return id if id else folder_asset_id(path.get_file())
 
 
@@ -281,11 +287,15 @@ static func download_file_type(file_path: String) -> String:
 ## only those of that version of the asset, see read_manifest(); files the
 ## manifest doesn't list are of the folder's version.
 static func downloaded_files(folder: String, version: String = "") -> Dictionary:
-	var files := {}
-	var times := {}
 	if folder.is_empty() or not DirAccess.dir_exists_absolute(folder):
-		return files
-	var manifest := read_manifest(folder)
+		return {}
+	return _downloaded_files(folder, version, read_manifest(folder), {})
+
+
+## downloaded_files() with the folder's [param manifest], filling [param times]
+## with the modification time of each type's file.
+static func _downloaded_files(folder: String, version: String, manifest: Dictionary, times: Dictionary) -> Dictionary:
+	var files := {}
 	var listed: Dictionary = manifest.get("files", {})
 	var versions: Dictionary = manifest.get("versions", {})
 	var folder_version := str(manifest.get("id", "")) if manifest else folder_asset_id(folder.get_file())

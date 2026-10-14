@@ -406,7 +406,7 @@ func is_downloaded(asset: Dictionary) -> bool:
 ## Show the download state in the details when open, and in the badge.
 func _on_download_changed(id: String) -> void:
 	if details.visible and GalleryApi.base_id(details.asset) == id:
-		details.refresh_download()
+		details.refresh_download(not downloads.get_download(id).get("status", "") in GalleryApi.ACTIVE_DOWNLOAD)
 	_update_download_badge()
 	_update_poll_rate()
 

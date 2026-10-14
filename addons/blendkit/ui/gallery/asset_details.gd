@@ -92,7 +92,7 @@ func _ready() -> void:
 	# a downloaded file can be shown once the dock lists it
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(func():
 		if visible:
-			refresh_download())
+			refresh_download(true))
 	var dim := get_theme_color("font_disabled_color", "Editor")
 	type_label.add_theme_color_override("font_color", dim)
 	tags_key.add_theme_color_override("font_color", dim)
@@ -156,7 +156,7 @@ func show_asset(new_asset: Dictionary, thumbnails: Dictionary, new_folder: Strin
 	_rebuild_strip()
 	for type in PREVIEW_TYPES:
 		if thumbnails.has(type):
-			on_thumbnail(type, GalleryApi.load_texture(thumbnails[type]))
+			on_thumbnail(type, GalleryApi.cached_texture(thumbnails[type]))
 	if preview.texture == null and thumbnails.has("small"):
 		preview.texture = GalleryApi.cached_texture(thumbnails["small"])
 	_place_badge()
@@ -433,10 +433,14 @@ func selected_file_type() -> String:
 	return str(file_option.get_item_metadata(file_option.selected))
 
 
-## Update the buttons and note from the asset's download state.
-func refresh_download() -> void:
+## Update the buttons and note from the asset's download state, and the
+## files when [param files_changed], e.g. once a download ended. Progress
+## reports change neither.
+func refresh_download(files_changed := false) -> void:
 	if asset.is_empty():
 		return
+	if files_changed:
+		_read_files()
 	var login_focused := _login_button.has_focus()
 	_refresh_download()
 	note_label.visible = not note_label.text.is_empty()
@@ -445,14 +449,17 @@ func refresh_download() -> void:
 		action_button.grab_focus()
 
 
-func _refresh_download() -> void:
-	# A finished download adds its file, and its folder if it's the first.
+## A finished download adds its file, and its folder if it's the first.
+func _read_files() -> void:
 	if folder.is_empty():
 		folder = ProjectAssets.asset_folder(gallery.plugin.absolute_download_path, asset)
 	var files := ProjectAssets.downloaded_files(folder, str(asset.get("id", "")))
 	if files != local_files:
 		local_files = files
 		_fill_files(false)
+
+
+func _refresh_download() -> void:
 	action_button.disabled = false
 	action_button.tooltip_text = ""
 	note_label.text = ""

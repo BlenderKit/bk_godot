@@ -542,7 +542,7 @@ func _on_download_dir_changed() -> void:
 	for base_id in items:
 		items[base_id].set_downloaded(gallery.is_downloaded(items[base_id].asset))
 	if gallery.details.visible:
-		gallery.details.refresh_download()
+		gallery.details.refresh_download(true)
 
 
 ## A finished download this gallery didn't start, e.g. Send to Godot.

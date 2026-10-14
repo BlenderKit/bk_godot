@@ -9,6 +9,11 @@ const INDEX_WAIT_MS := 30000
 ## How often to scan again for a file that isn't indexed yet.
 const RESCAN_MS := 1000
 
+## Extensions of the files the FileSystem dock lists, see is_listed(), {}
+## once the editor settings changed.
+static var _listed: Dictionary = {}
+static var _watching_settings := false
+
 
 ## Select the file in the FileSystem dock, or show it in the OS file manager
 ## when it's outside the project or of a type the dock doesn't list.
@@ -69,14 +74,23 @@ static func is_indexed(efs: EditorFileSystem, resource_path: String) -> bool:
 ## imports (a .blend only with Blender import enabled), and the text and
 ## other files from the editor settings.
 static func is_listed(path: String) -> bool:
-	var ext := path.get_extension().to_lower()
-	if ext in ResourceLoader.get_recognized_extensions_for_type(""):
-		return true
+	if _listed.is_empty():
+		_listed = _listed_extensions()
+	return _listed.has(path.get_extension().to_lower())
+
+
+static func _listed_extensions() -> Dictionary:
+	var result := {}
+	for ext in ResourceLoader.get_recognized_extensions_for_type(""):
+		result[ext.to_lower()] = true
 	var settings := EditorInterface.get_editor_settings()
 	for key in ["docks/filesystem/textfile_extensions", "docks/filesystem/other_file_extensions"]:
-		if ext in str(settings.get_setting(key)).split(",", false):
-			return true
-	return false
+		for ext in str(settings.get_setting(key)).split(",", false):
+			result[ext.strip_edges().to_lower()] = true
+	if not _watching_settings:
+		_watching_settings = true
+		settings.settings_changed.connect(func(): _listed = {})
+	return result
 
 
 ## Whether a downloaded file still waits to show up in the FileSystem dock.
