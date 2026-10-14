@@ -698,6 +698,25 @@ func check():
     select(details, "gltf_godot")
     print("NEWER_GLTF=%s" % details.action_button.text)
     details.hide()
+    # A newer download replacing an imported file is imported again. The
+    # details are closed: the editor rescans when its window gets focus.
+    # Godot lists new files in a folder only if its modification time, in
+    # seconds, changed since its last scan.
+    var efs := EditorInterface.get_resource_filesystem()
+    var texture := folder.path_join("texture.png")
+    var image := Image.create(2, 2, false, Image.FORMAT_RGB8)
+    await get_tree().create_timer(1.1).timeout
+    image.save_png(texture)
+    gallery.downloads._scan_download(ProjectSettings.globalize_path(texture))
+    var indexed := func(): return efs.get_filesystem_path(folder).find_file_index("texture.png") >= 0 and not efs.is_scanning()
+    print("TEXTURE_IMPORTED=%s" % await wait_until(indexed, 20))
+    await get_tree().create_timer(1.1).timeout # a newer modification time
+    var reimported := []
+    efs.resources_reimported.connect(func(paths): reimported.append_array(paths))
+    image.fill(Color.RED)
+    image.save_png(texture)
+    gallery.downloads._scan_download(ProjectSettings.globalize_path(texture))
+    print("REIMPORTED=%s" % await wait_until(func(): return texture in reimported, 20))
 """
 
 
@@ -773,6 +792,8 @@ def test_gallery_details_actions(godot_executable, tmp_path):
     assert "FRESH=Importing…" in lines, output
     assert "IMPORTED=true" in lines, output
     assert "BLEND=Show File" in lines, output
+    assert "TEXTURE_IMPORTED=true" in lines, output
+    assert "REIMPORTED=true" in lines, output
     assert "OLDER_BLEND=Download" in lines, output
     assert "NEWER_GLTF=Show File" in lines, output
     assert "SCRIPT ERROR" not in stderr, output

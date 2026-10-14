@@ -43,6 +43,23 @@ static func index_file(file_path: String) -> bool:
 	return true
 
 
+## Let the editor import a downloaded file in the project, also one it
+## imported before and the files that moved along. It checks the files it
+## knows for changes only on a scan, and drops one asked for during another,
+## so it waits for that one to end first. Then a new file is indexed, see
+## index_file().
+static func rescan(file_path: String) -> void:
+	var resource_path := ProjectSettings.localize_path(file_path)
+	var efs := EditorInterface.get_resource_filesystem()
+	var tree := Engine.get_main_loop() as SceneTree
+	var deadline := Time.get_ticks_msec() + INDEX_WAIT_MS
+	while efs.is_scanning() and Time.get_ticks_msec() < deadline:
+		await tree.process_frame
+	efs.scan_sources()
+	if is_listed(resource_path) and not is_indexed(efs, resource_path):
+		await index_file(file_path)
+
+
 static func is_indexed(efs: EditorFileSystem, resource_path: String) -> bool:
 	var dir := efs.get_filesystem_path(resource_path.get_base_dir())
 	return dir != null and dir.find_file_index(resource_path.get_file()) >= 0

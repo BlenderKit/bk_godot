@@ -269,16 +269,12 @@ func _log_finished(path: String, converted: bool) -> void:
 		_plugin.log_info("Downloaded %s" % local)
 
 
-## Let the editor import a finished download in the project. Looking for
-## changed files is much quicker than a full rescan.
+## Let the editor import a finished download in the project, also when it
+## replaced a file in place. Looking for changed files is much quicker than
+## a full rescan.
 static func _scan_download(file_path: String) -> void:
-	var resource_path := ProjectSettings.localize_path(file_path)
-	if not resource_path.begins_with("res://"):
-		return
-	if FileReveal.is_listed(resource_path):
-		FileReveal.index_file(file_path)
-	else:
-		EditorInterface.get_resource_filesystem().scan_sources()
+	if ProjectSettings.localize_path(file_path).begins_with("res://"):
+		FileReveal.rescan(file_path)
 
 
 # MARK: conversions
