@@ -76,14 +76,16 @@ func download(gallery, asset: Dictionary):
     print("STATUSES=%s" % [seen.keys()])
     print("STATUS=%s %s" % [dl.status, dl.message])
     print("FILE=%s" % dl.file_path)
-    print("BUTTON=%s" % gallery.details.action_button.text)
     print("STAGED_LEFT=%s" % FileAccess.file_exists(Api.staging_path(gallery.plugin.absolute_download_path).path_join(dl.file_path.trim_prefix(gallery.plugin.absolute_download_path))))
-    gallery.details.hide()
 
-    # The editor imports it.
+    # The editor imports it, then the details offer to show it.
     var res_path := ProjectSettings.localize_path(dl.file_path)
     var fs := EditorInterface.get_resource_filesystem()
+    print("IMPORTING=%s" % gallery.details.action_button.text)
     print("IMPORTED=%s" % await wait_until(func(): return not fs.is_scanning() and ResourceLoader.exists(res_path), 60))
+    await wait_until(func(): return gallery.details.action_button.text != "Importing…", 10)
+    print("BUTTON=%s" % gallery.details.action_button.text)
+    gallery.details.hide()
 
     print("TILE_DOWNLOADED=%s" % gallery.search.items[base_id]._downloaded)
     gallery.project_toggle.button_pressed = true
